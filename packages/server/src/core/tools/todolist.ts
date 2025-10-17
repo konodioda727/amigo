@@ -1,0 +1,86 @@
+import { createTool } from "./base";
+
+// 假设 parseMarkdownChecklist 保持不变
+function parseMarkdownChecklist(markdown: string): { target: string; completed: boolean }[] {
+  const lines = markdown
+    .split("\n")
+    .filter((line) => line.trim().startsWith("- [") || line.trim().startsWith("* ["));
+  return lines.map((line) => {
+    const isCompleted = line.includes("[x]") || line.includes("[X]");
+    // 移除 - [ ] 或 - [x] / * [ ] 或 * [x] 标记
+    const target = line.replace(/^[-\*]\s*\[[xX\s]\]\s*/, "").trim();
+    return { target, completed: isCompleted };
+  });
+}
+
+export const UpdateTodolist = createTool({
+  name: "updateTodolist",
+  description:
+    "用于创建、更新或替换当前任务的待办事项列表（To-Do List），**它是 Agent 内部的规划和状态跟踪机制**。",
+  whenToUse:
+    "1. **任务分解时：** 当用户请求是一个复杂的任务，需要拆解为多个步骤时，使用此工具创建初始的待办列表。\n" +
+    "2. **进度更新时：** 当一个步骤已完成或需要修改时，使用此工具更新列表状态（如标记为完成 `[x]`）或修改任务描述。\n" +
+    "**重要限制：此工具仅用于Agent的自我规划，不得将其内容或结构（如 Checklist 格式）直接作为对用户的最终回复。**",
+
+  useExamples: [
+    `<updateTodolist>
+      <todolist>
+- [ ] 分析用户需求，确定旅行目的地和时间。
+- [x] 查询并预订北京到上海的往返机票。
+- [ ] 查找并预订上海评分高于4.5的五星级酒店。
+- [ ] 制定详细的上海三日游行程安排。
+      </todolist>
+    </updateTodolist>`,
+    `<updateTodolist>
+      <todolist>
+- [ ] 收集关于“量子计算”的最新研究进展。
+- [ ] 撰写一份关于量子计算的应用前景的摘要。
+- [ ] 整理摘要并润色，确保语言专业流畅。
+      </todolist>
+    </updateTodolist>`,
+  ],
+
+  // 定义模型需要输出的 XML 标签和结构
+  params: [
+    {
+      name: "todolist",
+      optional: false,
+      description:
+        "完整的 Markdown 格式的待办事项列表 (Checklist)，使用 `- [ ]` 或 `- [x]` 标记状态。",
+    },
+  ],
+
+  /**
+   * 工具的实际执行逻辑
+   * 在实际应用中，这里应该触发一个子任务流程，
+   * 根据 params 中的 todolist 逐一创建和启动子 ConversationManager。
+   */
+  async invoke({params}) {
+    const markdownList = params.todolist;
+    const checklist = parseMarkdownChecklist(markdownList);
+
+    const total = checklist.length;
+    const completed = checklist.filter((item) => item.completed).length;
+
+    // 查找第一个未完成的任务
+    const nextPendingTask = checklist.find((item) => !item.completed);
+
+    let resultMessage = `
+    成功更新 ${total} 个待办事项。当前进度：${completed}/${total} (已完成/总数)。
+    `;
+
+    if (nextPendingTask) {
+      // 告诉模型下一个要做的任务是什么
+      resultMessage += `\n**下一个任务：** ${nextPendingTask.target}`;
+    } else {
+      // 如果所有任务都完成了
+      resultMessage += `\n**所有任务已完成。** 请提供最终总结。`;
+    }
+
+    // 返回一个格式化的成功消息给 LLM
+    return {
+      message: resultMessage,
+      toolResult: resultMessage
+    };
+  },
+});

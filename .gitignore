@@ -1,0 +1,48 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+dist/
+build/
+.cache/
+*.tsbuildinfo
+
+# VSCode
+.vscode/
+.history/
+
+# Mac
+.DS_Store
+
+# Logs
+logs/
+*.log
+
+# Env
+.env
+.env.*
+
+# Output
+out/
+coverage/
+*.local
+
+# IDE
+.idea/
+*.swp
+
+# Misc
+*.bak
+*.tmp
+*.orig
+*.sublime-workspace
+*.sublime-project
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Bun
+.bun*

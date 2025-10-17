@@ -1,0 +1,16 @@
+{
+  "extends": "//",
+  "linter": {
+    "rules": {
+      "suspicious": {
+        "noAssignInExpressions": "warn"
+      },
+      "complexity": {
+        "noStaticOnlyClass": "off"
+      }
+    }
+  },
+  "files": {
+    "includes": ["src/**/*", "!**/dist", "!**/node_modules"]
+  }
+}

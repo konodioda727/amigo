@@ -1,0 +1,24 @@
+{
+  "extends": "//",
+  "files": {
+    "includes": ["src/**/*", "!src/**/dist", "!src/**/node_modules"]
+  },
+  "linter": {
+    "rules": {
+      "correctness": {
+        "useExhaustiveDependencies": "off",
+        "noUnknownProperty": "off"
+      },
+      "suspicious": {
+        "noUnknownAtRules": "off"
+      }
+    }
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  }
+}

@@ -1,0 +1,5 @@
+@import 'tailwindcss';
+@plugin "daisyui" {
+    themes: cupcake --default, dracular --prefersdark;
+}
+@source "../node_modules/streamdown/dist/index.js";

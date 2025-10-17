@@ -1,0 +1,16 @@
+{
+  "name": "@amigo/types",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "pnpx bun build index.ts --outdir dist --minify"
+  },
+  "keywords": [],
+  "author": "muxiStudio",
+  "license": "ISC",
+  "dependencies": {
+    "zod": "^4.1.8"
+  }
+}
