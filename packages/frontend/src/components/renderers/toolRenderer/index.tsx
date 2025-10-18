@@ -1,14 +1,15 @@
-import React from "react";
-import { FrontendToolMessageType } from "@/messages/types";
+import type { ToolNames } from "@amigo/types";
+import type React from "react";
+import type { FrontendToolMessageType } from "@/messages/types";
 
-type ToolRendererProps = FrontendToolMessageType & { updateTime?: number };
+export type ToolRendererProps<T extends ToolNames> = FrontendToolMessageType<T> & { updateTime?: number };
 
 // 工具类型映射，可扩展
-const toolRendererMap: Record<string, React.FC<ToolRendererProps>> = {
+const toolRendererMap: Partial<Record<ToolNames, React.FC<ToolRendererProps<any>>>> = {
   // 例如：exampleTool: ToolRenderer_ExampleTool,
 };
 
-const DefaultToolRenderer: React.FC<ToolRendererProps> = ({
+const DefaultToolRenderer: React.FC<ToolRendererProps<any>> = ({
   toolName,
   params,
   toolOutput,
@@ -20,7 +21,10 @@ const DefaultToolRenderer: React.FC<ToolRendererProps> = ({
     <div className="chat chat-start mb-2">
       <div className="chat-image avatar">
         <div className="w-10 rounded-full">
-          <img alt="AI" src="https://daisyui.com/images/stock/photo-1565098772267-60af42b81ef2.jpg" />
+          <img
+            alt="AI"
+            src="https://daisyui.com/images/stock/photo-1565098772267-60af42b81ef2.jpg"
+          />
         </div>
       </div>
       <div className="chat-bubble bg-accent text-accent-content">
@@ -29,20 +33,16 @@ const DefaultToolRenderer: React.FC<ToolRendererProps> = ({
         </div>
         <div className="font-bold">工具: {toolName}</div>
         <div className="text-sm whitespace-pre-wrap">{paramsStr}</div>
-        {toolOutput && (
-          <div className="mt-2 text-success">输出: {toolOutput}</div>
-        )}
-        {error && (
-          <div className="mt-2 text-error">错误: {error}</div>
-        )}
+        {toolOutput && <div className="mt-2 text-success">输出: {JSON.stringify(toolOutput)}</div>}
+        {error && <div className="mt-2 text-error">错误: {error}</div>}
       </div>
     </div>
   );
 };
 
-const ToolRenderer: React.FC<ToolRendererProps> = (props) => {
+const ToolRenderer: React.FC<ToolRendererProps<any>> = (props) => {
   const { toolName } = props;
-  const CustomRenderer = toolRendererMap[toolName];
+  const CustomRenderer = toolRendererMap[toolName as ToolNames];
   if (CustomRenderer) {
     return <CustomRenderer {...props} />;
   }

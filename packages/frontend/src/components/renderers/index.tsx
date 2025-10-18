@@ -1,9 +1,9 @@
-import { DisplayMessageType, FrontendCommonMessageType } from "@/messages/types";
-import MessageRenderer from "./MessageRenderer";
-import ToolRenderer from "./ToolRenderer";
-import UserMessageRenderer from "./UserMessageRenderer";
-import CompletionResultRenderer from "./completionResult";
+import type { DisplayMessageType, FrontendCommonMessageType } from "@/messages/types";
 import AskFollowupQuestionRenderer from "./askFollowupQuestions";
+import CompletionResultRenderer from "./completionResult";
+import MessageRenderer from "./MessageRenderer";
+import ToolRenderer from "./toolRenderer";
+import UserMessageRenderer from "./UserMessageRenderer";
 
 // DisplayMessage 渲染器映射
 export function renderDisplayMessage(msg: DisplayMessageType) {
