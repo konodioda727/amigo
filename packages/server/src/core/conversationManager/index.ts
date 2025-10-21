@@ -29,6 +29,37 @@ export const mockLlm = {
   async *stream(_messages: any[]): AsyncIterable<any> {
     yield { content: "好的，我" };
     yield { content: "可以帮助你。正在调用工具" };
+    yield {
+      content: `
+    - 用户请求：我想计划一个去日本的两周旅行，帮我安排机票和酒店。
+    - 当前用户定义工具中没有可用工具，则置空 tools 列表。
+    <assignTasks>
+      <tasklist>
+        <task>
+          <target>查询北京到上海的往返机票，预算不超过2000元。</target>
+          <subAgentPrompt>你是一个专业的机票查询代理，请严格按照用户的要求，查询机票信息。</subAgentPrompt>
+          <tools>
+            <tool></tool>
+          </tools>
+        </task>
+        <task>
+          <target>查找上海静安区评分高于4.5的五星级酒店，并提供预订链接。</target>
+          <subAgentPrompt>你是一个专业的酒店预订代理，提供预订链接。</subAgentPrompt>
+          <tools>
+            <tool></tool>
+          </tools>
+        </task>
+      </todolist>
+    </assignTasks>`,
+    };
+    // yield { content: "<completionResult" };
+    // yield { content: ">test128937918273918273</completionResult>" };
+  },
+};
+
+// 模拟 llm 对象，用于流式响应
+export const mockSubLlm = {
+  async *stream(_messages: any[]): AsyncIterable<any> {
     yield { content: "<completionResult" };
     yield { content: ">test128937918273918273</completionResult>" };
   },
@@ -41,10 +72,13 @@ export class ConversationManager {
   private startLabels: string[];
   private endLabels: string[];
   private isAborted: boolean = false;
+  private retryCount: number = 0;
 
   public conversationStatus: ConversationStatus = "idle";
   public connections: ServerWebSocket[] = [];
   public userInput: string = "";
+
+  static taskMapToConversationManager: Record<string, ConversationManager> = {};
 
   constructor(
     private memory: FilePersistedMemory,
@@ -62,6 +96,7 @@ export class ConversationManager {
       },
       { startLabels: [] as string[], endLabels: [] as string[] },
     );
+    ConversationManager.taskMapToConversationManager[this.memory.currentTaskId] = this;
     this.startLabels = startLabels;
     this.endLabels = endLabels;
     this.start();
@@ -117,7 +152,7 @@ export class ConversationManager {
   }
 
   // 处理流式响应并解析工具调用
-  private async _handleStream() {
+  private async _handleStream(): Promise<void> {
     const controller = new AbortController();
     const { signal } = controller;
 
@@ -132,16 +167,21 @@ export class ConversationManager {
       ${this.customPrompt()}
         `;
       }
-      const stream = await this.llm.stream(
-        [new SystemMessage(systemPrompt), ...this.memory.messages],
-        {
-          signal,
-        },
-      );
+      const stream = await this.llm.stream([new SystemMessage(systemPrompt), ...this.memory.messages], {
+        signal,
+      });
       const currentTool = await parseStreamingXml({
         stream,
         startLabels: this.startLabels,
-        onCommonMessageFound: (message: string) => {
+        onPartialMessageFound: async (message) => {
+          this._postMessage({
+            role: "assistant",
+            content: message,
+            type: "message",
+            partial: true,
+          });
+        },
+        onCommonMessageFound: async (message: string) => {
           this._postMessage({
             role: "assistant",
             content: message,
@@ -151,7 +191,17 @@ export class ConversationManager {
         },
         onFullToolCallFound: async (fullToolCall, currentTool, currentType) => {
           this.conversationStatus = "tool_executing";
-          // 执行工具调用
+          // 确保有 partial 输出
+          this._postMessage({
+            role: "assistant",
+            content: JSON.stringify({
+              params: this.toolService.parseParams(fullToolCall).params,
+              toolName: currentTool,
+            } as TransportToolContent<any>),
+            originalMessage: fullToolCall,
+            type: currentType,
+            partial: true,
+          });
           const { toolResult, message, params } = await this.toolService.parseAndExecute({
             xmlParams: fullToolCall,
             getCurrentTask: () => this.memory.currentTaskId,
@@ -174,13 +224,13 @@ export class ConversationManager {
             partial: false,
           });
         },
-        onPartialToolCallFound: (partialToolCall, currentTool, currentType) => {
+        onPartialToolCallFound: async (partialToolCall, currentTool, currentType) => {
           // 正在输出参数, 采用最大化解析的办法, 先输出 partial 的工具调用
-          const parsedParams = this.toolService.parseParams(partialToolCall);
+          const { params } = this.toolService.parseParams(partialToolCall, true);
           this._postMessage({
             role: "assistant",
             content: JSON.stringify({
-              params: parsedParams[currentTool || ""],
+              params,
               result: "",
               toolName: currentTool,
             } as TransportToolContent<any>),
@@ -189,7 +239,7 @@ export class ConversationManager {
             partial: true,
           });
         },
-        checkShouldAbort: () => this.isAborted,
+        checkShouldAbort: async () => this.isAborted,
       });
       switch (currentTool) {
         case "interrupt":
@@ -201,6 +251,9 @@ export class ConversationManager {
         case "completionResult":
           console.log("\n对话已完成。");
           this.conversationStatus = "completed";
+          if (this.conversationType !== "main") {
+            return ;
+          }
           this.userInput = "";
           await pWaitFor(() => !!this.userInput);
           break;
@@ -214,12 +267,16 @@ export class ConversationManager {
       }
       this._handleStream();
     } catch (error: any) {
-      if (error.name === "AbortError") {
-        console.log("请求已被成功中止。");
-        return "interrupt";
-      }
       console.error("流式响应过程中出现错误:", error);
-      return null;
+      this.emitMessage({
+        type: "error",
+        data: {
+          message: "处理您的请求时发生错误，请重试。",
+          details: error.message,
+        },
+      });
+      this.conversationStatus = "error";
+      this.userInput = ""; // 重置输入，等待下一次用户交互
     }
   }
 
@@ -269,6 +326,21 @@ export class ConversationManager {
         updateTime: Date.now().valueOf(),
       },
     });
+
+    // 递归打断所有子任务
+    const currentTaskId = this.memory.currentTaskId;
+    const managers = Object.values(ConversationManager.taskMapToConversationManager);
+    for (const manager of managers) {
+      // 子任务的 memory.parentTaskId 等于当前 taskId
+      if (
+        manager !== this &&
+        (manager.memory as any).parentTaskId === currentTaskId &&
+        manager.conversationStatus !== "aborted" &&
+        manager.conversationStatus !== "completed"
+      ) {
+        manager.interrupt();
+      }
+    }
   }
 
   /**
@@ -301,8 +373,9 @@ export class ConversationManager {
     target: string;
     parentTaskId: string;
     tools: ToolInterface<any>[];
+    index?: number; // 新增 index 参数
   }): Promise<ChatMessage> {
-    const { subPrompt, parentTaskId, tools, target } = props;
+    const { subPrompt, parentTaskId, tools, target, index = 0 } = props;
     const llm = getLlm();
     const subTaskId = uuidV4();
     const toolService = new ToolService([AskFollowupQuestions, CompletionResult], tools);
@@ -314,9 +387,23 @@ export class ConversationManager {
       type: "userSendMessage",
       data: { message: target },
     } as any);
-
-    // 等待子会话完成
-    await pWaitFor(() => subManager.conversationStatus === "completed");
+    const parentConversationManager =
+      ConversationManager.taskMapToConversationManager[parentTaskId];
+    if (!parentConversationManager) {
+      throw new Error(`未找到父会话管理器，父任务ID：${parentTaskId}`);
+    }
+    parentConversationManager.emitMessage({
+      type: "assignTaskUpdated",
+      data: {
+        index,
+        taskId: subTaskId,
+        parentTaskId,
+      },
+    });
+    await pWaitFor(() => subManager.conversationStatus === "completed", {
+      timeout: 30 * 60 * 1000,
+    });
+    console.log(`子会话 ${subTaskId} 已完成。`, subManager.conversationStatus === "completed");
     return subManager.memory.lastMessage!;
   }
 }

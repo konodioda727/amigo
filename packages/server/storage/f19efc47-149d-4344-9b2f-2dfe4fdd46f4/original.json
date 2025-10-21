@@ -1,0 +1,28 @@
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "帮我做一个旅游攻略",
+      "type": "userSendMessage",
+      "partial": false,
+      "updateTime": 1761044169794
+    },
+    {
+      "role": "assistant",
+      "content": "收到！让我瞧瞧这个任务... 我得先给自己理个清晰的思路。  \n我的思考路径（Plan）是：制作旅游攻略需要明确目的地、旅行时间、预算范围和兴趣偏好等关键信息。当前缺少这些必要参数，无法进行具体规划。  \n💡 总的来说，我决定先执行：通过提问获取用户需求细节。  \n\n",
+      "type": "message",
+      "partial": false,
+      "updateTime": 1761044176034
+    },
+    {
+      "role": "assistant",
+      "content": "<askFollowupQuestion>  \n  <question>请问您想了解哪方面的旅游信息？需要明确目的地、旅行时间、预算范围以及特别的兴趣点（如美食、历史遗迹、自然风光等）</question>  \n  <suggestOptions>['确定目的地','选择旅行时间','设定预算范围','指定兴趣偏好']</suggestOptions>  \n</askFollowupQuestion",
+      "originalMessage": "<askFollowupQuestion>  \n  <question>请问您想了解哪方面的旅游信息？需要明确目的地、旅行时间、预算范围以及特别的兴趣点（如美食、历史遗迹、自然风光等）</question>  \n  <suggestOptions>['确定目的地','选择旅行时间','设定预算范围','指定兴趣偏好']</suggestOptions>  \n</askFollowupQuestion",
+      "type": "tool",
+      "partial": true,
+      "updateTime": 1761044177448
+    }
+  ],
+  "updatedAt": "2025-10-21T10:56:18.259Z",
+  "taskId": "f19efc47-149d-4344-9b2f-2dfe4fdd46f4"
+}

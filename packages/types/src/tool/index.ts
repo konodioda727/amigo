@@ -49,6 +49,8 @@ export interface ToolInterface<K extends ToolNames> {
     params: ToolParams<K>;
     getCurrentTask: () => string;
     getToolFromName: (name: string) => ToolInterface<any> | undefined;
+    signal?: AbortSignal;
+    postMessage?: (msg: string | object) => void;
   }) => Promise<{ message: string; toolResult: ToolResult<K> }>;
 }
 
@@ -58,5 +60,5 @@ export interface ToolInterface<K extends ToolNames> {
 export interface TransportToolContent<T extends ToolNames> {
   toolName: ToolNames;
   result: ToolResult<T>;
-  params: ToolParams<T>;
+  params: ToolParam<T>;
 }

@@ -1,1 +1,1 @@
-export type ConversationStatus = 'streaming' | 'aborted' | 'idle' | 'completed' | 'waiting_tool_confirmation' | 'tool_executing';
+export type ConversationStatus = 'streaming' | 'aborted' | 'idle' | 'completed' | 'waiting_tool_confirmation' | 'tool_executing' | 'error';

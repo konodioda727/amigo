@@ -32,61 +32,62 @@ export class ToolService {
   public async parseAndExecute({
     xmlParams,
     getCurrentTask,
+    signal,
+    postMessage,
   }: {
     xmlParams: string;
     getCurrentTask: () => string;
+    signal?: AbortSignal;
+    postMessage?: (msg: string | object) => void;
   }): Promise<{ message: string; params: Record<string, any>; toolResult: ToolResult<any> }> {
-    const params = this.parseParams(xmlParams);
-    if (!params || Object.keys(params).length !== 1) {
-      throw new Error("每次能且只能调用一个工具");
-    }
-    const name = Object.keys(params)[0]!;
-    const param = params[name];
-    const tool = this._availableTools[name];
+    const { params, toolName } = this.parseParams(xmlParams);
+    const tool = this._availableTools[toolName || ""];
     if (!tool) {
-      if (systemReservedTags.includes(name as any)) {
-        return {
-          message: "",
-          toolResult: "",
-          params: param,
-        };
-      }
-      console.warn(`[ToolService] 未找到名为 '${name}' 的工具。`);
       return {
         message: "",
-        toolResult: '',
-        params: {},
-      };
-    }
-    
-    const hasParams = tool.params.length !== 0;
-    let finalParams: string | Record<string, any> = {};
-    try {
-      finalParams = hasParams
-        ? this.mapAndValidateParams(param, tool.params)
-        : JSON.stringify(param);
-    } catch (error) {
-      return {
-        message: `工具参数解析失败: ${(error as Error).message}`,
-        params: {},
-        toolResult: '',
+        toolResult: "",
+        params,
       };
     }
     const { toolResult, message } = await tool.invoke({
-      params: finalParams as any,
+      params: params as any,
       getCurrentTask,
       getToolFromName: (name: string) => this._availableTools[name],
+      ...(signal ? { signal } : {}),
+      ...(postMessage ? { postMessage } : {}),
     });
-    return { message, toolResult, params: finalParams as any };
+    console.log('[ToolService] 工具调用完成:', toolName, params, toolResult);
+
+    return { message, toolResult, params };
   }
 
-  public parseParams(buffer: string) {
+  public parseParams(
+    buffer: string,
+    partial = false,
+  ): {
+    params: Record<string, any>;
+    toolName: string;
+  } {
     const completedXml = this.completePartialXml(buffer);
     const parser = new XMLParser({
-      ignoreAttributes: true,
+      ignoreAttributes: false,
+      trimValues: true,
     });
     const jsonOutput = parser.parse(completedXml);
-    return jsonOutput;
+    const toolName = Object.keys(jsonOutput)[0] || "";
+    const tool = this._availableTools[toolName || ""];
+    if (!tool) {
+      console.warn(`[parseTool] 未找到名为 '${toolName}' 的工具。`);
+      return {
+        params: jsonOutput,
+        toolName,
+      }
+    }
+    const hasParams = tool && tool.params.length !== 0;
+    const finalParams = hasParams
+      ? this.mapAndValidateParams(jsonOutput[toolName], tool.params, partial)
+      : jsonOutput;
+    return { params: finalParams, toolName };
   }
 
   /**
@@ -148,7 +149,11 @@ export class ToolService {
    * @param paramDefinitions - 当前数据块对应的 ToolParam 定义数组
    * @returns 严格遵循 params 定义的规范化数据对象
    */
-  private mapAndValidateParams(rawData: any, paramDefinitions: any[]): Record<string, any> {
+  private mapAndValidateParams(
+    rawData: any,
+    paramDefinitions: any[],
+    partial = false,
+  ): Record<string, any> {
     if (!rawData || typeof rawData !== "object") {
       console.warn("[parseTool] data is not object");
       return {};
@@ -162,6 +167,10 @@ export class ToolService {
 
       // 检查非可选参数的缺失 (可选：可以加入更严格的 Zod 检查)
       if (!paramDef.optional && (rawValue === undefined || rawValue === null)) {
+        if (partial) {
+          // partial 情况下，缺失参数直接跳过
+          continue;
+        }
         throw new Error(`[parseTool] Tool param '${paramDef.name}' is missing but is required.`);
       }
 
@@ -181,7 +190,7 @@ export class ToolService {
         }
         if (Object.keys(rawValue).length !== 1) {
           console.warn(
-            `[parseTool] Array type param '${paramDef.name}' should have exactly one child element instance named ${paramDef.params[0]?.name}.`,
+            `\n[parseTool] Array type param '${paramDef.name}' should have exactly one child element instance named ${paramDef.params[0]?.name}.`,
           );
           finalParams[paramDef.name] = [];
           continue;
@@ -193,7 +202,7 @@ export class ToolService {
         // 如果数组元素有更深层次的定义, 递归处理数组中的每个元素
         if (childTag.params) {
           finalParams[paramDef.name] = rawArray.map((item: any) =>
-            this.mapAndValidateParams(item, childTag.params!),
+            this.mapAndValidateParams(item, childTag.params!, partial),
           );
         } else {
           finalParams[paramDef.name] = rawArray;
@@ -203,7 +212,7 @@ export class ToolService {
       // --- 2. 对象类型 (type: "object" 或具有子标签的复杂结构) ---
       else if (paramDef.params) {
         // 递归处理子对象
-        finalParams[paramDef.name] = this.mapAndValidateParams(rawValue, paramDef.params);
+        finalParams[paramDef.name] = this.mapAndValidateParams(rawValue, paramDef.params, partial);
       }
 
       // --- 3. 基本类型 (string, number, boolean) ---

@@ -1,0 +1,29 @@
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "查询故宫/天坛/颐和园的门票价格及预约规则",
+      "type": "userSendMessage",
+      "partial": false,
+      "updateTime": 1760962669984
+    },
+    {
+      "role": "assistant",
+      "content": "<askFollowupQuestion>\n      <question>请问您需要查询故宫/天坛/颐和园的门票价格及预约规则的具体信息吗？</question>\n      <suggestOptions>['故宫','天坛','颐和园','全部景点']</suggestOptions>\n    </askFollowupQuestion>",
+      "originalMessage": "<askFollowupQuestion>\n      <question>请问您需要查询故宫/天坛/颐和园的门票价格及预约规则的具体信息吗？</question>\n      <suggestOptions>['故宫','天坛','颐和园','全部景点']</suggestOptions>\n    </askFollowupQuestion>",
+      "type": "tool",
+      "partial": false,
+      "updateTime": 1760962696617
+    },
+    {
+      "role": "system",
+      "content": "当前工具调用：askFollowupQuestion，\n工具执行信息：\n已向用户提出后续问题: 请问您需要查询故宫/天坛/颐和园的门票价格及预约规则的具体信息吗？\n",
+      "type": "tool",
+      "partial": false,
+      "updateTime": 1760962697583
+    }
+  ],
+  "updatedAt": "2025-10-20T12:18:17.583Z",
+  "taskId": "a1ac74b1-cf23-4630-b891-b9da1c533fd8",
+  "fatherTaskId": "309df40a-4435-4bca-b187-f3ec4b00d7aa"
+}

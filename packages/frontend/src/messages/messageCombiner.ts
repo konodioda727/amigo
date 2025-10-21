@@ -1,5 +1,9 @@
 import type {
   SERVER_SEND_MESSAGE_NAME,
+  ToolParam,
+  ToolParams,
+  ToolResult,
+  TransportToolContent,
   USER_SEND_MESSAGE_NAME,
   WebSocketMessage,
 } from "@amigo/types";
@@ -83,6 +87,22 @@ const completionResultProcessor: MessageProcessor<'completionResult'> = ({ msg, 
   return { handled: true };
 }
 
+const toolProcessor: MessageProcessor<'tool'> = ({ msg, res }) => {
+  if (msg.type !== "tool") return { handled: false };
+  // 解析 tool 消息，结构化为 DisplayMessageType
+  const { toolName, params, result } = JSON.parse(msg.data.message) as TransportToolContent<any>;
+  res.push({
+    type: "tool",
+    toolName,
+    params: params as unknown as ToolParams<any>,
+    toolOutput: result as unknown as ToolResult<any>,
+    updateTime: typeof msg.data.updateTime === "number" ? msg.data.updateTime : Date.now(),
+  });
+  console.log('  type: "tool"', res, msg);
+  
+  return { handled: true };
+};
+
 const defaultProcessor: MessageProcessor<any> = ({ msg, res, pendingThink }) => {
   if (!DisplayMessageTypeNames.includes(msg.type)) return { handled: false };
   res.push( msg as unknown as DisplayMessageType);
@@ -108,6 +128,7 @@ const processorMap: Partial<
   message: messageProcessor,
   userSendMessage: userSendMessageProcessor,
   completionResult: completionResultProcessor,
+  tool: toolProcessor,
 };
 
 export const combineMessages = (messages: SupportedWebsocketMessage[]) => {

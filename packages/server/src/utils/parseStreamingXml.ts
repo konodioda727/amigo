@@ -1,6 +1,7 @@
 import type { ToolNames, SYSTEM_RESERVED_TAGS, ChatMessage } from "@amigo/types";
 import { systemReservedTags } from "@amigo/types";
 import { findMatchedTag } from "./findMatchedTag";
+import { on } from "events";
 
 function isPotentialTagStart(buffer: string, startLabels: string[]): boolean {
   if (buffer.length === 0) return false;
@@ -16,30 +17,32 @@ export const parseStreamingXml = async ({
   onFullToolCallFound,
   onPartialToolCallFound,
   onCommonMessageFound,
+  onPartialMessageFound,
   onMessageLeft,
   checkShouldAbort,
 }: {
   stream: AsyncIterable<any>;
   startLabels: string[];
-  onCommonMessageFound?: (message: string) => void;
+  onCommonMessageFound?: (message: string) => Promise<void>;
+  onPartialMessageFound?: (message: string) => Promise<void>;
   onFullToolCallFound?: (
     message: string,
     currentTool: CurrentTool,
     currentType: ChatMessage["type"],
-  ) => void;
+  ) => Promise<void>;
   onPartialToolCallFound?: (
     message: string,
     currentTool: CurrentTool,
     currentType: ChatMessage["type"],
-  ) => void;
-  onMessageLeft?: (message: string) => void;
-  checkShouldAbort?: () => boolean;
+  ) => Promise<void>;
+  onMessageLeft?: (message: string) => Promise<void>;
+  checkShouldAbort?: () => Promise<boolean>;
 }) => {
   let buffer = "";
   let isMatched = false;
   let currentTool: CurrentTool = null;
   for await (const chunk of stream) {
-    const shouldAbort = checkShouldAbort?.();
+    const shouldAbort = await checkShouldAbort?.();
     if (shouldAbort) {
       currentTool = "interrupt";
       buffer = "";
@@ -62,24 +65,21 @@ export const parseStreamingXml = async ({
         // 立即输出 Tag 之前的所有内容作为最终普通消息
         const precedingMessage = buffer.slice(0, labelIndex);
         if (precedingMessage.length > 0) {
-          onCommonMessageFound?.(precedingMessage);
+          await onCommonMessageFound?.(precedingMessage);
         }
 
         buffer = buffer.slice(labelIndex);
       } else {
-        // 如果存在 '<'，但不匹配任何标签，处理前面的普通消息， 保持 buffer 为标签相关内容
-        if (buffer.includes("<")) {
-          const firstAngleIndex = buffer.indexOf("<");
-          const precedingMessage = buffer.slice(0, firstAngleIndex);
-          if (precedingMessage.length > 0) {
-            onCommonMessageFound?.(precedingMessage);
-          }
-          buffer = buffer.slice(firstAngleIndex);
+        if (!buffer.includes("<")) {
+          await onPartialMessageFound?.(buffer);
+          continue;
         }
-        // 处理非标签开头的内容，避免遗漏普通消息
-        if (!isPotentialTagStart(buffer, startLabels)) {
-          onCommonMessageFound?.(buffer);
-        }
+        const firstAngleIndex = buffer.indexOf("<");
+        const precedingMessage = buffer.slice(0, firstAngleIndex);
+        const posibleTagStart = buffer.slice(firstAngleIndex);
+        await onPartialMessageFound?.(
+          isPotentialTagStart(posibleTagStart, startLabels) ? precedingMessage : buffer,
+        );
         continue;
       }
     }
@@ -93,15 +93,15 @@ export const parseStreamingXml = async ({
 
     if (isEndTagFound) {
       const fullToolCall = buffer.slice(0, endLabelIndex + endTag.length);
-      onFullToolCallFound?.(fullToolCall, currentTool, currentType);
+      await onFullToolCallFound?.(fullToolCall, currentTool, currentType);
       buffer = buffer.slice(endLabelIndex + endTag.length);
       isMatched = false;
     } else {
-      onPartialToolCallFound?.(buffer, currentTool, currentType);
+      await onPartialToolCallFound?.(buffer, currentTool, currentType);
     }
   }
   if (buffer.length > 0) {
-    onMessageLeft?.(buffer);
+    await onMessageLeft?.(buffer);
   }
   return currentTool;
 };

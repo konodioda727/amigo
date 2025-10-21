@@ -8,7 +8,13 @@ export const AskFollowupQuestions = createTool({
   useExamples: [
     `<askFollowupQuestion>
       <question>请问您想了解哪方面的旅游信息？</question>
-      <suggestOptions>['安排住宿','规划行程','查询15日之内天气','查看今日天气']</suggestOptions>
+      <suggestOptions>
+        <option>景点推荐</option>
+        <option>住宿建议</option>
+        <option>交通信息</option>
+        <option>美食推荐</option>
+        <option>行程规划</option>
+      </suggestOptions>
     </askFollowupQuestion>`,
   ],
   params: [
@@ -21,6 +27,14 @@ export const AskFollowupQuestions = createTool({
       name: "suggestOptions",
       optional: true,
       description: "A list of suggested options for the user to choose from.",
+      type: 'array',
+      params: [
+        {
+          name: "option",
+          optional: false,
+          description: "A suggested option for the user.",
+        }
+      ]
     },
   ],
   async invoke({params}) {

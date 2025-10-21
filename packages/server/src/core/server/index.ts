@@ -10,10 +10,6 @@ import { getSessionHistories } from "@/utils/getSessions";
  */
 class AmigoServer {
   private port: string = "10013";
-  /**
-   * taskId 与 conversationManager 的映射
-   */
-  public conversationManagerMapping: Record<string, ConversationManager> = {};
   constructor({ port, globalStoragePath }: { port: string; globalStoragePath: string }) {
     this.port = port;
     setGlobalState("globalStoragePath", globalStoragePath);
@@ -35,13 +31,13 @@ class AmigoServer {
             // 解析消息
             parsedMessage = JSON.parse(message) as WebSocketMessage<USER_SEND_MESSAGE_NAME>;
 
-            let manager = this.conversationManagerMapping[parsedMessage.data.taskId];
+            let manager = ConversationManager.taskMapToConversationManager[parsedMessage.data.taskId];
 
             if (!manager) {
               manager = ConversationManager.createConversationManager({
                 taskId: parsedMessage.data.taskId,
               });
-              this.conversationManagerMapping[parsedMessage.data.taskId] = manager;
+               ConversationManager.taskMapToConversationManager[parsedMessage.data.taskId] = manager;
             }
             if (!manager.connections.includes(ws)) {
               manager.addConnection(ws);
@@ -75,7 +71,7 @@ class AmigoServer {
           );
         },
         close: (ws: ServerWebSocket) => {
-          const managers = Object.values(this.conversationManagerMapping);
+          const managers = Object.values(ConversationManager.taskMapToConversationManager);
           for (const manager of managers) {
             if (manager.connections.includes(ws)) {
               manager.removeConnection(ws);

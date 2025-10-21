@@ -99,25 +99,40 @@ export const AssignTasks = createTool({
    * 根据 params 中的 todolist 逐一创建和启动子 ConversationManager。
    */
   async invoke({ params, getCurrentTask, getToolFromName }) {
-    console.log("--- 接收到的 Tasklist 更新请求 ---");
-    for (const task of params.tasklist) {
-      const { target, tools, subAgentPrompt } = task;
-      const currentTask = getCurrentTask();
-      const availableTools = tools
-        .map((tool) => getToolFromName(tool))
-        .filter((item) => item !== undefined);
-      await ConversationManager.runSubConversation({
-        subPrompt: subAgentPrompt,
-        parentTaskId: currentTask,
-        target,
-        tools: availableTools,
-      });
-    }
+    // 并发执行所有子任务，收集每个结果
+    const results = await Promise.all(
+      params.tasklist.map(async (task) => {
+        const { target, tools, subAgentPrompt } = task;
+        const currentTask = getCurrentTask();
+        const availableTools = tools
+          .map((tool) => getToolFromName(tool))
+          .filter((item) => item !== undefined);
+        // runSubConversation 返回总结
+        const summary = await ConversationManager.runSubConversation({
+          subPrompt: subAgentPrompt,
+          parentTaskId: currentTask,
+          target,
+          tools: availableTools,
+        });
+        return {
+          target,
+          summary,
+        };
+      })
+    );
 
-    // 返回一个格式化的成功消息给 LLM
+    // 返回每个步骤的执行结果
     return {
-      message: `成功创建 ${params.tasklist.length} 个任务。主代理将根据此列表进入多步骤执行模式。`,
-      toolResult: params,
+      message: `所有子任务已执行完毕，结果如下：\n${results
+        .map(
+          (r, i) =>
+            `步骤${i + 1}（目标：${r.target}）：${typeof r.summary === "string" ? r.summary : JSON.stringify(r.summary)}`
+        )
+        .join("\n")}`,
+      toolResult: {
+        ...params,
+        results,
+      },
     };
   },
 });

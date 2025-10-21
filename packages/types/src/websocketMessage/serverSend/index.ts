@@ -7,6 +7,15 @@ import { ThinkMessageSchema } from './think';
 import { AckMessageSchema } from './ack';
 import { TaskHistoryMessageSchema } from './taskHistory';
 import { AskFollowupQuestionSchema } from "./askFollowupQuestion";
+import { AssignTaskUpdatedMessageSchema } from "./assignTaskUpdated";
+
+export const ErrorMessageSchema = z.object({
+	type: z.literal("error"),
+	data: z.object({
+		message: z.string(),
+		details: z.string().optional(),
+	}),
+});
 
 export const ServerSendMessageSchema = z.discriminatedUnion("type", [
 	CommonMessageSchema,
@@ -16,7 +25,9 @@ export const ServerSendMessageSchema = z.discriminatedUnion("type", [
 	ThinkMessageSchema,
 	AckMessageSchema,
 	TaskHistoryMessageSchema,
-	AskFollowupQuestionSchema
+	AskFollowupQuestionSchema,
+	AssignTaskUpdatedMessageSchema,
+	ErrorMessageSchema,
 ]);
 
 /**
@@ -54,3 +65,5 @@ const ServerSendWebSocketSchema = z.object({
 export type ServerSendWebsocketMessageType = z.infer<
 	typeof ServerSendWebSocketSchema
 >;
+
+export * from "./error";

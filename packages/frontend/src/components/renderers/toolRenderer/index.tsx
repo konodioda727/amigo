@@ -1,12 +1,16 @@
 import type { ToolNames } from "@amigo/types";
 import type React from "react";
 import type { FrontendToolMessageType } from "@/messages/types";
+import AssignTask from "./assignTask";
 
 export type ToolRendererProps<T extends ToolNames> = FrontendToolMessageType<T> & { updateTime?: number };
-
+type ToolRednerers = {
+  [K in ToolNames]?: React.FC<ToolRendererProps<K>>;
+};
 // 工具类型映射，可扩展
-const toolRendererMap: Partial<Record<ToolNames, React.FC<ToolRendererProps<any>>>> = {
+const toolRendererMap: ToolRednerers = {
   // 例如：exampleTool: ToolRenderer_ExampleTool,
+  assignTasks: AssignTask
 };
 
 const DefaultToolRenderer: React.FC<ToolRendererProps<any>> = ({
@@ -44,6 +48,7 @@ const ToolRenderer: React.FC<ToolRendererProps<any>> = (props) => {
   const { toolName } = props;
   const CustomRenderer = toolRendererMap[toolName as ToolNames];
   if (CustomRenderer) {
+    //@ts-expect-error
     return <CustomRenderer {...props} />;
   }
   return <DefaultToolRenderer {...props} />;

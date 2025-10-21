@@ -1,4 +1,4 @@
-import type { SERVER_SEND_MESSAGE_NAME, ToolNames, ToolParam, ToolResult, WebSocketMessage } from "@amigo/types";
+import type { SERVER_SEND_MESSAGE_NAME, ToolNames, ToolParam, ToolParams, ToolResult, WebSocketMessage } from "@amigo/types";
 
 /**
  * message 接收函数类型
@@ -27,7 +27,7 @@ export interface FrontendCommonMessageType extends MessageType<"message"> {
  */
 export interface FrontendToolMessageType<T extends ToolNames> extends MessageType<"tool"> {
   toolName: T;
-  params: ToolParam<T>;
+  params: ToolParams<T>;
   toolOutput?: ToolResult<T>;
   error?: string;
 }
@@ -57,12 +57,19 @@ export interface UserSendMessageDisplayType {
   type: "userSendMessage";
 }
 
+export interface AssignTaskUpdatedDisplayType extends MessageType<"assignTaskUpdated"> {
+  index: number;
+  taskId: string;
+  parentTaskId?: string;
+}
+
 export type DisplayMessageType =
   | FrontendCommonMessageType
   | CompletionResultType
   | FrontendToolMessageType<any>
   | AskFollowupQuestionType
-  | UserSendMessageDisplayType;
+  | UserSendMessageDisplayType
+  | AssignTaskUpdatedDisplayType;
 
 /**
  * 展示消息类型名称
