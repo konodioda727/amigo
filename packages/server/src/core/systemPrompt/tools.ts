@@ -94,8 +94,13 @@ function generateParamsDescription(
 
 /**
  * 根据注册的 ToolClass 生成包含详细参数说明的工具说明字符串
+ * @param tools 工具列表
+ * @param allToolNames 所有可用工具的名称列表（用于在 AssignTasks 等工具中注入）
  */
-export function generateToolsPrompt(tools: Array<ToolInterface<any>>): string {
+export function generateToolsPrompt(
+  tools: Array<ToolInterface<any>>,
+  allToolNames?: string[]
+): string {
   return tools
     .map((tool) => {
       const toolParams = tool.params;
@@ -107,10 +112,16 @@ export function generateToolsPrompt(tools: Array<ToolInterface<any>>): string {
         );
       }
 
+      // 特殊处理：为 assignTasks 工具动态注入可用工具列表
+      let whenToUseText = tool.whenToUse;
+      if (tool.name === "assignTasks" && allToolNames && allToolNames.length > 0) {
+        whenToUseText = `${tool.whenToUse}\n\n**当前可用的工具名称列表：**\n${allToolNames.map(name => `  - ${name}`).join('\n')}\n\n**请只使用上述列表中的工具名称。如果需要的工具不在列表中，请将 tools 留空。**`;
+      }
+
       return [
         `【${tool.name}】`,
         `描述：${tool.description}`,
-        `适用场景：${tool.whenToUse}`,
+        `适用场景：${whenToUseText}`,
         paramsSection, // 插入参数说明部分
         Array.isArray(tool.useExamples) && tool.useExamples.length > 0
           ? `用例：\n${tool.useExamples.map((e) => `- ${e}`).join("\n")}`

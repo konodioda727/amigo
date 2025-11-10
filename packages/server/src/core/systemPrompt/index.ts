@@ -30,6 +30,10 @@ export const getMainSystemPrompt = (toolService: ToolService) => {
   const objective = loadPropmpt("./main/objective.md");
   const toolsGuide = loadPropmpt("./tooluseGuide.md");
   console.log("Loaded system prompts:", { rules, objective });
+  
+  // 获取所有可用工具名称
+  const allToolNames = toolService.toolNames;
+  
   // 通过 toolService 获取所有工具类
   return [
     objective,
@@ -39,14 +43,14 @@ export const getMainSystemPrompt = (toolService: ToolService) => {
     =====
     # 基础工具
     
-    ${generateToolsPrompt(toolService.baseTools)}
+    ${generateToolsPrompt(toolService.baseTools, allToolNames)}
 
     `,
     `
     =====
     # 用户自定义工具
 
-    ${generateToolsPrompt(toolService.customedTools)}
+    ${generateToolsPrompt(toolService.customedTools, allToolNames)}
     
     `,
   ].join("\n\n");
@@ -61,6 +65,10 @@ export const getSubSystemPrompt = (toolService: ToolService) => {
   const rules = loadPropmpt("./sub/rules.md");
   const objective = loadPropmpt("./sub/objective.md");
   const toolsGuide = loadPropmpt("./tooluseGuide.md");
+  
+  // 获取所有可用工具名称
+  const allToolNames = toolService.toolNames;
+  
   return [
     objective,
     rules,
@@ -69,14 +77,14 @@ export const getSubSystemPrompt = (toolService: ToolService) => {
     =====
     # 基础工具
     
-    ${generateToolsPrompt(toolService.baseTools)}
+    ${generateToolsPrompt(toolService.baseTools, allToolNames)}
 
     `,
     `
     =====
     # 用户自定义工具
 
-    ${generateToolsPrompt(toolService.customedTools)}
+    ${generateToolsPrompt(toolService.customedTools, allToolNames)}
     
     `,
   ].join("\n\n");
