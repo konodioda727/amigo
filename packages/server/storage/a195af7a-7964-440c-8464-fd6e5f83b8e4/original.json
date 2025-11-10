@@ -1,0 +1,20 @@
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "hi, 给我提一个问题",
+      "type": "userSendMessage",
+      "partial": false,
+      "updateTime": 1762778969678
+    },
+    {
+      "role": "assistant",
+      "content": "收到",
+      "type": "message",
+      "partial": true,
+      "updateTime": 1762778982431
+    }
+  ],
+  "updatedAt": "2025-11-10T12:49:42.431Z",
+  "taskId": "a195af7a-7964-440c-8464-fd6e5f83b8e4"
+}

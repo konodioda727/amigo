@@ -121,6 +121,24 @@ const userSendMessageProcessor: MessageProcessor<'userSendMessage'> = ({ msg, re
   return { handled: true };
 };
 
+const askFollowupQuestionProcessor: MessageProcessor<'askFollowupQuestion'> = ({ msg, res }) => {
+  if (msg.type !== "askFollowupQuestion") return { handled: false };
+  
+  const followupData = JSON.parse(msg.data.message)?.params as {
+    question: string;
+    suggestOptions: string[];
+    updateTime?: number;
+  };
+  
+  res.push({
+    type: "askFollowupQuestion",
+    question: followupData.question ?? "",
+    sugestions: followupData.suggestOptions ?? [],
+    updateTime: typeof followupData.updateTime === "number" ? followupData.updateTime : Date.now(),
+  });
+  return { handled: true };
+};
+
 const processorMap: Partial<
   Record<SERVER_SEND_MESSAGE_NAME | USER_SEND_MESSAGE_NAME, MessageProcessor<any>>
 > = {
@@ -129,6 +147,7 @@ const processorMap: Partial<
   userSendMessage: userSendMessageProcessor,
   completionResult: completionResultProcessor,
   tool: toolProcessor,
+  askFollowupQuestion: askFollowupQuestionProcessor,
 };
 
 export const combineMessages = (messages: SupportedWebsocketMessage[]) => {
