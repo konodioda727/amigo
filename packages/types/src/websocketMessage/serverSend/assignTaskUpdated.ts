@@ -6,6 +6,7 @@ export const AssignTaskUpdatedMessageSchema = z.object({
     index: z.number(),
     taskId: z.string(),
     parentTaskId: z.string().optional(),
+    taskStatus: z.enum(["running", "completed"]).optional(),
   }),
 });
 // assignTaskUpdated.ts
@@ -21,5 +22,7 @@ export interface ServerSendAssignTaskUpdated {
     taskId: string;
     /** 可选，父任务 id */
     parentTaskId?: string;
+    /** 子任务状态 */
+    taskStatus?: "running" | "completed";
   };
 }

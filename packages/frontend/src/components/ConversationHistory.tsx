@@ -2,10 +2,9 @@ import React from "react";
 import { useWebSocket } from "./WebSocketProvider";
 
 const ConversationHistory: React.FC = () => {
-  const { taskHistories, sendMessage, setTaskId } = useWebSocket();
+  const { taskHistories, setTaskId } = useWebSocket();
 
   const handleHistoryClick = (taskId: string) => {
-    sendMessage({ type: "loadTask", data: { taskId } });
     setTaskId(taskId)
   };
 

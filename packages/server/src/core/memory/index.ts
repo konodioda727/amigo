@@ -3,10 +3,12 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
   type ChatMessage,
+  type ConversationStatus,
   StorageType,
   type USER_SEND_MESSAGE_NAME,
   type WebSocketMessage,
 } from "@amigo/types";
+import { logger } from "@/utils/logger";
 
 /**
  * 文件持久化内存管理类
@@ -15,6 +17,7 @@ import {
 export class FilePersistedMemory {
   private _messages: ChatMessage[] = [];
   private _websocketMessages: WebSocketMessage<any>[] = [];
+  private _conversationStatus: ConversationStatus = "idle";
 
   constructor(
     private taskId: string,
@@ -42,6 +45,22 @@ export class FilePersistedMemory {
   public get getFatherTaskId(): string | undefined {
     return this.fatherTaskId;
   }
+
+  /**
+   * 获取会话状态
+   */
+  get conversationStatus(): ConversationStatus {
+    return this._conversationStatus;
+  }
+
+  /**
+   * 设置会话状态并持久化
+   */
+  set conversationStatus(status: ConversationStatus) {
+    this._conversationStatus = status;
+    this.saveOriginalToFile();
+  }
+
   private ensureDirectoryExists(directory: string): void {
     if (!existsSync(directory)) {
       mkdirSync(directory, { recursive: true });
@@ -56,10 +75,24 @@ export class FilePersistedMemory {
         if (Array.isArray(data.messages)) {
           this._messages = data.messages;
         }
+        if (data.conversationStatus) {
+          this._conversationStatus = data.conversationStatus;
+        }
+        if (Array.isArray(data.toolNames)) {
+          this._toolNames = data.toolNames;
+        }
       } catch (error) {
-        console.error(`加载原始消息历史失败: ${error}`);
+        logger.error(`加载原始消息历史失败: ${error}`);
       }
     }
+  }
+
+  /**
+   * 判断是否是新会话（文件不存在）
+   */
+  public isNewSession(): boolean {
+    const targetPath = path.join(this.storagePath, `${StorageType.ORIGINAL}.json`);
+    return !existsSync(targetPath);
   }
 
   private loadWebsocketFromFile(): void {
@@ -71,7 +104,7 @@ export class FilePersistedMemory {
           this._websocketMessages = data.messages;
         }
       } catch (error) {
-        console.error(`加载WebSocket消息历史失败: ${error}`);
+        logger.error(`加载WebSocket消息历史失败: ${error}`);
       }
     }
   }
@@ -146,6 +179,26 @@ export class FilePersistedMemory {
   }
 
   /**
+   * 用户自定义工具名称列表（用于恢复子任务）
+   */
+  private _toolNames: string[] = [];
+
+  /**
+   * 设置工具名称列表
+   */
+  public setToolNames(toolNames: string[]) {
+    this._toolNames = toolNames;
+    this.saveOriginalToFile();
+  }
+
+  /**
+   * 获取工具名称列表
+   */
+  public get toolNames(): string[] {
+    return this._toolNames;
+  }
+
+  /**
    * 保存原始历史到文件
    */
   public saveOriginalToFile(): boolean {
@@ -153,16 +206,18 @@ export class FilePersistedMemory {
       this.ensureDirectoryExists(this.storagePath);
       const data = {
         messages: this._messages,
+        conversationStatus: this._conversationStatus,
         updatedAt: new Date().toISOString(),
         taskId: this.taskId,
-        fatherTaskId: this.fatherTaskId
+        fatherTaskId: this.fatherTaskId,
+        toolNames: this._toolNames,
       };
       const realMessageStoragePath = path.join(this.storagePath, `${StorageType.ORIGINAL}.json`);
       writeFileSync(realMessageStoragePath, JSON.stringify(data, null, 2), "utf-8");
       return true;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error(`保存原始历史记录失败: ${errorMessage}`);
+      logger.error(`保存原始历史记录失败: ${errorMessage}`);
       return false;
     }
   }
@@ -186,7 +241,7 @@ export class FilePersistedMemory {
       return true;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error(`保存WebSocket消息历史失败: ${errorMessage}`);
+      logger.error(`保存WebSocket消息历史失败: ${errorMessage}`);
       return false;
     }
   }

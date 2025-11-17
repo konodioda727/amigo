@@ -6,64 +6,17 @@ import type {
   TransportToolContent,
   WebSocketMessage,
 } from "@amigo/types";
-import { SystemMessage } from "@langchain/core/messages";
 import type { ServerWebSocket } from "bun";
 import pWaitFor from "p-wait-for";
 import { systemReservedTags } from "@amigo/types";
 import { FilePersistedMemory } from "../memory";
 import { getLlm } from "../model";
 import { getSystemPrompt } from "../systemPrompt";
-import {
-  AskFollowupQuestions,
-  AssignTasks,
-  CompletionResult,
-  ToolService,
-  UpdateTodolist,
-} from "../tools";
+import { BASIC_TOOLS, CUSTOMED_TOOLS, ToolService } from "../tools";
 import { isWhitespaceOnly } from "@/utils/isWhiteSpaceOnly";
 import { v4 as uuidV4 } from "uuid";
 import { parseStreamingXml } from "@/utils/parseStreamingXml";
-
-// 模拟 llm 对象，用于流式响应
-export const mockLlm = {
-  async *stream(_messages: any[]): AsyncIterable<any> {
-    yield { content: "好的，我" };
-    yield { content: "可以帮助你。正在调用工具" };
-    yield {
-      content: `
-    - 用户请求：我想计划一个去日本的两周旅行，帮我安排机票和酒店。
-    - 当前用户定义工具中没有可用工具，则置空 tools 列表。
-    <assignTasks>
-      <tasklist>
-        <task>
-          <target>查询北京到上海的往返机票，预算不超过2000元。</target>
-          <subAgentPrompt>你是一个专业的机票查询代理，请严格按照用户的要求，查询机票信息。</subAgentPrompt>
-          <tools>
-            <tool></tool>
-          </tools>
-        </task>
-        <task>
-          <target>查找上海静安区评分高于4.5的五星级酒店，并提供预订链接。</target>
-          <subAgentPrompt>你是一个专业的酒店预订代理，提供预订链接。</subAgentPrompt>
-          <tools>
-            <tool></tool>
-          </tools>
-        </task>
-      </todolist>
-    </assignTasks>`,
-    };
-    // yield { content: "<completionResult" };
-    // yield { content: ">test128937918273918273</completionResult>" };
-  },
-};
-
-// 模拟 llm 对象，用于流式响应
-export const mockSubLlm = {
-  async *stream(_messages: any[]): AsyncIterable<any> {
-    yield { content: "<completionResult" };
-    yield { content: ">test128937918273918273</completionResult>" };
-  },
-};
+import { logger } from "@/utils/logger";
 
 /**
  * 会话管理类
@@ -74,19 +27,77 @@ export class ConversationManager {
   private isAborted: boolean = false;
   private retryCount: number = 0;
 
-  public conversationStatus: ConversationStatus = "idle";
   public connections: ServerWebSocket[] = [];
   public userInput: string = "";
 
+  // 类属性声明
+  public memory!: FilePersistedMemory;
+  private toolService!: ToolService;
+  private llm: any;
+  private conversationType!: "main" | "sub";
+
   static taskMapToConversationManager: Record<string, ConversationManager> = {};
 
-  constructor(
-    private memory: FilePersistedMemory,
-    private toolService: ToolService,
-    private llm: any,
-    private conversationType: "main" | "sub" = "main",
-    private customPrompt?: () => string,
-  ) {
+  constructor(params: {
+    taskId?: string;
+    memory?: FilePersistedMemory;
+    toolService?: ToolService;
+    llm?: any;
+    conversationType?: "main" | "sub";
+    customPrompt?: () => string;
+  }) {
+    // 方式1: 从 taskId 加载
+    if (params.taskId) {
+      logger.info(`[ConversationManager] 从 taskId 创建: ${params.taskId}`);
+
+      this.memory = new FilePersistedMemory(params.taskId);
+      this.llm = getLlm();
+
+      // 判断是主任务还是子任务
+      this.conversationType = this.memory.getFatherTaskId ? "sub" : "main";
+
+      // 从 memory 中读取工具名称
+      const toolNames = this.memory.toolNames;
+      const totalTools = BASIC_TOOLS.concat(CUSTOMED_TOOLS);
+      const userCustomedTools = (toolNames
+        .map((name) => totalTools.find((tool) => tool.name === name))
+        .filter(Boolean) || totalTools) as ToolInterface<any>[];
+
+      // 创建 toolService
+      this.toolService = new ToolService(BASIC_TOOLS, this.conversationType === 'main' ? CUSTOMED_TOOLS : userCustomedTools);
+    }
+    // 方式2: 完整参数创建
+    else {
+      if (!params.memory || !params.toolService || !params.llm) {
+        throw new Error("[ConversationManager] 缺少必要参数: memory, toolService, llm");
+      }
+
+      this.memory = params.memory;
+      this.toolService = params.toolService;
+      this.llm = params.llm;
+      this.conversationType = params.conversationType || "main";
+    }
+    let systemPrompt = getSystemPrompt(this.toolService, this.conversationType);
+    if (params.customPrompt) {
+      systemPrompt += `\n\n=====用户自定义提示词:\n${params.customPrompt()}`;
+    }
+    
+    // 如果是新会话，插入 systemMessage
+    const isNewSession = this.memory.isNewSession();
+    if (isNewSession) {
+      this.memory.addMessage({
+        role: "system",
+        type: "system",
+        content: systemPrompt,
+      });
+      
+      // 发送更新后的会话历史列表给所有连接
+      // 注意：这里需要异步处理，但构造函数不能是 async
+      // 所以我们在构造函数完成后立即发送
+      this.sendSessionHistoriesAfterInit();
+    }
+
+    // 初始化标签
     const { startLabels, endLabels } = this.toolService.toolNames.concat(systemReservedTags).reduce(
       (acc, cur) => {
         return {
@@ -96,11 +107,54 @@ export class ConversationManager {
       },
       { startLabels: [] as string[], endLabels: [] as string[] },
     );
+
     ConversationManager.taskMapToConversationManager[this.memory.currentTaskId] = this;
     this.startLabels = startLabels;
     this.endLabels = endLabels;
     this.start();
   }
+
+  /**
+   * 获取会话状态（从 memory 中读取）
+   */
+  get conversationStatus(): ConversationStatus {
+    return this.memory.conversationStatus;
+  }
+
+  /**
+   * 设置会话状态（同步到 memory 并持久化）
+   */
+  set conversationStatus(status: ConversationStatus) {
+    this.memory.conversationStatus = status;
+  }
+
+  /**
+   * 判断是否是新会话
+   */
+  public isNewSession(): boolean {
+    return this.memory.isNewSession();
+  }
+  
+  /**
+   * 在初始化后发送会话历史列表
+   */
+  private async sendSessionHistoriesAfterInit() {
+    // 使用 setTimeout 确保在构造函数完成后执行
+    setTimeout(async () => {
+      const { getSessionHistories } = await import("@/utils/getSessions");
+      const sessionHistories = await getSessionHistories();
+      
+      this.emitMessage({
+        type: "sessionHistories",
+        data: {
+          sessionHistories,
+        },
+      });
+      
+      logger.info(`[ConversationManager] Sent session histories for new session: ${this.memory.currentTaskId}`);
+    }, 0);
+  }
+  
   public addConnection(ws: ServerWebSocket) {
     this.connections.push(ws);
   }
@@ -157,17 +211,8 @@ export class ConversationManager {
     const { signal } = controller;
 
     try {
-      let systemPrompt = getSystemPrompt(this.toolService, this.conversationType);
-      if (this.customPrompt) {
-        systemPrompt += `
-
-        =====
-        用户自定义提示词:
-
-      ${this.customPrompt()}
-        `;
-      }
-      const stream = await this.llm.stream([new SystemMessage(systemPrompt), ...this.memory.messages], {
+      // 直接使用 memory 中的 messages，system prompt 已经在构造函数中添加
+      const stream = await this.llm.stream(this.memory.messages, {
         signal,
       });
       const currentTool = await parseStreamingXml({
@@ -180,6 +225,16 @@ export class ConversationManager {
             type: "message",
             partial: true,
           });
+        },
+        onMessageLeft: async (message) => {
+          if (!isWhitespaceOnly(message)) {
+            this._postMessage({
+              role: "assistant",
+              content: message,
+              type: "message",
+              partial: false,
+            });
+          }
         },
         onCommonMessageFound: async (message: string) => {
           this._postMessage({
@@ -243,16 +298,16 @@ export class ConversationManager {
       });
       switch (currentTool) {
         case "interrupt":
-          console.log("\n会话已通过打断信号结束。");
+          logger.info("\n会话已通过打断信号结束。");
           this.conversationStatus = "aborted";
           this.userInput = "";
           await pWaitFor(() => !!this.userInput);
           break;
         case "completionResult":
-          console.log("\n对话已完成。");
+          logger.info("\n对话已完成。");
           this.conversationStatus = "completed";
           if (this.conversationType !== "main") {
-            return ;
+            return;
           }
           this.userInput = "";
           await pWaitFor(() => !!this.userInput);
@@ -261,13 +316,32 @@ export class ConversationManager {
           this.userInput = "";
           await pWaitFor(() => !!this.userInput);
           break;
+        case "message":
+          // 惩罚机制：如果 LLM 只输出普通消息而没有调用工具或结束任务
+          // 添加系统提示并自动继续执行
+          logger.warn("\n⚠️  LLM 未使用任何工具或结束标签，添加惩罚提示");
+          this.memory.addMessage({
+            role: "system",
+            content: `警告：你的上一次回复只包含普通消息，没有使用任何工具或调用结束标签。
+
+请注意：
+1. 如果任务已完成，必须使用 <completionResult> 标签结束任务
+2. 如果需要用户提供更多信息，必须使用 <askFollowupQuestion> 标签提问
+3. 如果需要执行操作，必须调用相应的工具（如 <assignTask>、<updateTodoList> 等）
+4. 不要只输出普通文本消息后就停止
+
+请立即采取正确的行动。`,
+            type: "message",
+            partial: false,
+          });
+          this.conversationStatus = "idle";
+          break;
         default:
-          console.log("\n等待用户输入下一轮对话...");
           this.conversationStatus = "idle";
       }
       this._handleStream();
     } catch (error: any) {
-      console.error("流式响应过程中出现错误:", error);
+      logger.error("流式响应过程中出现错误:", error);
       this.emitMessage({
         type: "error",
         data: {
@@ -311,7 +385,7 @@ export class ConversationManager {
    * 打断会话
    */
   public interrupt() {
-    console.log("会话已被打断。");
+    logger.info("会话已被打断。");
     this.isAborted = true;
     this.memory.addMessage({
       role: "assistant",
@@ -319,13 +393,16 @@ export class ConversationManager {
       type: "interrupt",
       partial: false,
     });
-    this.memory.addWebsocketMessage({
-      type: "interrupt",
+    const interruptMessage = {
+      type: "interrupt" as const,
       data: {
         taskId: this.memory.currentTaskId,
         updateTime: Date.now().valueOf(),
       },
-    });
+    };
+    // 只存储到历史记录，不发送给前端
+    // 前端点击中断后按钮状态已经改变，不需要服务端确认
+    this.memory.addWebsocketMessage(interruptMessage);
 
     // 递归打断所有子任务
     const currentTaskId = this.memory.currentTaskId;
@@ -344,26 +421,41 @@ export class ConversationManager {
   }
 
   /**
-   * 创建新会话
+   * 加载指定任务的 memory，切换到该任务
    */
-  static createConversationManager = ({
-    taskId,
-    fatherTaskId,
-    userDefinedTools,
-  }: {
-    taskId: string;
-    fatherTaskId?: string;
-    userDefinedTools?: ToolInterface<any>[];
-  }) => {
-    const memory = new FilePersistedMemory(taskId, fatherTaskId);
-    const toolService = new ToolService(
-      [AssignTasks, AskFollowupQuestions, CompletionResult, UpdateTodolist],
-      userDefinedTools || [],
-    );
-    const conversationManager = new ConversationManager(memory, toolService, getLlm());
+  public loadMemories(taskId: string): boolean {
+    if(this.memory.currentTaskId === taskId && ConversationManager.taskMapToConversationManager[taskId]) {
+      logger.info(`[ConversationManager] 当前任务已存在，无需切换: ${taskId}`)
+      return true;
+    }
+    try {
+      logger.info(`[ConversationManager] 切换到任务: ${taskId}`);
 
-    return conversationManager;
-  };
+      // 重新注册到 taskMapToConversationManager
+      ConversationManager.taskMapToConversationManager[taskId] = new ConversationManager({
+        taskId,
+      });
+
+      logger.info(`[ConversationManager] 成功切换到任务 ${taskId}`);
+      return true;
+    } catch (error) {
+      logger.error(`[ConversationManager] 切换任务失败:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * 恢复会话
+   */
+  public resume() {
+    logger.info("会话已恢复。");
+    // 重置中断状态
+    this.isAborted = false;
+    this.conversationStatus = "streaming";
+
+    // 设置用户输入，触发对话继续
+    this.userInput = "请继续完成之前被中断的任务。";
+  }
 
   /**
    * 静态方法：创建并运行子会话，返回最终消息
@@ -378,9 +470,20 @@ export class ConversationManager {
     const { subPrompt, parentTaskId, tools, target, index = 0 } = props;
     const llm = getLlm();
     const subTaskId = uuidV4();
-    const toolService = new ToolService([AskFollowupQuestions, CompletionResult], tools);
+    const toolService = new ToolService(BASIC_TOOLS, tools);
     const subMemory = new FilePersistedMemory(subTaskId, parentTaskId);
-    const subManager = new ConversationManager(subMemory, toolService, llm, "sub", () => subPrompt);
+
+    // 保存用户自定义工具名称，用于后续恢复
+    const toolNames = tools.map((t) => t.name);
+    subMemory.setToolNames(toolNames);
+
+    const subManager = new ConversationManager({
+      memory: subMemory,
+      toolService,
+      llm,
+      conversationType: "sub",
+      customPrompt: () => subPrompt,
+    });
 
     // 触发子会话输入
     subManager.setUserInput({
@@ -392,18 +495,38 @@ export class ConversationManager {
     if (!parentConversationManager) {
       throw new Error(`未找到父会话管理器，父任务ID：${parentTaskId}`);
     }
-    parentConversationManager.emitMessage({
-      type: "assignTaskUpdated",
+    // 发送子任务创建消息
+    const createdMessage = {
+      type: "assignTaskUpdated" as SERVER_SEND_MESSAGE_NAME,
       data: {
         index,
         taskId: subTaskId,
         parentTaskId,
+        taskStatus: "running" as const,
       },
-    });
+    };
+    parentConversationManager.memory.addWebsocketMessage(createdMessage);
+    parentConversationManager.emitMessage(createdMessage);
+
+    // 等待子任务完成
     await pWaitFor(() => subManager.conversationStatus === "completed", {
       timeout: 30 * 60 * 1000,
     });
-    console.log(`子会话 ${subTaskId} 已完成。`, subManager.conversationStatus === "completed");
+    logger.info(`子会话 ${subTaskId} 已完成。`, subManager.conversationStatus === "completed");
+
+    // 发送子任务完成消息
+    const completedMessage = {
+      type: "assignTaskUpdated" as SERVER_SEND_MESSAGE_NAME,
+      data: {
+        index,
+        taskId: subTaskId,
+        parentTaskId,
+        taskStatus: "completed" as const,
+      },
+    };
+    parentConversationManager.memory.addWebsocketMessage(completedMessage);
+    parentConversationManager.emitMessage(completedMessage);
+
     return subManager.memory.lastMessage!;
   }
 }

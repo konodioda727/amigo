@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { StorageType } from "@amigo/types";
 import { getGlobalState } from "@/globalState";
+import { logger } from "./logger";
 
 /**
  * 获取会话历史
@@ -10,7 +11,7 @@ import { getGlobalState } from "@/globalState";
 export const getSessionHistories = async () => {
   const globalStoragePath = getGlobalState("globalStoragePath");
   if (!globalStoragePath) {
-    console.warn("globalStoragePath is not set.");
+    logger.warn("globalStoragePath is not set.");
     return [];
   }
 
@@ -35,12 +36,12 @@ export const getSessionHistories = async () => {
             sessionHistories.push({ taskId, title: firstUserMessage.data.message });
           }
         } catch (error) {
-          console.error(`Error reading or parsing frontend messages for taskId ${taskId}:`, error);
+          logger.error(`Error reading or parsing frontend messages for taskId ${taskId}:`, error);
         }
       }
     }
   } catch (error) {
-    console.error("Error reading globalStoragePath:", error);
+    logger.error("Error reading globalStoragePath:", error);
   }
   return sessionHistories;
 };

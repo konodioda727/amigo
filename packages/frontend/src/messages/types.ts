@@ -63,13 +63,16 @@ export interface AssignTaskUpdatedDisplayType extends MessageType<"assignTaskUpd
   parentTaskId?: string;
 }
 
+export interface InterruptDisplayType extends MessageType<"interrupt"> {}
+
 export type DisplayMessageType =
   | FrontendCommonMessageType
   | CompletionResultType
   | FrontendToolMessageType<any>
   | AskFollowupQuestionType
   | UserSendMessageDisplayType
-  | AssignTaskUpdatedDisplayType;
+  | AssignTaskUpdatedDisplayType
+  | InterruptDisplayType;
 
 /**
  * 展示消息类型名称

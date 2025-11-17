@@ -6,8 +6,11 @@ import { CompletionResultMessageSchema } from "./completionResult";
 import { ThinkMessageSchema } from './think';
 import { AckMessageSchema } from './ack';
 import { TaskHistoryMessageSchema } from './taskHistory';
+import { SubTaskHistoryMessageSchema } from './subTaskHistory';
+import { SessionHistoriesMessageSchema } from './sessionHistories';
 import { AskFollowupQuestionSchema } from "./askFollowupQuestion";
 import { AssignTaskUpdatedMessageSchema } from "./assignTaskUpdated";
+import { InterruptMessageSchema } from "./interrupt";
 
 export const ErrorMessageSchema = z.object({
 	type: z.literal("error"),
@@ -25,8 +28,11 @@ export const ServerSendMessageSchema = z.discriminatedUnion("type", [
 	ThinkMessageSchema,
 	AckMessageSchema,
 	TaskHistoryMessageSchema,
+	SubTaskHistoryMessageSchema,
+	SessionHistoriesMessageSchema,
 	AskFollowupQuestionSchema,
 	AssignTaskUpdatedMessageSchema,
+	InterruptMessageSchema,
 	ErrorMessageSchema,
 ]);
 

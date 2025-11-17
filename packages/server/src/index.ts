@@ -10,6 +10,8 @@ const server = new AmigoServer({
   port: SERVER_PORT,
   globalStoragePath: path.resolve(process.cwd(), "storage"),
 });
+import { logger } from "./utils/logger";
+
 server.init();
 
-console.log("server started at", SERVER_PORT);
+logger.info(`Server started at port ${SERVER_PORT}`);

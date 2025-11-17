@@ -4,7 +4,7 @@ import type {
   USER_SEND_MESSAGE_NAME,
 } from "@amigo/types";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { defaultResolver, handleAckMessage, handleCommonMessage, handleTaskHistoryMessageResolver } from "./resolvers";
+import { defaultResolver, handleAckMessage, handleCommonMessage, handleTaskHistoryMessageResolver, handleSubTaskHistoryMessageResolver } from "./resolvers";
 import type { MessageResolvers } from "./types";
 import { combineMessages } from "./messageCombiner";
 
@@ -12,12 +12,13 @@ const resolvers: Partial<Record<SERVER_SEND_MESSAGE_NAME | 'default', MessageRes
   ack: handleAckMessage,
   message: handleCommonMessage,
   taskHistory: handleTaskHistoryMessageResolver,
+  subTaskHistory: handleSubTaskHistoryMessageResolver,
   default: defaultResolver
 };
 
 export const useMessages = () => {
   const [messages, setMessages] = useState<WebSocketMessage<any>[]>([]);
-  const combinedMessages = useMemo(() => {
+  const combinedMessages = useMemo(() => {    
     return combineMessages(messages)
   }, [messages])
   const currentMessagesRef = useRef<WebSocketMessage<any>[]>([]);

@@ -1,7 +1,6 @@
 import type { ToolNames, SYSTEM_RESERVED_TAGS, ChatMessage } from "@amigo/types";
 import { systemReservedTags } from "@amigo/types";
 import { findMatchedTag } from "./findMatchedTag";
-import { on } from "events";
 
 function isPotentialTagStart(buffer: string, startLabels: string[]): boolean {
   if (buffer.length === 0) return false;
@@ -9,7 +8,7 @@ function isPotentialTagStart(buffer: string, startLabels: string[]): boolean {
   return startLabels.some((label) => label.startsWith(lastChunk));
 }
 
-type CurrentTool = SYSTEM_RESERVED_TAGS | ToolNames | null;
+type CurrentTool = SYSTEM_RESERVED_TAGS | ToolNames | 'message';
 
 export const parseStreamingXml = async ({
   stream,
@@ -40,7 +39,7 @@ export const parseStreamingXml = async ({
 }) => {
   let buffer = "";
   let isMatched = false;
-  let currentTool: CurrentTool = null;
+  let currentTool: CurrentTool = 'message';
   for await (const chunk of stream) {
     const shouldAbort = await checkShouldAbort?.();
     if (shouldAbort) {

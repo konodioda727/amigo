@@ -4,6 +4,7 @@ import CompletionResultRenderer from "./completionResult";
 import MessageRenderer from "./MessageRenderer";
 import ToolRenderer from "./toolRenderer";
 import UserMessageRenderer from "./UserMessageRenderer";
+import InterruptRenderer from "./InterruptRenderer";
 
 // DisplayMessage 渲染器映射
 export function renderDisplayMessage(msg: DisplayMessageType) {
@@ -19,6 +20,8 @@ export function renderDisplayMessage(msg: DisplayMessageType) {
       return <ToolRenderer key={msg.updateTime} {...msg} />;
     case "askFollowupQuestion":
       return <AskFollowupQuestionRenderer key={msg.updateTime} {...msg} />;
+    case "interrupt":
+      return <InterruptRenderer key={msg.updateTime} {...msg} />;
     default:
       return <div key={Date.now()}>未知消息类型</div>;
   }

@@ -3,6 +3,7 @@ import path from "path";
 import { getGlobalState } from "@/globalState";
 import { StorageType } from "@amigo/types";
 import type { ConversationManager } from "@/core/conversationManager";
+import { logger } from "./logger";
 
 /**
  * 切换当前任务ID
@@ -12,7 +13,7 @@ export const changeCurrentTaskId = async (taskId: string, manager: ConversationM
     const globalStoragePath = getGlobalState("globalStoragePath");
 
     if (!globalStoragePath) {
-      console.error("globalStoragePath is not set.");
+      logger.error("globalStoragePath is not set.");
       return;
     }
 
@@ -31,12 +32,13 @@ export const changeCurrentTaskId = async (taskId: string, manager: ConversationM
         });
       }
     } catch (error: any) {
-      console.error(`Error loading task ${taskId}:`, error);
+      // 文件不存在或读取失败（可能是新建任务），返回空消息数组
+      logger.info(`Task ${taskId} not found or error loading, treating as new task:`, error.message || String(error));
       manager.emitMessage({
-        type: "message",
+        type: "taskHistory",
         data: {
-          message: `Error loading task ${taskId}: ${error.message || String(error)}`,
-          partial: false,
+          messages: [],
+          taskId,
         },
       });
     }

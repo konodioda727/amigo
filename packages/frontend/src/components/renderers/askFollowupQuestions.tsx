@@ -11,19 +11,15 @@ const AskFollowupQuestionRenderer: React.FC<AskFollowupQuestionType> = ({
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   
   const handleSuggestionClick = (suggestion: string) => {
-    if (!taskId) {
-      console.error("No active taskId to send message");
-      return;
-    }
-
     // 标记已选择的选项
     setSelectedOption(suggestion);
 
+    // 直接使用 sendMessage，WebSocketProvider 会自动处理 taskId
     sendMessage({
       type: "userSendMessage",
       data: {
         message: suggestion,
-        taskId,
+        taskId: taskId || '', // taskId 会被 WebSocketProvider 自动注入
         updateTime: Date.now(),
       },
     });

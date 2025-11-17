@@ -2,6 +2,11 @@ import type { ToolInterface, ToolResult } from "@amigo/types/src/tool";
 import { XMLParser } from "fast-xml-parser";
 import { systemReservedTags } from "@amigo/types";
 import { ensureArray } from "@/utils/array";
+import { logger } from "@/utils/logger";
+import { AskFollowupQuestions } from "./askFollowupQuestions";
+import { UpdateTodolist } from "./todolist";
+import { CompletionResult } from "./completionResult";
+import { AssignTasks } from "./assignTasks";
 
 export class ToolService {
   private _availableTools: Record<string, ToolInterface<any>> = {};
@@ -24,6 +29,20 @@ export class ToolService {
 
   get customedTools() {
     return this.userDefinedTools;
+  }
+
+  /**
+   * 获取所有工具（包括基础工具和用户定义工具）
+   */
+  public getAllTools() {
+    return [...this._baseTools, ...this.userDefinedTools];
+  }
+
+  /**
+   * 根据名称获取工具
+   */
+  public getToolFromName(name: string): ToolInterface<any> | undefined {
+    return this._availableTools[name];
   }
 
   /**
@@ -56,7 +75,7 @@ export class ToolService {
       ...(signal ? { signal } : {}),
       ...(postMessage ? { postMessage } : {}),
     });
-    console.log('[ToolService] 工具调用完成:', toolName, params, toolResult);
+    logger.debug("[ToolService] 工具调用完成:", toolName, params, toolResult);
 
     return { message, toolResult, params };
   }
@@ -77,11 +96,11 @@ export class ToolService {
     const toolName = Object.keys(jsonOutput)[0] || "";
     const tool = this._availableTools[toolName || ""];
     if (!tool) {
-      console.warn(`[parseTool] 未找到名为 '${toolName}' 的工具。`);
+      logger.warn(`[parseTool] 未找到名为 '${toolName}' 的工具。`);
       return {
         params: jsonOutput,
         toolName,
-      }
+      };
     }
     const hasParams = tool && tool.params.length !== 0;
     const finalParams = hasParams
@@ -97,6 +116,29 @@ export class ToolService {
    */
   private completePartialXml(xmlString: string): string {
     let processedString = xmlString;
+
+    // 步骤 0: 检测并处理不完整的 CDATA
+    const cdataStartPattern = /<!\[CDATA\[/g;
+    const cdataEndPattern = /\]\]>/g;
+    let cdataStartCount = 0;
+    let cdataEndCount = 0;
+    let cdataMatch: RegExpExecArray | null;
+    
+    // 计算 CDATA 开始和结束标签的数量
+    while ((cdataMatch = cdataStartPattern.exec(processedString)) !== null) {
+      cdataStartCount++;
+    }
+    while ((cdataMatch = cdataEndPattern.exec(processedString)) !== null) {
+      cdataEndCount++;
+    }
+    
+    // 如果有未闭合的 CDATA，找到最后一个 <![CDATA[ 并移除它之后的所有内容
+    if (cdataStartCount > cdataEndCount) {
+      const lastCdataStart = processedString.lastIndexOf('<![CDATA[');
+      if (lastCdataStart > -1) {
+        processedString = processedString.substring(0, lastCdataStart);
+      }
+    }
 
     // 步骤 1: 检测并移除末尾可能存在的任何部分标签
     const lastOpenBracketIndex = processedString.lastIndexOf("<");
@@ -155,7 +197,7 @@ export class ToolService {
     partial = false,
   ): Record<string, any> {
     if (!rawData || typeof rawData !== "object") {
-      console.warn("[parseTool] data is not object");
+      logger.warn("[parseTool] data is not object");
       return {};
     }
 
@@ -183,13 +225,13 @@ export class ToolService {
       if (paramDef.type === "array" && !Array.isArray(rawValue)) {
         // 如果为数组类型，则 params 定义中必须有且仅有一个子定义
         if (paramDef.params.length !== 1) {
-          console.warn(
+          logger.warn(
             `[parseTool] Array type param '${paramDef.name}' should have exactly one child definition.`,
           );
           continue;
         }
         if (Object.keys(rawValue).length !== 1) {
-          console.warn(
+          logger.warn(
             `\n[parseTool] Array type param '${paramDef.name}' should have exactly one child element instance named ${paramDef.params[0]?.name}.`,
           );
           finalParams[paramDef.name] = [];
@@ -226,7 +268,12 @@ export class ToolService {
   }
 }
 
-export { AskFollowupQuestions } from "./askFollowupQuestions";
-export { UpdateTodolist } from "./todolist";
-export { CompletionResult } from "./completionResult";
-export { AssignTasks } from "./assignTasks";
+export const BASIC_TOOLS: ToolInterface<any>[] = [
+  AskFollowupQuestions,
+  UpdateTodolist,
+  CompletionResult,
+];
+
+export const CUSTOMED_TOOLS: ToolInterface<any>[] = [AssignTasks];
+
+export { AskFollowupQuestions, UpdateTodolist, CompletionResult, AssignTasks };

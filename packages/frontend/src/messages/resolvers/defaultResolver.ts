@@ -1,6 +1,6 @@
 import { MessageResolvers } from "../types";
 
-export const defaultResolver: MessageResolvers<'connected'> = ({newMessage, currentMessagesRef, setMessages}) => {
+export const defaultResolver: MessageResolvers<any> = ({newMessage, currentMessagesRef, setMessages}) => {
     const isUpdatingPrevMessage =
       newMessage.data.updateTime === currentMessagesRef.current.at(-1)?.data.updateTime;
 

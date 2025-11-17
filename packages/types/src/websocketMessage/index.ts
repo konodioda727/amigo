@@ -5,7 +5,7 @@ import type { USER_SEND_MESSAGE_NAME, UserSendMessageData } from "./userSend";
  * 系统保留标签
  * 用于标识特殊的系统消息类型
  */
-export type SYSTEM_RESERVED_TAGS = "completionResult" | "think" | 'interrupt' | 'askFollowupQuestion';
+export type SYSTEM_RESERVED_TAGS = "completionResult" | "think" | 'interrupt' | 'askFollowupQuestion' | 'system';
 export const systemReservedTags: SYSTEM_RESERVED_TAGS[] = ["completionResult", "think", 'interrupt', 'askFollowupQuestion'];
 /**
  * 核心消息类型定义

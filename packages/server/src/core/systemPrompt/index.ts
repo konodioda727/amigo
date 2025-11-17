@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ToolService } from "../tools";
 import { generateToolsPrompt } from "./tools";
+import { logger } from "@/utils/logger";
 const loadPropmpt = (fileName: string) => {
   return fs.readFileSync(path.join(__dirname, fileName), "utf-8");
 };
@@ -17,7 +18,7 @@ export function getSystemPrompt(
     conversationType === "main"
       ? getMainSystemPrompt(toolService)
       : getSubSystemPrompt(toolService);
-  console.log("System Prompt:", systemPrompt);
+  logger.debug("System Prompt:", systemPrompt);
   return systemPrompt;
 }
 /**
@@ -29,7 +30,7 @@ export const getMainSystemPrompt = (toolService: ToolService) => {
   const rules = loadPropmpt("./main/rules.md");
   const objective = loadPropmpt("./main/objective.md");
   const toolsGuide = loadPropmpt("./tooluseGuide.md");
-  console.log("Loaded system prompts:", { rules, objective });
+  logger.debug("Loaded system prompts:", { rules, objective });
   
   // 获取所有可用工具名称
   const allToolNames = toolService.toolNames;
