@@ -25,14 +25,14 @@
   - Expand "禁止行为清单" with specific examples from common errors
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 4.2, 4.3, 4.4, 5.1, 5.2, 5.3, 5.4, 5.5_
 
-- [ ] 4. Enhance Sub Agent prompts for consistency
-  - [ ] 4.1 Update `packages/server/src/core/systemPrompt/sub/objective.md`
+- [x] 4. Enhance Sub Agent prompts for consistency
+  - [x] 4.1 Update `packages/server/src/core/systemPrompt/sub/objective.md`
     - Add same "🚨 关键规则" section as Main Agent for consistency
     - Maintain all hard constraints from Main Agent
     - Emphasize "专注执行，不做额外规划" principle
     - _Requirements: 3.1, 3.5, 8.1, 8.2, 8.3, 8.4_
 
-  - [ ] 4.2 Update `packages/server/src/core/systemPrompt/sub/rules.md`
+  - [x] 4.2 Update `packages/server/src/core/systemPrompt/sub/rules.md`
     - Inherit hard constraints from Main Agent (single tool call, completionResult)
     - Keep rules concise and avoid redundancy
     - Strengthen "无冗余对话" requirement
