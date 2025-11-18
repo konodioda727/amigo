@@ -26,7 +26,9 @@ export const MentionList = forwardRef<MentionListRef, MentionListProps>(
 
     const selectItem = (index: number) => {
       const item = items[index];
+      console.log("[MentionList] selectItem called:", { index, item, items });
       if (item) {
+        console.log("[MentionList] calling command with item:", item);
         command(item);
       }
     };
@@ -53,23 +55,37 @@ export const MentionList = forwardRef<MentionListRef, MentionListProps>(
     }));
 
     return (
-      <div className="dropdown-content menu bg-base-100 rounded-box z-[1] w-64 p-2 shadow-lg border border-base-300">
+      <div className="bg-base-100 rounded-lg z-[1] w-80 shadow-xl border border-base-300 overflow-hidden">
         {items.length > 0 ? (
-          items.map((item, index) => (
-            <button
-              key={item.id}
-              type="button"
-              className={`btn btn-ghost btn-sm justify-start gap-2 ${
-                index === selectedIndex ? "btn-active" : ""
-              }`}
-              onClick={() => selectItem(index)}
-            >
-              <span className="text-lg">{item.type === "main" ? "🏠" : "📋"}</span>
-              <span className="truncate">{item.title}</span>
-            </button>
-          ))
+          <div className="py-1">
+            {items.map((item, index) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`w-full px-3 py-2 flex items-center gap-3 transition-colors ${
+                  index === selectedIndex
+                    ? "bg-primary/10 text-primary"
+                    : "hover:bg-base-200 text-base-content"
+                }`}
+                onClick={() => selectItem(index)}
+              >
+                <div
+                  className={`flex-shrink-0 w-6 h-6 rounded flex items-center justify-center text-xs font-semibold ${
+                    item.type === "main"
+                      ? "bg-primary/20 text-primary"
+                      : "bg-secondary/20 text-secondary"
+                  }`}
+                >
+                  {item.type === "main" ? "主" : "子"}
+                </div>
+                <span className="truncate text-sm font-medium">{item.title}</span>
+              </button>
+            ))}
+          </div>
         ) : (
-          <div className="text-sm text-base-content/50 p-2">无可用会话</div>
+          <div className="text-sm text-base-content/50 px-3 py-4 text-center">
+            无可用会话
+          </div>
         )}
       </div>
     );

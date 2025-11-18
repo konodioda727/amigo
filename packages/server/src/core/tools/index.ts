@@ -58,26 +58,52 @@ export class ToolService {
     getCurrentTask: () => string;
     signal?: AbortSignal;
     postMessage?: (msg: string | object) => void;
-  }): Promise<{ message: string; params: Record<string, any>; toolResult: ToolResult<any> }> {
-    const { params, toolName } = this.parseParams(xmlParams);
-    const tool = this._availableTools[toolName || ""];
-    if (!tool) {
+  }): Promise<{ message: string; params: Record<string, any>; toolResult: ToolResult<any>; error?: string }> {
+    try {
+      const { params, toolName, error } = this.parseParams(xmlParams);
+      
+      // If there's a parsing error, return it
+      if (error) {
+        logger.error("[ToolService] 工具参数解析错误:", error);
+        return {
+          message: error,
+          toolResult: "",
+          params,
+          error,
+        };
+      }
+      
+      const tool = this._availableTools[toolName || ""];
+      if (!tool) {
+        const errorMsg = `工具 '${toolName}' 不存在。请使用正确的工具名称。`;
+        return {
+          message: errorMsg,
+          toolResult: "",
+          params,
+          error: errorMsg,
+        };
+      }
+      
+      const { toolResult, message } = await tool.invoke({
+        params: params as any,
+        getCurrentTask,
+        getToolFromName: (name: string) => this._availableTools[name],
+        ...(signal ? { signal } : {}),
+        ...(postMessage ? { postMessage } : {}),
+      });
+      logger.debug("[ToolService] 工具调用完成:", toolName, params, toolResult);
+
+      return { message, toolResult, params };
+    } catch (err) {
+      const errorMsg = `工具执行错误: ${err instanceof Error ? err.message : String(err)}`;
+      logger.error("[ToolService] 工具执行异常:", err);
       return {
-        message: "",
+        message: errorMsg,
         toolResult: "",
-        params,
+        params: {},
+        error: errorMsg,
       };
     }
-    const { toolResult, message } = await tool.invoke({
-      params: params as any,
-      getCurrentTask,
-      getToolFromName: (name: string) => this._availableTools[name],
-      ...(signal ? { signal } : {}),
-      ...(postMessage ? { postMessage } : {}),
-    });
-    logger.debug("[ToolService] 工具调用完成:", toolName, params, toolResult);
-
-    return { message, toolResult, params };
   }
 
   public parseParams(
@@ -86,27 +112,38 @@ export class ToolService {
   ): {
     params: Record<string, any>;
     toolName: string;
+    error?: string;
   } {
-    const completedXml = this.completePartialXml(buffer);
-    const parser = new XMLParser({
-      ignoreAttributes: false,
-      trimValues: true,
-    });
-    const jsonOutput = parser.parse(completedXml);
-    const toolName = Object.keys(jsonOutput)[0] || "";
-    const tool = this._availableTools[toolName || ""];
-    if (!tool) {
-      logger.warn(`[parseTool] 未找到名为 '${toolName}' 的工具。`);
+    try {
+      const completedXml = this.completePartialXml(buffer);
+      const parser = new XMLParser({
+        ignoreAttributes: false,
+        trimValues: true,
+      });
+      const jsonOutput = parser.parse(completedXml);
+      const toolName = Object.keys(jsonOutput)[0] || "";
+      const tool = this._availableTools[toolName || ""];
+      if (!tool) {
+        logger.warn(`[parseTool] 未找到名为 '${toolName}' 的工具。`);
+        return {
+          params: jsonOutput,
+          toolName,
+        };
+      }
+      const hasParams = tool && tool.params.length !== 0;
+      const finalParams = hasParams
+        ? this.mapAndValidateParams(jsonOutput[toolName], tool.params, partial, toolName)
+        : jsonOutput;
+      return { params: finalParams, toolName };
+    } catch (err) {
+      const errorMsg = `XML 解析错误: ${err instanceof Error ? err.message : String(err)}`;
+      logger.error("[parseParams] 解析失败:", err);
       return {
-        params: jsonOutput,
-        toolName,
+        params: {},
+        toolName: "",
+        error: errorMsg,
       };
     }
-    const hasParams = tool && tool.params.length !== 0;
-    const finalParams = hasParams
-      ? this.mapAndValidateParams(jsonOutput[toolName], tool.params, partial)
-      : jsonOutput;
-    return { params: finalParams, toolName };
   }
 
   /**
@@ -195,25 +232,27 @@ export class ToolService {
     rawData: any,
     paramDefinitions: any[],
     partial = false,
+    toolName = "",
   ): Record<string, any> {
     if (!rawData || typeof rawData !== "object") {
       logger.warn("[parseTool] data is not object");
-      return {};
     }
 
     const finalParams: Record<string, any> = {};
+    const missingParams: string[] = [];
 
     // 遍历所有期望的参数定义
     for (const paramDef of paramDefinitions) {
       const rawValue = rawData[paramDef.name];
 
-      // 检查非可选参数的缺失 (可选：可以加入更严格的 Zod 检查)
+      // 检查非可选参数的缺失
       if (!paramDef.optional && (rawValue === undefined || rawValue === null)) {
         if (partial) {
           // partial 情况下，缺失参数直接跳过
           continue;
         }
-        throw new Error(`[parseTool] Tool param '${paramDef.name}' is missing but is required.`);
+        missingParams.push(paramDef.name);
+        continue;
       }
 
       // 如果字段缺失且是可选的，跳过
@@ -262,6 +301,13 @@ export class ToolService {
         // 直接赋值，只保留 params 定义的字段 (实现了过滤)
         finalParams[paramDef.name] = rawValue;
       }
+    }
+
+    // 检查是否有缺失的必需参数
+    if (missingParams.length > 0 && !partial) {
+      throw new Error(
+        `工具 '${toolName}' 缺少必需参数: ${missingParams.join(", ")}。请按照工具定义的格式提供所有必需参数。`
+      );
     }
 
     return finalParams;

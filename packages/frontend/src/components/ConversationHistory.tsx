@@ -2,10 +2,11 @@ import React from "react";
 import { useWebSocket } from "./WebSocketProvider";
 
 const ConversationHistory: React.FC = () => {
-  const { taskHistories, setTaskId } = useWebSocket();
+  const { taskHistories, setTaskId, taskId: currentTaskId } = useWebSocket();
 
   const handleHistoryClick = (taskId: string) => {
-    setTaskId(taskId)
+    console.log(`[ConversationHistory] Clicking history item: ${taskId}, current: ${currentTaskId}`);
+    setTaskId(taskId);
   };
 
   if (!taskHistories || taskHistories.length === 0) return null;

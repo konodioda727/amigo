@@ -1,0 +1,42 @@
+{
+  "messages": [
+    {
+      "type": "userSendMessage",
+      "data": {
+        "message": "hellohello",
+        "taskId": "a6341042-31cb-45a6-b3c9-729a61fa5510",
+        "updateTime": 1763469355541
+      },
+      "taskId": "a6341042-31cb-45a6-b3c9-729a61fa5510"
+    },
+    {
+      "type": "message",
+      "data": {
+        "message": "Hello！有什么可以帮助你的吗？😊",
+        "partial": false,
+        "updateTime": 1763469383643,
+        "taskId": "a6341042-31cb-45a6-b3c9-729a61fa5510"
+      }
+    },
+    {
+      "type": "error",
+      "data": {
+        "message": "Internal Server Error",
+        "partial": false,
+        "updateTime": 1763469436059,
+        "taskId": "a6341042-31cb-45a6-b3c9-729a61fa5510"
+      }
+    },
+    {
+      "type": "completionResult",
+      "data": {
+        "message": "{\"result\":{\"completionResult\":{\"content\":\"你好！我已经准备好帮助你解决问题或提供信息。请告诉我你需要什么帮助？\"}},\"params\":{\"completionResult\":{\"content\":\"你好！我已经准备好帮助你解决问题或提供信息。请告诉我你需要什么帮助？\"}},\"toolName\":\"completionResult\"}",
+        "partial": false,
+        "updateTime": 1763469462750,
+        "taskId": "a6341042-31cb-45a6-b3c9-729a61fa5510"
+      }
+    }
+  ],
+  "updatedAt": "2025-11-18T12:37:43.003Z",
+  "taskId": "a6341042-31cb-45a6-b3c9-729a61fa5510"
+}

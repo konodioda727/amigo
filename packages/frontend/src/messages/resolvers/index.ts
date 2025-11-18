@@ -1,4 +1,5 @@
 export * from './ackMessageResolver'
+export * from './alertResolver'
 export * from './commonMessageResolver'
 export * from './loadTaskResolver'
 export * from './loadSubTaskResolver'

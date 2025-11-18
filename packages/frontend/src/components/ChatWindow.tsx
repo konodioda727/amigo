@@ -3,7 +3,7 @@ import { useWebSocket } from "./WebSocketProvider";
 import { renderDisplayMessage } from "./renderers";
 
 const ChatWindow: React.FC = () => {
-  const { displayMessages } = useWebSocket();
+  const { displayMessages, isLoading } = useWebSocket();
 
   const messageContainerRef = useRef<HTMLDivElement>(null);
 
@@ -11,11 +11,7 @@ const ChatWindow: React.FC = () => {
     if (messageContainerRef.current) {
       messageContainerRef.current.scrollTop = messageContainerRef.current.scrollHeight;
     }
-  }, [displayMessages]);
-
-  // 判断是否需要显示 loading
-  const lastMessage = displayMessages[displayMessages.length - 1];
-  const showLoading = lastMessage && "status" in lastMessage && lastMessage.status === "acked";
+  }, [displayMessages, isLoading]);
   
   return (
     <div
@@ -24,7 +20,7 @@ const ChatWindow: React.FC = () => {
     >
       {displayMessages.map((msg) => 
         renderDisplayMessage(msg))}
-      {showLoading && (
+      {isLoading && (
         <div className="chat chat-start mb-4">
           <div className="chat-bubble bg-base-200 text-base-content">
             <div className="flex items-center gap-2">

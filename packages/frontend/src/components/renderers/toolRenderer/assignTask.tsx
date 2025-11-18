@@ -3,7 +3,29 @@ import { CheckCircle, Clock } from "lucide-react";
 import SubTaskRenderer from "@/components/SubTaskRenderer";
 
 const AssignTask: React.FC<ToolRendererProps<"assignTasks">> = (props) => {
-  const { params, toolOutput, error, updateTime } = props;
+  const { params, toolOutput, error, updateTime, hasError } = props;
+  
+  // 如果有错误，显示错误信息
+  if (hasError && error) {
+    return (
+      <div className="flex flex-col items-center w-full mb-4">
+        <div className="w-full max-w-4xl">
+          <div className="alert alert-error shadow-lg">
+            <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div className="flex-1">
+              <h3 className="font-bold">分配任务工具调用失败</h3>
+              <div className="text-sm mt-2 whitespace-pre-wrap">{error}</div>
+            </div>
+          </div>
+          <div className="text-xs opacity-50 mt-2 text-center">
+            {updateTime && new Date(updateTime).toLocaleTimeString()}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // 从 params 中获取 tasklist，每个 task 可能包含 taskId
   const tasklist = (params.tasklist || []) as Array<{

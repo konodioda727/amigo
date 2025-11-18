@@ -90,7 +90,8 @@ const completionResultProcessor: MessageProcessor<'completionResult'> = ({ msg, 
 const toolProcessor: MessageProcessor<'tool'> = ({ msg, res }) => {
   if (msg.type !== "tool") return { handled: false };
   // 解析 tool 消息，结构化为 DisplayMessageType
-  const { toolName, params, result } = JSON.parse(msg.data.message) as TransportToolContent<any>;
+  const parsed = JSON.parse(msg.data.message) as TransportToolContent<any> & { error?: string };
+  const { toolName, params, result, error } = parsed;
   const updateTime = typeof msg.data.updateTime === "number" ? msg.data.updateTime : Date.now();
   
   // 查找是否已经有相同 toolName 和 updateTime 的 tool（partial 消息）
@@ -102,13 +103,15 @@ const toolProcessor: MessageProcessor<'tool'> = ({ msg, res }) => {
   );
   
   if (existingToolIndex !== -1 && res[existingToolIndex].type === "tool") {
-    // 更新已存在的 tool，添加 result
+    // 更新已存在的 tool，添加 result 或 error
     const existingTool = res[existingToolIndex];
     res[existingToolIndex] = {
       type: "tool",
       toolName: existingTool.toolName,
       params: existingTool.params,
       toolOutput: result as unknown as ToolResult<any>,
+      error: error,
+      hasError: !!error,
       updateTime: existingTool.updateTime,
     };
   } else {
@@ -118,6 +121,8 @@ const toolProcessor: MessageProcessor<'tool'> = ({ msg, res }) => {
       toolName,
       params: params as unknown as ToolParams<any>,
       toolOutput: result as unknown as ToolResult<any>,
+      error: error,
+      hasError: !!error,
       updateTime,
     });
   }
@@ -206,6 +211,17 @@ const interruptProcessor: MessageProcessor<'interrupt'> = ({ msg, res }) => {
   return { handled: true };
 };
 
+const errorProcessor: MessageProcessor<'error'> = ({ msg, res }) => {
+  if (msg.type !== "error") return { handled: false };
+  
+  res.push({
+    type: "error",
+    message: msg.data.message || "未知错误",
+    updateTime: msg.data.updateTime || Date.now(),
+  });
+  return { handled: true };
+};
+
 const processorMap: Partial<
   Record<SERVER_SEND_MESSAGE_NAME | USER_SEND_MESSAGE_NAME, MessageProcessor<any>>
 > = {
@@ -217,6 +233,7 @@ const processorMap: Partial<
   askFollowupQuestion: askFollowupQuestionProcessor,
   assignTaskUpdated: assignTaskUpdatedProcessor,
   interrupt: interruptProcessor,
+  error: errorProcessor,
 };
 
 export const combineMessages = (messages: SupportedWebsocketMessage[]): DisplayMessageType[] => {

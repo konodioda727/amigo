@@ -13,15 +13,16 @@ type CurrentTool = SYSTEM_RESERVED_TAGS | ToolNames | 'message';
 export const parseStreamingXml = async ({
   stream,
   startLabels,
+  signal,
   onFullToolCallFound,
   onPartialToolCallFound,
   onCommonMessageFound,
   onPartialMessageFound,
   onMessageLeft,
-  checkShouldAbort,
 }: {
   stream: AsyncIterable<any>;
   startLabels: string[];
+  signal?: AbortSignal;
   onCommonMessageFound?: (message: string) => Promise<void>;
   onPartialMessageFound?: (message: string) => Promise<void>;
   onFullToolCallFound?: (
@@ -35,18 +36,15 @@ export const parseStreamingXml = async ({
     currentType: ChatMessage["type"],
   ) => Promise<void>;
   onMessageLeft?: (message: string) => Promise<void>;
-  checkShouldAbort?: () => Promise<boolean>;
 }) => {
   let buffer = "";
   let isMatched = false;
   let currentTool: CurrentTool = 'message';
-  for await (const chunk of stream) {
-    const shouldAbort = await checkShouldAbort?.();
-    if (shouldAbort) {
-      currentTool = "interrupt";
-      buffer = "";
-      break;
-    }
+  
+  try {
+    for await (const chunk of stream) {
+      // 如果 signal 被 abort，stream 会自动抛出 AbortError
+      // 不需要手动检查
 
     if (typeof chunk.content === "string") {
       process.stdout.write(chunk.content);
@@ -99,6 +97,16 @@ export const parseStreamingXml = async ({
       await onPartialToolCallFound?.(buffer, currentTool, currentType);
     }
   }
+  } catch (error: any) {
+    // 如果是 AbortError，说明被用户中断
+    if (error.name === 'AbortError' || signal?.aborted) {
+      currentTool = "interrupt";
+      buffer = "";
+    } else {
+      throw error;
+    }
+  }
+  
   if (buffer.length > 0) {
     await onMessageLeft?.(buffer);
   }

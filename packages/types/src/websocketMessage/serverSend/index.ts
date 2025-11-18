@@ -11,6 +11,8 @@ import { SessionHistoriesMessageSchema } from './sessionHistories';
 import { AskFollowupQuestionSchema } from "./askFollowupQuestion";
 import { AssignTaskUpdatedMessageSchema } from "./assignTaskUpdated";
 import { InterruptMessageSchema } from "./interrupt";
+import { ConversationOverSchema } from "./conversationOver";
+import { AlertMessageSchema } from "./alert";
 
 export const ErrorMessageSchema = z.object({
 	type: z.literal("error"),
@@ -33,7 +35,9 @@ export const ServerSendMessageSchema = z.discriminatedUnion("type", [
 	AskFollowupQuestionSchema,
 	AssignTaskUpdatedMessageSchema,
 	InterruptMessageSchema,
+	ConversationOverSchema,
 	ErrorMessageSchema,
+	AlertMessageSchema,
 ]);
 
 /**

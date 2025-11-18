@@ -54,6 +54,9 @@ export const useMentionSuggestion = ({
             interactive: true,
             trigger: "manual",
             placement: "bottom-start",
+            theme: "light-border",
+            arrow: false,
+            offset: [0, 8],
             onShow: () => {
               // Only set active when popup is actually shown
               onSuggestionStart?.();
@@ -102,7 +105,6 @@ export const useMentionSuggestion = ({
     },
     command: ({ editor, range, props }) => {
       const session = props as SessionInfo;
-      
       onSessionSelect(session.id);
       
       editor

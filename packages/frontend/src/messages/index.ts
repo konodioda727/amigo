@@ -4,12 +4,13 @@ import type {
   USER_SEND_MESSAGE_NAME,
 } from "@amigo/types";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { defaultResolver, handleAckMessage, handleCommonMessage, handleTaskHistoryMessageResolver, handleSubTaskHistoryMessageResolver } from "./resolvers";
+import { defaultResolver, handleAckMessage, handleAlertMessage, handleCommonMessage, handleTaskHistoryMessageResolver, handleSubTaskHistoryMessageResolver } from "./resolvers";
 import type { MessageResolvers } from "./types";
 import { combineMessages } from "./messageCombiner";
 
 const resolvers: Partial<Record<SERVER_SEND_MESSAGE_NAME | 'default', MessageResolvers<any>>> = {
   ack: handleAckMessage,
+  alert: handleAlertMessage,
   message: handleCommonMessage,
   taskHistory: handleTaskHistoryMessageResolver,
   subTaskHistory: handleSubTaskHistoryMessageResolver,

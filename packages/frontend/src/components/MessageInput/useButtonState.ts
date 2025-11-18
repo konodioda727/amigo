@@ -5,7 +5,7 @@ import { useWebSocket } from "../WebSocketProvider";
 export type ButtonState = "send" | "stop" | "resume";
 
 export const useButtonState = (editor: Editor | null) => {
-  const { displayMessages } = useWebSocket();
+  const { displayMessages, isLoading } = useWebSocket();
   const [buttonState, setButtonState] = useState<ButtonState>("send");
   const [editorContent, setEditorContent] = useState("");
 
@@ -26,35 +26,27 @@ export const useButtonState = (editor: Editor | null) => {
   }, [editor]);
 
   useEffect(() => {
+    // 如果正在 loading，显示 stop 按钮
+    if (isLoading) {
+      setButtonState("stop");
+      return;
+    }
+
     if (!lastMessage) {
       setButtonState("send");
       return;
     }
 
+    // 检查是否是中断状态
     if (lastMessage.type === "interrupt") {
       const hasContent = editorContent.trim();
       setButtonState(hasContent ? "send" : "resume");
       return;
     }
 
-    if ("status" in lastMessage) {
-      const status = (lastMessage as { status: string }).status;
-      if (status === "pending" || status === "acked") {
-        setButtonState("stop");
-        return;
-      }
-    }
-
-    if (
-      ("message" in lastMessage || "think" in lastMessage) &&
-      (lastMessage as { partial?: boolean }).partial
-    ) {
-      setButtonState("stop");
-      return;
-    }
-
+    // 默认状态
     setButtonState("send");
-  }, [lastMessage, editorContent]);
+  }, [lastMessage, editorContent, isLoading]);
 
   return buttonState;
 };

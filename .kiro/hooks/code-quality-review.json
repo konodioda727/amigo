@@ -1,0 +1,15 @@
+{
+  "name": "Code Quality Review",
+  "description": "Analyzes modified source code for improvements including code smells, design patterns, and best practices",
+  "trigger": {
+    "type": "onFileSave",
+    "filePattern": "**/*.{ts,tsx,js,jsx}"
+  },
+  "prompt": "Analyze the modified code in the current file for potential improvements:\n\n1. **Code Smells**: Identify any anti-patterns, duplicated code, or overly complex logic\n2. **Design Patterns**: Suggest applicable design patterns that could improve the architecture\n3. **Best Practices**: Check for:\n   - Proper error handling\n   - Type safety (TypeScript)\n   - Performance optimizations\n   - Readability and maintainability\n   - Proper use of React hooks (if applicable)\n   - Efficient state management\n\n4. **Tech Stack Specific**:\n   - React: Component composition, hooks usage, memoization\n   - TypeScript: Type definitions, generics, utility types\n   - Bun/Node: Async patterns, error handling\n   - LangChain: Proper tool usage, streaming patterns\n\nProvide actionable suggestions with code examples where helpful. Focus on improvements that maintain existing functionality while enhancing code quality. Skip suggestions if the code is already well-written.\n\nDo not write unnecessary compatibility code or add features not requested.",
+  "autoRun": false,
+  "context": {
+    "includeCurrentFile": true,
+    "includeRelatedFiles": true,
+    "includeGitDiff": true
+  }
+}

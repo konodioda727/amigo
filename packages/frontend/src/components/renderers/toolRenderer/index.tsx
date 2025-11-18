@@ -21,6 +21,29 @@ const DefaultToolRenderer: React.FC<ToolRendererProps<any>> = ({
   updateTime,
 }) => {
   const paramsStr = JSON.stringify(params, null, 2);
+  
+  // 如果有错误，使用错误样式
+  if (error) {
+    return (
+      <div className="flex flex-col items-center w-full mb-4">
+        <div className="w-full max-w-4xl">
+          <div className="alert alert-error shadow-lg">
+            <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div className="flex-1">
+              <h3 className="font-bold">工具调用失败：{toolName}</h3>
+              <div className="text-sm mt-2 whitespace-pre-wrap">{error}</div>
+            </div>
+          </div>
+          <div className="text-xs opacity-50 mt-2 text-center">
+            {updateTime && new Date(updateTime).toLocaleTimeString()}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
   return (
     <div className="chat chat-start mb-2">
       <div className="chat-image avatar">
@@ -38,7 +61,6 @@ const DefaultToolRenderer: React.FC<ToolRendererProps<any>> = ({
         <div className="font-bold">工具: {toolName}</div>
         <div className="text-sm whitespace-pre-wrap">{paramsStr}</div>
         {toolOutput && <div className="mt-2 text-success">输出: {JSON.stringify(toolOutput)}</div>}
-        {error && <div className="mt-2 text-error">错误: {error}</div>}
       </div>
     </div>
   );

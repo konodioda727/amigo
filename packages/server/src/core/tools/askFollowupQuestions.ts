@@ -25,7 +25,7 @@ export const AskFollowupQuestions = createTool({
     },
     {
       name: "suggestOptions",
-      optional: true,
+      optional: false,
       description: "A list of suggested options for the user to choose from.",
       type: 'array',
       params: [

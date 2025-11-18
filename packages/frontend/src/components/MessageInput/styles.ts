@@ -39,4 +39,24 @@ export const editorStyles = `
     color: hsl(var(--pc));
     font-weight: 500;
   }
+
+  /* Tippy.js 自定义样式 - 移除默认黑边和箭头 */
+  .tippy-box {
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  .tippy-content {
+    padding: 0 !important;
+  }
+
+  .tippy-arrow {
+    display: none !important;
+  }
+
+  .tippy-box[data-theme~='light-border'] {
+    background-color: transparent !important;
+    border: none !important;
+  }
 `;

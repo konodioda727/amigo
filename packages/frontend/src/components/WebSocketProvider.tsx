@@ -25,6 +25,7 @@ interface WebSocketContextType {
   setTaskId: React.Dispatch<React.SetStateAction<string>>;
   taskHistories: Array<{ taskId: string; title: string }>;
   displayMessages: DisplayMessageType[];
+  isLoading: boolean;
   sendMessage: <T extends USER_SEND_MESSAGE_NAME>(newMessage: WebSocketMessage<T>) => void;
   subscribe: <T extends SERVER_SEND_MESSAGE_NAME>(type: T, listener: Listener<T>) => Unsubscribe;
 }
@@ -47,6 +48,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [taskId, setTaskId] = useState<string>('');
   const [taskHistories, setTaskHistories] = useState<Array<{ taskId: string; title: string }>>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const { processReceivedMessage, updateMessage, combinedMessages: displayMessages } = useMessages();
   const listenersRef = useRef<Record<SERVER_SEND_MESSAGE_NAME, Listener<any>[]>>({} as any);
 
@@ -86,6 +88,16 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
             console.log(`[WebSocketProvider] Auto-updating taskId from ack: ${ackData.taskId}`);
             setTaskId(ackData.taskId);
           }
+          if(ackData.targetMessage.type === 'userSendMessage') {
+            // 收到 ack 后开始 loading
+            setIsLoading(true);
+          }
+        }
+        
+        // 监听 conversationOver 消息，停止 loading
+        if (newMessage.type === 'conversationOver') {
+          console.log(`[WebSocketProvider] Conversation over, stopping loading`);
+          setIsLoading(false);
         }
         
         // 先处理全局消息
@@ -149,25 +161,19 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
   }, [connectWebSocket]);
 
   // 当 taskId 变化时，自动加载任务历史
-  // 但如果是新建任务（从空 taskId 变为有 taskId），则不需要 loadTask
   const prevTaskIdRef = useRef<string>('');
+  
   useEffect(() => {
-    if (socket && socket.readyState === WebSocket.OPEN && taskId) {
-      // 如果之前没有 taskId，现在有了，说明是新建任务，不需要 loadTask
-      const isNewTask = !prevTaskIdRef.current && taskId;
-      
-      if (!isNewTask) {
-        console.log(`[WebSocketProvider] Auto-loading task: ${taskId}`);
-        socket.send(
-          JSON.stringify({
-            type: "loadTask",
-            data: { taskId },
-          })
-        );
-      } else {
-        console.log(`[WebSocketProvider] Skip loadTask for new task: ${taskId}`);
-      }
-      
+    console.log(`[WebSocketProvider] taskId changed: ${taskId}, prev: ${prevTaskIdRef.current}, socket ready: ${socket?.readyState === WebSocket.OPEN}`);
+    
+    if (socket && socket.readyState === WebSocket.OPEN && taskId && prevTaskIdRef.current !== taskId) {
+      console.log(`[WebSocketProvider] Sending loadTask for: ${taskId}`);
+      socket.send(
+        JSON.stringify({
+          type: "loadTask",
+          data: { taskId },
+        })
+      );
       prevTaskIdRef.current = taskId;
     }
   }, [socket, taskId]);
@@ -183,6 +189,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
         setTaskId,
         taskHistories,
         taskId,
+        isLoading,
         subscribe,
       }}
     >

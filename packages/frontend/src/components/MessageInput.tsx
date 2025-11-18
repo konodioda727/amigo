@@ -33,27 +33,7 @@ const MessageInput = () => {
     // Don't handle Enter if suggestion dropdown is visible
     if (event.key === "Enter" && !event.shiftKey && !isSuggestionActiveRef.current) {
       event.preventDefault();
-      // Use setTimeout to ensure handleClick is defined
-      setTimeout(() => {
-        const content = editor?.getText().trim();
-        if (!content) {
-          toast.warning("请输入消息内容");
-          return;
-        }
-
-        const extractedSessionId = extractSessionIdFromEditor();
-        const effectiveSessionId = extractedSessionId || targetSessionId;
-        const currentTaskId = taskId || uuidv4();
-        const messageTaskId = effectiveSessionId || currentTaskId;
-
-        sendMessage({
-          data: { message: content, taskId: messageTaskId, updateTime: Date.now() },
-          type: "userSendMessage",
-        });
-
-        editor?.commands.clearContent();
-        setTargetSessionId(null);
-      }, 0);
+      handleSend();
       return true;
     }
     return false;
@@ -112,16 +92,54 @@ const MessageInput = () => {
     return findMention(json);
   };
 
+  const getTextWithoutMentions = (): string => {
+    if (!editor) return "";
+
+    const json = editor.getJSON();
+    
+    type NodeType = {
+      type?: string;
+      text?: string;
+      content?: NodeType[];
+    };
+    
+    const extractText = (node: NodeType): string => {
+      // Skip mention nodes
+      if (node.type === "mention") {
+        return "";
+      }
+      
+      // If it's a text node, return the text
+      if (node.type === "text" && node.text) {
+        return node.text;
+      }
+      
+      // If it has content, recursively extract text
+      if (node.content && Array.isArray(node.content)) {
+        return node.content.map((child) => extractText(child)).join("");
+      }
+      
+      return "";
+    };
+    
+    return extractText(json as NodeType).trim();
+  };
+
   const handleSend = () => {
-    const content = editor?.getText().trim();
+    if (!editor) return;
+
+    // Extract session ID from mention nodes
+    const extractedSessionId = extractSessionIdFromEditor();
+    const effectiveSessionId = extractedSessionId || targetSessionId;
+
+    // Get plain text content (without mention nodes)
+    const content = getTextWithoutMentions();
 
     if (!content) {
       toast.warning("请输入消息内容");
       return;
     }
 
-    const extractedSessionId = extractSessionIdFromEditor();
-    const effectiveSessionId = extractedSessionId || targetSessionId;
     const currentTaskId = taskId || uuidv4();
     const messageTaskId = effectiveSessionId || currentTaskId;
 
@@ -130,7 +148,7 @@ const MessageInput = () => {
       type: "userSendMessage",
     });
 
-    editor?.commands.clearContent();
+    editor.commands.clearContent();
     setTargetSessionId(null);
   };
 

@@ -30,6 +30,7 @@ export interface FrontendToolMessageType<T extends ToolNames> extends MessageTyp
   params: ToolParams<T>;
   toolOutput?: ToolResult<T>;
   error?: string;
+  hasError?: boolean;
 }
 
 /**
@@ -65,6 +66,17 @@ export interface AssignTaskUpdatedDisplayType extends MessageType<"assignTaskUpd
 
 export interface InterruptDisplayType extends MessageType<"interrupt"> {}
 
+export interface ErrorDisplayType extends MessageType<"error"> {
+  message: string;
+}
+
+export interface AlertDisplayType extends MessageType<"alert"> {
+  data: {
+    message: string;
+    severity: "info" | "warning" | "error";
+  };
+}
+
 export type DisplayMessageType =
   | FrontendCommonMessageType
   | CompletionResultType
@@ -72,7 +84,9 @@ export type DisplayMessageType =
   | AskFollowupQuestionType
   | UserSendMessageDisplayType
   | AssignTaskUpdatedDisplayType
-  | InterruptDisplayType;
+  | InterruptDisplayType
+  | ErrorDisplayType
+  | AlertDisplayType;
 
 /**
  * 展示消息类型名称
@@ -82,4 +96,5 @@ export const DisplayMessageTypeNames: WebSocketMessage<any>["type"][]= [
   "completionResult",
   "tool",
   "askFollowupQuestion",
+  "error",
 ];

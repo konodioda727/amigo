@@ -1,0 +1,33 @@
+{
+  "messages": [
+    {
+      "type": "userSendMessage",
+      "data": {
+        "message": "hihihihi",
+        "taskId": "ecda8776-7ec8-4c39-8233-a1f600278c57",
+        "updateTime": 1763468035892
+      },
+      "taskId": "ecda8776-7ec8-4c39-8233-a1f600278c57"
+    },
+    {
+      "type": "error",
+      "data": {
+        "message": "502 Provider returned error",
+        "partial": false,
+        "updateTime": 1763468126997,
+        "taskId": "ecda8776-7ec8-4c39-8233-a1f600278c57"
+      }
+    },
+    {
+      "type": "error",
+      "data": {
+        "message": "502 Provider returned error",
+        "partial": false,
+        "updateTime": 1763468234798,
+        "taskId": "ecda8776-7ec8-4c39-8233-a1f600278c57"
+      }
+    }
+  ],
+  "updatedAt": "2025-11-18T12:17:14.798Z",
+  "taskId": "ecda8776-7ec8-4c39-8233-a1f600278c57"
+}
