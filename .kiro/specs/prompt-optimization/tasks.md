@@ -81,7 +81,7 @@
 
 ## Phase 4: Decision Support Mechanisms (High Priority)
 
-- [ ] 9. Add task completion decision tree to prompts
+- [x] 9. Add task completion decision tree to prompts
   - Update `packages/server/src/core/systemPrompt/main/objective.md` to include decision tree in workflow
   - Add visual decision tree: "所有计划步骤都已完成？" → "用户请求已得到完整回答？" → "✅ 立即调用 completionResult"
   - Update `packages/server/src/core/systemPrompt/tooluseGuide.md` to include same decision tree
