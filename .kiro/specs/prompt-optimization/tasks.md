@@ -40,7 +40,7 @@
 
 ## Phase 2: askFollowupQuestion Tool Optimization (High Priority)
 
-- [ ] 5. Add self-check mechanism to askFollowupQuestion tool
+- [x] 5. Add self-check mechanism to askFollowupQuestion tool
   - Update `packages/server/src/core/tools/askFollowupQuestions.ts` to add comprehensive usage guidance
   - Add "⚠️ 使用前自我检查" section with 3 questions at the beginning of whenToUse
   - Add "✅ 应该使用的场景" with 4 specific scenarios and examples
