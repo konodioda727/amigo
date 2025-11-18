@@ -52,7 +52,7 @@
 
 ## Phase 3: Tool Description Optimization (High Priority)
 
-- [ ] 6. Optimize completionResult tool with 7-point reinforcement
+- [x] 6. Optimize completionResult tool with 7-point reinforcement
   - Update `packages/server/src/core/tools/completionResult.ts` to enhance description and whenToUse fields
   - Add 🎯 【必须使用】marker to description
   - Expand whenToUse with "**关键规则：任何任务完成后，你必须使用此工具来结束任务。**" at the top
