@@ -128,10 +128,12 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
         }
       : newMessage;
 
-    // 只有 userSendMessage 需要添加到消息列表中
-    // interrupt、resume、loadTask 等控制消息不需要显示
+    // userSendMessage 和 interrupt 需要添加到消息列表中
+    // resume、loadTask 等控制消息不需要显示
     if (messageToSend.type === "userSendMessage") {
       updateMessage({ ...messageToSend, data: { ...messageToSend.data, status: "pending" } });
+    } else if (messageToSend.type === "interrupt") {
+      updateMessage(messageToSend);
     }
     socket?.send(JSON.stringify(messageToSend));
   }, [socket, taskId, updateMessage]);

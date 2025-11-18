@@ -19,7 +19,7 @@ type MessageProcessor<T extends SERVER_SEND_MESSAGE_NAME | USER_SEND_MESSAGE_NAM
   pendingThink: WebSocketMessage<"think"> | null;
 }) => { handled: boolean; pendingThink?: WebSocketMessage<"think"> | null };
 
-const thinkProcessor: MessageProcessor<'think'> = ({ msg: thinkMsg, res, pendingThink }) => {
+const thinkProcessor: MessageProcessor<'think'> = ({ msg: thinkMsg, res }) => {
   if (thinkMsg.type !== "think") return { handled: false };
   const thinkData = thinkMsg.data;
   const thinkEntry: FrontendCommonMessageType = {
@@ -192,6 +192,12 @@ const assignTaskUpdatedProcessor: MessageProcessor<'assignTaskUpdated'> = ({ msg
 
 const interruptProcessor: MessageProcessor<'interrupt'> = ({ msg, res }) => {
   if (msg.type !== "interrupt") return { handled: false };
+  
+  // 移除最后一条 partial 消息（如果存在）
+  const lastMessage = res.at(-1);
+  if (lastMessage && (lastMessage as any).partial) {
+    res.pop();
+  }
   
   res.push({
     type: "interrupt",

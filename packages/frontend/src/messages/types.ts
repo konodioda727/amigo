@@ -1,4 +1,4 @@
-import type { SERVER_SEND_MESSAGE_NAME, ToolNames, ToolParam, ToolParams, ToolResult, WebSocketMessage } from "@amigo/types";
+import type { SERVER_SEND_MESSAGE_NAME, ToolNames, ToolParams, ToolResult, WebSocketMessage } from "@amigo/types";
 
 /**
  * message 接收函数类型

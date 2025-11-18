@@ -40,7 +40,7 @@ export const useMessages = () => {
   const updateMessage = useCallback(
     <T extends USER_SEND_MESSAGE_NAME>(newMessage: WebSocketMessage<T>) => {
       currentMessagesRef.current.push(newMessage);
-      setMessages(currentMessagesRef.current);
+      setMessages([...currentMessagesRef.current]);
     },
     [],
   );

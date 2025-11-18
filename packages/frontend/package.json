@@ -10,16 +10,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@tiptap/extension-mention": "^2.1.0",
+    "@tiptap/extension-mention": "^2.27.1",
     "@tiptap/extension-placeholder": "^2.1.0",
     "@tiptap/react": "^2.1.0",
     "@tiptap/starter-kit": "^2.1.0",
+    "@tiptap/suggestion": "^2.7.0",
     "lodash": "^4.17.21",
     "lucide-react": "^0.544.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-icons": "^4.11.0",
     "streamdown": "^1.3.0",
+    "tippy.js": "^6.3.7",
     "uuid": "^9.0.1"
   },
   "devDependencies": {

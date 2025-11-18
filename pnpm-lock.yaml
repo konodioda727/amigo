@@ -15,7 +15,7 @@ importers:
   packages/frontend:
     dependencies:
       '@tiptap/extension-mention':
-        specifier: ^2.1.0
+        specifier: ^2.27.1
         version: 2.27.1(@tiptap/core@2.27.1(@tiptap/pm@2.27.1))(@tiptap/pm@2.27.1)(@tiptap/suggestion@2.27.1(@tiptap/core@2.27.1(@tiptap/pm@2.27.1))(@tiptap/pm@2.27.1))
       '@tiptap/extension-placeholder':
         specifier: ^2.1.0
@@ -26,6 +26,9 @@ importers:
       '@tiptap/starter-kit':
         specifier: ^2.1.0
         version: 2.27.1
+      '@tiptap/suggestion':
+        specifier: ^2.7.0
+        version: 2.27.1(@tiptap/core@2.27.1(@tiptap/pm@2.27.1))(@tiptap/pm@2.27.1)
       lodash:
         specifier: ^4.17.21
         version: 4.17.21
@@ -44,6 +47,9 @@ importers:
       streamdown:
         specifier: ^1.3.0
         version: 1.3.0(@types/react@18.3.24)(react@18.3.1)
+      tippy.js:
+        specifier: ^6.3.7
+        version: 6.3.7
       uuid:
         specifier: ^9.0.1
         version: 9.0.1
@@ -129,7 +135,7 @@ importers:
     devDependencies:
       '@types/bun':
         specifier: latest
-        version: 1.2.23(@types/react@19.1.13)
+        version: 1.3.2(@types/react@19.1.13)
 
   packages/types:
     dependencies:
@@ -987,8 +993,8 @@ packages:
   '@types/babel__traverse@7.28.0':
     resolution: {integrity: sha512-8PvcXf70gTDZBgt9ptxJ8elBeBjcLOAcOtoO/mPJjtji1+CdGbHgm77om1GrsPxsiE+uXIpNSK64UYaIwQXd4Q==}
 
-  '@types/bun@1.2.23':
-    resolution: {integrity: sha512-le8ueOY5b6VKYf19xT3McVbXqLqmxzPXHsQT/q9JHgikJ2X22wyTW3g3ohz2ZMnp7dod6aduIiq8A14Xyimm0A==}
+  '@types/bun@1.3.2':
+    resolution: {integrity: sha512-t15P7k5UIgHKkxwnMNkJbWlh/617rkDGEdSsDbu+qNHTaz9SKf7aC8fiIlUdD5RPpH6GEkP0cK7WlvmrEBRtWg==}
 
   '@types/d3-array@3.2.2':
     resolution: {integrity: sha512-hOLWVbm7uRza0BYXpIIW5pxfrKe0W+D5lrFiAEYR+pb6w3N2SwSMaJbXdUfSEv+dT4MfHBLtn5js0LAWaO6otw==}
@@ -1225,8 +1231,8 @@ packages:
     engines: {node: ^6 || ^7 || ^8 || ^9 || ^10 || ^11 || ^12 || >=13.7}
     hasBin: true
 
-  bun-types@1.2.23:
-    resolution: {integrity: sha512-R9f0hKAZXgFU3mlrA0YpE/fiDvwV0FT9rORApt2aQVWSuJDzZOyB5QLc0N/4HF57CS8IXJ6+L5E4W1bW6NS2Aw==}
+  bun-types@1.3.2:
+    resolution: {integrity: sha512-i/Gln4tbzKNuxP70OWhJRZz1MRfvqExowP7U6JKoI8cntFrtxg7RJK3jvz7wQW54UuvNC8tbKHHri5fy74FVqg==}
     peerDependencies:
       '@types/react': ^19
 
@@ -3535,9 +3541,9 @@ snapshots:
     dependencies:
       '@babel/types': 7.28.4
 
-  '@types/bun@1.2.23(@types/react@19.1.13)':
+  '@types/bun@1.3.2(@types/react@19.1.13)':
     dependencies:
-      bun-types: 1.2.23(@types/react@19.1.13)
+      bun-types: 1.3.2(@types/react@19.1.13)
     transitivePeerDependencies:
       - '@types/react'
 
@@ -3797,7 +3803,7 @@ snapshots:
       node-releases: 2.0.21
       update-browserslist-db: 1.1.3(browserslist@4.26.2)
 
-  bun-types@1.2.23(@types/react@19.1.13):
+  bun-types@1.3.2(@types/react@19.1.13):
     dependencies:
       '@types/node': 24.3.3
       '@types/react': 19.1.13

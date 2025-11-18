@@ -13,5 +13,5 @@ export const handleCommonMessage: MessageResolvers<"message"> = ({
   } else {
     currentMessagesRef.current = [...currentMessagesRef.current, newMessage];
   }
-  setMessages(currentMessagesRef.current);
+  setMessages([...currentMessagesRef.current]);
 };

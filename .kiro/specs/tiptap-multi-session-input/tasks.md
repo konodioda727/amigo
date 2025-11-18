@@ -5,7 +5,7 @@
   - Verify installation and build compatibility
   - _Requirements: 4.1, 4.4_
 
-- [x] 2. Create basic TiptapMessageInput component
+- [ ] 2. Create basic TiptapMessageInput component
   - [x] 2.1 Create TiptapMessageInput.tsx component file
     - Initialize Tiptap editor with starter-kit
     - Add placeholder extension with "输入消息..." text
@@ -31,25 +31,25 @@
     - _Requirements: 4.5_
 
 - [ ] 3. Implement mention extension for session selection
-  - [ ] 3.1 Configure Mention extension
+  - [x] 3.1 Configure Mention extension
     - Set trigger character to "/"
     - Create mention suggestion component
     - Style dropdown with DaisyUI classes
     - _Requirements: 1.1_
 
-  - [ ] 3.2 Build session suggestion list
+  - [x] 3.2 Build session suggestion list
     - Create getSuggestions function to filter active sessions
     - Render main session and sub-tasks in dropdown
     - Add icons to differentiate session types (🏠 for main, 📋 for subtasks)
     - _Requirements: 1.1, 5.2, 5.3, 5.4_
 
-  - [ ] 3.3 Handle mention selection
+  - [x] 3.3 Handle mention selection
     - Store selected session ID in editor state
     - Insert mention node with session label
     - Update targetSessionId state when mention is selected
     - _Requirements: 1.2_
 
-  - [ ] 3.4 Extract session ID from editor content
+  - [x] 3.4 Extract session ID from editor content
     - Parse editor content for mention nodes
     - Extract session ID from mention attributes
     - Pass targetSessionId to sendMessage function

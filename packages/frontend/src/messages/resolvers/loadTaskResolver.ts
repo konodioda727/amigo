@@ -4,5 +4,5 @@ export const handleTaskHistoryMessageResolver: MessageResolvers<'taskHistory'> =
     const {messages} = newMessage.data
     
     currentMessagesRef.current = messages
-    setMessages(currentMessagesRef.current)
+    setMessages([...currentMessagesRef.current])
 }

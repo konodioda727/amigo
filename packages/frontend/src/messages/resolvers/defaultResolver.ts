@@ -9,5 +9,5 @@ export const defaultResolver: MessageResolvers<any> = ({newMessage, currentMessa
     } else {
       currentMessagesRef.current = [...currentMessagesRef.current, newMessage];
     }
-    setMessages(currentMessagesRef.current);
+    setMessages([...currentMessagesRef.current]);
 }

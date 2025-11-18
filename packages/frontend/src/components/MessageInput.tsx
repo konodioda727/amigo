@@ -1,66 +1,137 @@
-import { useState, useEffect } from "react";
-import { FaPaperPlane, FaStop, FaPlay } from "react-icons/fa";
+import { useState, useRef } from "react";
+import { useEditor, EditorContent } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import Placeholder from "@tiptap/extension-placeholder";
+import Mention from "@tiptap/extension-mention";
+import { FaPaperPlane, FaPlay, FaStop } from "react-icons/fa";
 import { useWebSocket } from "./WebSocketProvider";
-import { v4 as uuidv4 } from "uuid";
 import { toast } from "@/utils/toast";
-
-type ButtonState = "send" | "stop" | "resume";
+import { useActiveSessions } from "./MessageInput/useActiveSessions";
+import { useMentionSuggestion } from "./MessageInput/useMentionSuggestion";
+import { useButtonState } from "./MessageInput/useButtonState";
+import { editorStyles } from "./MessageInput/styles";
+import { v4 as uuidv4 } from "uuid";
 
 const MessageInput = () => {
-  const { sendMessage, displayMessages, taskId } = useWebSocket();
-  const [inputContent, setInputContent] = useState<string>("");
-  const [buttonState, setButtonState] = useState<ButtonState>("send");
+  const { sendMessage, taskId } = useWebSocket();
+  const { getActiveSessions } = useActiveSessions();
+  const [targetSessionId, setTargetSessionId] = useState<string | null>(null);
+  const isSuggestionActiveRef = useRef(false);
 
-  const lastMessage = displayMessages[displayMessages.length - 1];
+  const suggestionConfig = useMentionSuggestion({
+    getActiveSessions,
+    onSessionSelect: setTargetSessionId,
+    onSuggestionStart: () => {
+      isSuggestionActiveRef.current = true;
+    },
+    onSuggestionExit: () => {
+      isSuggestionActiveRef.current = false;
+    },
+  });
 
-  // 根据消息状态和输入框内容自动更新按钮状态
-  useEffect(() => {
-    if (!lastMessage) {
-      setButtonState("send");
-      return;
+  const handleKeyDown = (_view: unknown, event: KeyboardEvent) => {
+    // Don't handle Enter if suggestion dropdown is visible
+    if (event.key === "Enter" && !event.shiftKey && !isSuggestionActiveRef.current) {
+      event.preventDefault();
+      // Use setTimeout to ensure handleClick is defined
+      setTimeout(() => {
+        const content = editor?.getText().trim();
+        if (!content) {
+          toast.warning("请输入消息内容");
+          return;
+        }
+
+        const extractedSessionId = extractSessionIdFromEditor();
+        const effectiveSessionId = extractedSessionId || targetSessionId;
+        const currentTaskId = taskId || uuidv4();
+        const messageTaskId = effectiveSessionId || currentTaskId;
+
+        sendMessage({
+          data: { message: content, taskId: messageTaskId, updateTime: Date.now() },
+          type: "userSendMessage",
+        });
+
+        editor?.commands.clearContent();
+        setTargetSessionId(null);
+      }, 0);
+      return true;
     }
+    return false;
+  };
 
-    // 如果最后一条消息的 type 是 interrupt
-    if (lastMessage.type === "interrupt") {
-      // 如果输入框有内容，显示 send；否则显示 resume
-      setButtonState(inputContent.trim() ? "send" : "resume");
-      return;
-    }
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({
+        hardBreak: {
+          keepMarks: true,
+        },
+      }),
+      Placeholder.configure({
+        placeholder: "输入消息... (输入 / 选择会话)",
+      }),
+      Mention.configure({
+        HTMLAttributes: {
+          class: "mention",
+        },
+        suggestion: suggestionConfig,
+      }),
+    ],
+    content: "",
+    editorProps: {
+      attributes: {
+        class: "focus:outline-none",
+      },
+      handleKeyDown,
+    },
+  });
 
-    // 如果最后一条是用户消息且状态为 pending 或 acked，显示 stop
-    if ("status" in lastMessage) {
-      const status = (lastMessage as any).status;
-      if (status === "pending" || status === "acked") {
-        setButtonState("stop");
-        return;
+  const buttonState = useButtonState(editor);
+
+  const extractSessionIdFromEditor = (): string | null => {
+    if (!editor) return null;
+
+    const json = editor.getJSON();
+    const findMention = (node: {
+      type?: string;
+      attrs?: { id?: string };
+      content?: unknown[];
+    }): string | null => {
+      if (node.type === "mention" && node.attrs?.id) {
+        return node.attrs.id;
       }
-    }
-
-    // 如果最后一条是流式消息（partial），显示 stop
-    if (("message" in lastMessage || "think" in lastMessage) && (lastMessage as any).partial) {
-      setButtonState("stop");
-      return;
-    }
-
-    // 其他情况显示 send
-    setButtonState("send");
-  }, [lastMessage, inputContent]);
+      if (node.content && Array.isArray(node.content)) {
+        for (const child of node.content) {
+          const result = findMention(
+            child as { type?: string; attrs?: { id?: string }; content?: unknown[] }
+          );
+          if (result) return result;
+        }
+      }
+      return null;
+    };
+    return findMention(json);
+  };
 
   const handleSend = () => {
-    if (!inputContent.trim()) {
+    const content = editor?.getText().trim();
+
+    if (!content) {
       toast.warning("请输入消息内容");
       return;
     }
 
-    // 如果没有 taskId，生成一个新的
-    // 发送消息后，服务端会返回 ack，自动更新 taskId
+    const extractedSessionId = extractSessionIdFromEditor();
+    const effectiveSessionId = extractedSessionId || targetSessionId;
     const currentTaskId = taskId || uuidv4();
+    const messageTaskId = effectiveSessionId || currentTaskId;
 
     sendMessage({
-      data: { message: inputContent, taskId: currentTaskId, updateTime: Date.now() },
+      data: { message: content, taskId: messageTaskId, updateTime: Date.now() },
       type: "userSendMessage",
     });
-    setInputContent("");
+
+    editor?.commands.clearContent();
+    setTargetSessionId(null);
   };
 
   const handleStop = () => {
@@ -68,10 +139,7 @@ const MessageInput = () => {
       toast.error("找不到当前任务");
       return;
     }
-
-    sendMessage({ type: "interrupt", data: { taskId, updateTime: new Date().valueOf() } });
-    // 立即切换按钮状态
-    setButtonState("send");
+    sendMessage({ type: "interrupt", data: { taskId, updateTime: Date.now() } });
   };
 
   const handleResume = () => {
@@ -79,12 +147,7 @@ const MessageInput = () => {
       toast.error("找不到当前任务");
       return;
     }
-
-    // Resume 就是继续对话，发送 resume 消息让服务端恢复执行
-    sendMessage({
-      type: "resume",
-      data: { taskId },
-    });
+    sendMessage({ type: "resume", data: { taskId } });
   };
 
   const handleClick = () => {
@@ -97,32 +160,20 @@ const MessageInput = () => {
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleClick();
-    }
-  };
-
   return (
-    <div className="flex gap-2 mb-4">
-      <textarea
-        className="textarea textarea-bordered flex-grow"
-        placeholder="输入消息..."
-        value={inputContent}
-        onChange={(e) => setInputContent(e.target.value)}
-        onKeyPress={handleKeyPress}
-      />
-      <button
-        onClick={handleClick}
-        className="btn btn-primary btn-square"
-        type="button"
-      >
-        {buttonState === "stop" && <FaStop className="w-4 h-4" />}
-        {buttonState === "resume" && <FaPlay className="w-4 h-4" />}
-        {buttonState === "send" && <FaPaperPlane className="w-4 h-4" />}
-      </button>
-    </div>
+    <>
+      <style>{editorStyles}</style>
+      <div className="flex gap-2 mb-4">
+        <div className="tiptap-editor-wrapper">
+          <EditorContent editor={editor} />
+        </div>
+        <button onClick={handleClick} className="btn btn-primary btn-square" type="button">
+          {buttonState === "stop" && <FaStop className="w-4 h-4" />}
+          {buttonState === "resume" && <FaPlay className="w-4 h-4" />}
+          {buttonState === "send" && <FaPaperPlane className="w-4 h-4" />}
+        </button>
+      </div>
+    </>
   );
 };
 
