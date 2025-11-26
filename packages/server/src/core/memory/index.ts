@@ -88,11 +88,15 @@ export class FilePersistedMemory {
   }
 
   /**
-   * 判断是否是新会话（文件不存在）
+   * 判断是否是新会话（文件不存在或 messages 为空）
    */
   public isNewSession(): boolean {
     const targetPath = path.join(this.storagePath, `${StorageType.ORIGINAL}.json`);
-    return !existsSync(targetPath);
+    if (!existsSync(targetPath)) {
+      return true;
+    }
+    // 文件存在但 messages 为空也认为是新会话
+    return this._messages.length === 0;
   }
 
   private loadWebsocketFromFile(): void {

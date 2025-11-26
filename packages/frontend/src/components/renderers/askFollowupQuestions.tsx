@@ -6,46 +6,50 @@ import { useWebSocket } from "@/components/WebSocketProvider";
 const AskFollowupQuestionRenderer: React.FC<AskFollowupQuestionType> = ({
   question,
   sugestions,
+  disabled: propsDisabled,
+  selectedOption: propsSelectedOption,
 }) => {
   const { sendMessage, taskId } = useWebSocket();
-  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const [localSelectedOption, setLocalSelectedOption] = useState<string | null>(null);
+  
+  // 优先使用 props 中的 selectedOption（来自历史消息），否则使用本地状态
+  const selectedOption = propsSelectedOption ?? localSelectedOption;
+  const isDisabledByProps = propsDisabled || propsSelectedOption !== undefined;
   
   const handleSuggestionClick = (suggestion: string) => {
-    // 标记已选择的选项
-    setSelectedOption(suggestion);
-
-    // 直接使用 sendMessage，WebSocketProvider 会自动处理 taskId
+    if (isDisabledByProps) return;
+    
+    setLocalSelectedOption(suggestion);
     sendMessage({
       type: "userSendMessage",
       data: {
         message: suggestion,
-        taskId: taskId || '', // taskId 会被 WebSocketProvider 自动注入
+        taskId: taskId || '',
         updateTime: Date.now(),
       },
     });
   };
 
   return (
-    <div className="mb-4 max-w-[80%]">
-      {/* 问题作为普通的系统消息 */}
+    <div className="mb-4">
       <div className="chat chat-start">
-        <div className="chat-bubble bg-neutral-100 text-neutral-900 rounded-xl px-4 py-3">
+        <div className="chat-bubble bg-neutral-100 text-neutral-900 rounded-xl px-4 py-3 shadow-none max-w-[85%] break-words overflow-hidden">
           <div className="text-sm leading-relaxed whitespace-pre-wrap">{question}</div>
         </div>
       </div>
 
-      {/* 建议选项 - 简洁的气泡样式 */}
       {sugestions && sugestions.length > 0 && (
         <div className="flex flex-wrap gap-2 mt-2">
           {sugestions.map((suggestion) => {
             const isSelected = selectedOption === suggestion;
-            const isDisabled = selectedOption !== null && !isSelected;
+            const isOtherSelected = selectedOption !== null && !isSelected;
+            const isClickDisabled = isDisabledByProps || localSelectedOption !== null;
             
             return (
               <button
                 key={suggestion}
                 type="button"
-                disabled={selectedOption !== null}
+                disabled={isClickDisabled}
                 className={`
                   px-3 py-1.5
                   rounded-full
@@ -54,7 +58,7 @@ const AskFollowupQuestionRenderer: React.FC<AskFollowupQuestionType> = ({
                   ${
                     isSelected
                       ? "bg-primary text-white"
-                      : isDisabled
+                      : isOtherSelected || isDisabledByProps
                         ? "bg-neutral-100 text-neutral-400 cursor-not-allowed"
                         : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
                   }

@@ -49,7 +49,7 @@
 ✅ **正确示例：使用 completionResult 工具**
 ```xml
 <completionResult>
-  <content>任务已完成！我已经成功创建了用户配置文件，所有设置都已保存。</content>
+  任务已完成！我已经成功创建了用户配置文件，所有设置都已保存。
 </completionResult>
 ```
 
@@ -61,7 +61,7 @@
 ✅ **正确示例：即使是简单任务也要调用 completionResult**
 ```xml
 <completionResult>
-  <content>好的，我已经完成了所有步骤。</content>
+  好的，我已经完成了所有步骤。
 </completionResult>
 ```
 
@@ -225,7 +225,7 @@
 
 ```xml
 <completionResult>
-  <content><![CDATA[代码示例：if (x > 5 && y < 10) { ... }]]></content>
+  <![CDATA[代码示例：if (x > 5 && y < 10) { ... }]]>
 </completionResult>
 ```
 

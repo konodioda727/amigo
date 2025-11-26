@@ -18,7 +18,7 @@ class AmigoServer {
 
   init() {
     Bun.serve({
-      fetch: (req, server) => {
+      fetch: (req: any, server: any) => {
         if (server.upgrade(req)) {
           return;
         }
@@ -29,7 +29,6 @@ class AmigoServer {
         message: async (ws: ServerWebSocket, message: string) => {
           let parsedMessage: WebSocketMessage<USER_SEND_MESSAGE_NAME> | undefined;
           try {
-            // 解析消息
             parsedMessage = JSON.parse(message) as WebSocketMessage<USER_SEND_MESSAGE_NAME>;
 
             let manager = ConversationManager.taskMapToConversationManager[parsedMessage.data.taskId];
@@ -40,7 +39,6 @@ class AmigoServer {
                 taskId: parsedMessage.data.taskId,
               });
               ConversationManager.taskMapToConversationManager[parsedMessage.data.taskId] = manager;
-              // 检查是否是真正的新会话（文件不存在）
               isNewSession = manager.isNewSession();
             }
             if (!manager.connections.includes(ws)) {
@@ -61,7 +59,6 @@ class AmigoServer {
             await resolver.process(parsedMessage.data);
             
             // 如果是新会话，在处理完消息后发送更新后的会话历史列表
-            // 这样可以确保新会话已经被保存到文件系统
             if (isNewSession) {
               manager.emitMessage({
                 type: "sessionHistories",
@@ -75,7 +72,6 @@ class AmigoServer {
           }
         },
         open: async (ws: ServerWebSocket) => {
-          // 发送连接成功消息
           ws.send(
             JSON.stringify({
               type: "connected",

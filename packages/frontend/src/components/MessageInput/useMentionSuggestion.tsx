@@ -20,6 +20,8 @@ export const useMentionSuggestion = ({
 }: UseMentionSuggestionProps): Omit<SuggestionOptions, "editor"> => {
   return {
     char: "/",
+    allowSpaces: false,
+    allowedPrefixes: null, // 允许在任何位置触发，不需要前面有空格
     items: ({ query }) => {
       const sessions = getActiveSessions();
       return sessions.filter((session) =>
@@ -107,22 +109,48 @@ export const useMentionSuggestion = ({
       const session = props as SessionInfo;
       onSessionSelect(session.id);
       
+      // 先删除触发字符（/xxx）
+      editor.chain().focus().deleteRange(range).run();
+      
+      // 获取当前内容，过滤掉所有已存在的 mention
+      const currentContent = editor.getJSON();
+      let existingContent = (currentContent.content?.[0]?.content || [])
+        .filter((node: { type?: string }) => node.type !== "mention");
+      
+      // 移除开头的空格文本节点
+      if (existingContent.length > 0 && existingContent[0].type === "text") {
+        const firstText = existingContent[0].text as string;
+        const trimmedText = firstText.replace(/^\s+/, "");
+        if (trimmedText) {
+          existingContent[0] = { ...existingContent[0], text: trimmedText };
+        } else {
+          existingContent = existingContent.slice(1);
+        }
+      }
+      
+      // 构建内容数组
+      const content: unknown[] = [
+        {
+          type: "mention",
+          attrs: {
+            id: session.id,
+            label: session.title,
+          },
+        },
+      ];
+      
+      // 只有当有其他内容时才添加空格
+      if (existingContent.length > 0) {
+        content.push({ type: "text", text: " " });
+        content.push(...existingContent);
+      }
+      
+      // 在最前方插入新的 mention（覆盖之前的）
       editor
         .chain()
         .focus()
-        .insertContentAt(range, [
-          {
-            type: "mention",
-            attrs: {
-              id: session.id,
-              label: session.title,
-            },
-          },
-          {
-            type: "text",
-            text: " ",
-          },
-        ])
+        .setContent([{ type: "paragraph", content }])
+        .focus("end")
         .run();
     },
   };

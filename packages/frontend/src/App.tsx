@@ -1,10 +1,9 @@
 import type React from "react";
 import { Toaster } from "react-hot-toast";
-import { WebSocketProvider } from "./components/WebSocketProvider";
 import ChatWindow from "./components/ChatWindow";
+import Layout from "./components/Layout";
 import MessageInput from "./components/MessageInput";
-import Sidebar from "./components/Sidebar";
-import MainContent from "./components/MainContent";
+import { WebSocketProvider } from "./components/WebSocketProvider";
 
 const App: React.FC = () => {
   return (
@@ -18,11 +17,10 @@ const App: React.FC = () => {
           },
         }}
       />
-      <Sidebar />
-      <MainContent>
+      <Layout>
         <ChatWindow />
         <MessageInput />
-      </MainContent>
+      </Layout>
     </WebSocketProvider>
   );
 };

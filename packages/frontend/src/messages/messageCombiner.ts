@@ -71,10 +71,11 @@ const messageProcessor: MessageProcessor<'message'> = ({ msg, res, pendingThink 
 const completionResultProcessor: MessageProcessor<'completionResult'> = ({ msg, res }) => {
   if (msg.type !== "completionResult") return { handled: false };
   const completionData = msg.data;
+  
   let conclusion = '';
   try {
     const parsed = JSON.parse(completionData.message || "");
-    conclusion = parsed?.params?.completionResult?.content || parsed?.result?.completionResult || '';
+    conclusion = parsed?.params || '';
   } catch (error) {
     console.error("处理 completionResult 消息时出错:", error);
   }
@@ -257,7 +258,42 @@ export const combineMessages = (messages: SupportedWebsocketMessage[]): DisplayM
       pendingThink = newPendingThink ?? pendingThink;
     }
   }
+  
+  // 后处理：为 askFollowupQuestion 设置 disabled 和 selectedOption
+  postProcessAskFollowupQuestions(res);
+  
   return res;
+};
+
+/**
+ * 后处理 askFollowupQuestion 消息
+ * - 非最后一条 askFollowupQuestion 设置 disabled
+ * - 如果紧跟的用户消息匹配选项，设置 selectedOption
+ */
+const postProcessAskFollowupQuestions = (messages: DisplayMessageType[]) => {
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.type !== "askFollowupQuestion") continue;
+    
+    // 检查是否是最后一条消息
+    const isLastMessage = i === messages.length - 1;
+    
+    // 查找紧跟的下一条用户消息
+    const nextMsg = messages[i + 1];
+    const nextUserMessage = nextMsg?.type === "userSendMessage" ? nextMsg.message : null;
+    
+    // 检查用户消息是否匹配选项
+    const matchedOption = nextUserMessage && msg.sugestions?.includes(nextUserMessage)
+      ? nextUserMessage
+      : undefined;
+    
+    // 更新消息
+    messages[i] = {
+      ...msg,
+      disabled: !isLastMessage,
+      selectedOption: matchedOption,
+    };
+  }
 };
 
 /**

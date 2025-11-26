@@ -30,13 +30,11 @@ export class ConversationManager {
   public connections: ServerWebSocket[] = [];
   public userInput: string = "";
 
-  // 类属性声明
   public memory!: FilePersistedMemory;
   private toolService!: ToolService;
   private llm: any;
   private conversationType!: "main" | "sub";
 
-  // 各个管理器
   private messageEmitter!: MessageEmitter;
   private toolExecutor!: ToolExecutor;
   private errorHandler!: ErrorHandler;

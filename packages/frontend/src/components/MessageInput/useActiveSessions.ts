@@ -15,44 +15,43 @@ export const useActiveSessions = () => {
         { id: taskId || "", type: "main", title: "主会话", isActive: true },
       ];
 
-      console.log("[useActiveSessions] displayMessages:", displayMessages);
-
-      displayMessages.forEach((msg) => {
-        if (msg.type === "tool") {
-          // Type guard to check if it's a tool message
-          const toolMsg = msg as { 
-            type: "tool";
-            toolName: string;
-            params: Record<string, unknown>;
-            updateTime: number;
+      // 获取最后一条消息
+      const lastMessage = displayMessages[displayMessages.length - 1];
+      
+      // 只有当最后一条消息是 assignTasks 工具调用时，才显示子任务
+      if (lastMessage?.type === "tool") {
+        const toolMsg = lastMessage as {
+          type: "tool";
+          toolName: string;
+          params: Record<string, unknown>;
+          toolOutput?: unknown;
+          updateTime: number;
+        };
+        
+        if (toolMsg.toolName === "assignTasks") {
+          const params = toolMsg.params as { 
+            tasklist?: Array<{ taskId?: string; target?: string; completed?: boolean }> 
           };
-          
-          console.log("[useActiveSessions] Found tool message:", toolMsg.toolName, toolMsg.params);
-          
-          if (toolMsg.toolName === "assignTasks") {
-            const params = toolMsg.params as { 
-              tasklist?: Array<{ taskId?: string; target?: string }> 
-            };
-            const tasklist = params.tasklist || [];
+          const tasklist = params.tasklist || [];
 
-            console.log("[useActiveSessions] assignTasks tasklist:", tasklist);
+          // 检查是否有未完成的子任务
+          const hasIncompleteSubtasks = tasklist.some(task => !task.completed);
 
+          if (hasIncompleteSubtasks) {
             tasklist.forEach((task, idx: number) => {
               if (task.taskId) {
-                console.log("[useActiveSessions] Adding subtask:", task.taskId, task.target);
                 sessions.push({
                   id: task.taskId,
                   type: "subtask",
                   title: task.target || `子任务 #${idx + 1}`,
-                  isActive: true,
+                  isActive: !task.completed,
                 });
               }
             });
           }
         }
-      });
+      }
 
-      console.log("[useActiveSessions] Final sessions:", sessions);
       return sessions;
     };
   }, [displayMessages, taskId]);

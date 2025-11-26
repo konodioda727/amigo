@@ -49,13 +49,15 @@ const SubTaskContent: React.FC<
         className="flex items-center gap-2 text-sm w-full text-left hover:bg-neutral-50 rounded px-1 -mx-1 cursor-pointer"
       >
         {isExpanded ? (
-          <ChevronDown className="w-3.5 h-3.5 text-neutral-400" />
+          <ChevronDown className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
         ) : (
-          <ChevronRight className="w-3.5 h-3.5 text-neutral-400" />
+          <ChevronRight className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
         )}
-        <span className="font-medium text-neutral-700">#{taskIndex + 1}</span>
-        <StatusIcon hasError={hasError} isCompleted={isCompleted} hasFollowupQuestion={hasFollowupQuestion} />
-        <span className="text-neutral-500 truncate">{taskTarget}</span>
+        <span className="font-medium text-neutral-700 shrink-0">#{taskIndex + 1}</span>
+        <div className="shrink-0">
+          <StatusIcon hasError={hasError} isCompleted={isCompleted} hasFollowupQuestion={hasFollowupQuestion} />
+        </div>
+        <span className="text-neutral-500 truncate min-w-0">{taskTarget}</span>
       </button>
 
       {/* 展开内容 */}
@@ -103,7 +105,7 @@ const SubTaskRenderer: React.FC<SubTaskRendererProps> = (props) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
-    <WebSocketProvider>
+    <WebSocketProvider initialTaskId={props.taskId}>
       <SubTaskContent {...props} isExpanded={isExpanded} setIsExpanded={setIsExpanded} />
     </WebSocketProvider>
   );

@@ -39,6 +39,10 @@ export interface FrontendToolMessageType<T extends ToolNames> extends MessageTyp
 export interface AskFollowupQuestionType extends MessageType<"askFollowupQuestion"> {
   question: string;
   sugestions: string[];
+  /** 是否禁用（非最新消息时禁用） */
+  disabled?: boolean;
+  /** 用户已选择的选项（如果下一条用户消息匹配选项） */
+  selectedOption?: string;
 }
 
 /**

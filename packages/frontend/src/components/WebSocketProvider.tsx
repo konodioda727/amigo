@@ -13,23 +13,27 @@ import type {
   USER_SEND_MESSAGE_NAME,
 } from "@amigo/types";
 import { useMessages } from "../messages";
-import { DisplayMessageType } from "@/messages/types";
+import type { DisplayMessageType } from "@/messages/types";
 import { toast } from "@/utils/toast";
 
 type Unsubscribe = () => void;
 type Listener<T extends SERVER_SEND_MESSAGE_NAME> = (data: ServerSendMessageData<T>) => void;
 
+export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "reconnecting";
+
 interface WebSocketContextType {
   socket: WebSocket | null;
   taskId: string;
   setTaskId: React.Dispatch<React.SetStateAction<string>>;
-  taskHistories: Array<{ taskId: string; title: string }>;
+  taskHistories: Array<{ taskId: string; title: string; updatedAt: string }>;
   displayMessages: DisplayMessageType[];
   isLoading: boolean;
+  connectionStatus: ConnectionStatus;
   sendMessage: <T extends USER_SEND_MESSAGE_NAME>(newMessage: WebSocketMessage<T>) => void;
   subscribe: <T extends SERVER_SEND_MESSAGE_NAME>(type: T, listener: Listener<T>) => Unsubscribe;
   createNewConversation: () => void;
   registerInputFocus: (focusFn: () => void) => void;
+  registerInputReset: (resetFn: () => void) => void;
 }
 
 const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
@@ -44,16 +48,21 @@ export const useWebSocket = () => {
 
 interface WebSocketProviderProps {
   children: React.ReactNode;
+  initialTaskId?: string;
 }
 
-export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }) => {
+export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children, initialTaskId }) => {
   const [socket, setSocket] = useState<WebSocket | null>(null);
-  const [taskId, setTaskId] = useState<string>('');
-  const [taskHistories, setTaskHistories] = useState<Array<{ taskId: string; title: string }>>([]);
+  const [taskId, setTaskId] = useState<string>(initialTaskId || '');
+  const [taskHistories, setTaskHistories] = useState<Array<{ taskId: string; title: string; updatedAt: string }>>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
   const { processReceivedMessage, updateMessage, clearMessages, combinedMessages: displayMessages } = useMessages();
   const listenersRef = useRef<Record<SERVER_SEND_MESSAGE_NAME, Listener<any>[]>>({} as any);
   const inputFocusRef = useRef<(() => void) | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectDelayRef = useRef<number>(1000); // 初始重连间隔 1 秒
+  const maxReconnectDelay = 30000; // 最大重连间隔 30 秒
 
   const subscribe = useCallback(<T extends SERVER_SEND_MESSAGE_NAME>(type: T, listener: Listener<T>): Unsubscribe => {
     const listeners = (listenersRef.current[type] || []) as Listener<T>[];
@@ -66,12 +75,30 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
     };
   }, []);
 
+  const scheduleReconnect = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+    }
+    
+    setConnectionStatus("reconnecting");
+    console.log(`[WebSocket] Scheduling reconnect in ${reconnectDelayRef.current}ms`);
+    
+    reconnectTimeoutRef.current = setTimeout(() => {
+      connectWebSocket();
+      // 指数退避：每次重连间隔翻倍，最大 30 秒
+      reconnectDelayRef.current = Math.min(reconnectDelayRef.current * 2, maxReconnectDelay);
+    }, reconnectDelayRef.current);
+  }, []);
+
   const connectWebSocket = useCallback(() => {
+    setConnectionStatus("connecting");
     const ws = new WebSocket("ws://localhost:10013");
 
     ws.onopen = () => {
       console.log("WebSocket connection established.");
       setSocket(ws);
+      setConnectionStatus("connected");
+      reconnectDelayRef.current = 1000;
     };
 
     ws.onmessage = (event) => {
@@ -84,11 +111,11 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
           setTaskHistories(data.sessionHistories || []);
         }
         
-        // 监听 ack 消息，自动更新 taskId
+        // 监听 ack 消息
         if (newMessage.type === 'ack') {
           const ackData = newMessage.data as any;
           if (ackData.taskId && ackData.taskId !== taskId) {
-            console.log(`[WebSocketProvider] Auto-updating taskId from ack: ${ackData.taskId}`);
+            console.log(`[WebSocketProvider] Auto-setting taskId from ack: ${ackData.taskId}`);
             setTaskId(ackData.taskId);
           }
           if(ackData.targetMessage.type === 'userSendMessage') {
@@ -124,9 +151,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
         const messageType = newMessage.type as SERVER_SEND_MESSAGE_NAME;
         const listeners = listenersRef.current[messageType];
         if (listeners && listeners.length > 0) {
-          listeners.forEach(listener => {
+          for (const listener of listeners) {
             listener(newMessage.data);
-          });
+          }
         }
       } catch (error) {
         console.error("Failed to parse message data:", error);
@@ -136,6 +163,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
     ws.onclose = () => {
       console.log("WebSocket connection closed.");
       setSocket(null);
+      setConnectionStatus("disconnected");
+      // 自动重连
+      scheduleReconnect();
     };
 
     ws.onerror = (error) => {
@@ -143,24 +173,35 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
     };
 
     return ws;
-  }, [processReceivedMessage]);
+  }, [processReceivedMessage, scheduleReconnect]);
 
   const sendMessage = useCallback(<T extends USER_SEND_MESSAGE_NAME>(newMessage: WebSocketMessage<T>) => {
-    // 如果有 taskId，自动注入到 userSendMessage 中
-    const messageToSend = taskId && newMessage.type === "userSendMessage" 
+    // 只在消息中没有 taskId 时，才使用当前 Provider 的 taskId
+    const messageToSend = newMessage.type === "userSendMessage" 
       ? {
           ...newMessage,
           data: {
             ...newMessage.data,
-            taskId, // 自动使用当前 Provider 的 taskId
+            taskId: (newMessage.data as any).taskId || taskId, // 优先使用消息中的 taskId
           }
         }
       : newMessage;
 
     // userSendMessage 和 interrupt 需要添加到消息列表中
-    // resume、loadTask 等控制消息不需要显示
+    // callSubTask 也需要添加（显示为用户消息）
     if (messageToSend.type === "userSendMessage") {
       updateMessage({ ...messageToSend, data: { ...messageToSend.data, status: "pending" } });
+    // } else if (messageToSend.type === "callSubTask") {
+    //   // callSubTask 也显示为用户消息
+    //   updateMessage({
+    //     type: "userSendMessage",
+    //     data: {
+    //       message: (messageToSend.data as any).message,
+    //       taskId: taskId,
+    //       updateTime: Date.now(),
+    //       status: "pending",
+    //     },
+    //   } as any);
     } else if (messageToSend.type === "interrupt") {
       updateMessage(messageToSend);
     }
@@ -171,6 +212,10 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
     const ws = connectWebSocket();
 
     return () => {
+      // 清理重连定时器
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.close();
       }
@@ -200,6 +245,12 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
     inputFocusRef.current = focusFn;
   }, []);
 
+  // 注册输入框重置函数
+  const inputResetRef = useRef<(() => void) | null>(null);
+  const registerInputReset = useCallback((resetFn: () => void) => {
+    inputResetRef.current = resetFn;
+  }, []);
+
   // 创建新对话
   const createNewConversation = useCallback(() => {
     // 清空消息
@@ -208,6 +259,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
     // 清空 taskId
     setTaskId('');
     prevTaskIdRef.current = '';
+    
+    // 重置输入框状态（清除 mention，保留内容）
+    inputResetRef.current?.();
     
     console.log(`[WebSocketProvider] Created new conversation`);
   }, [clearMessages]);
@@ -222,9 +276,11 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
         taskHistories,
         taskId,
         isLoading,
+        connectionStatus,
         subscribe,
         createNewConversation,
         registerInputFocus,
+        registerInputReset,
       }}
     >
       {children}

@@ -3,6 +3,7 @@ import type { ToolNames } from "@amigo/types";
 import type React from "react";
 import type { FrontendToolMessageType } from "@/messages/types";
 import AssignTask from "./assignTask";
+import UpdateTodolistRenderer from "./updateTodolist";
 
 export type ToolRendererProps<T extends ToolNames> = FrontendToolMessageType<T> & { updateTime?: number };
 type ToolRenderers = {
@@ -11,7 +12,8 @@ type ToolRenderers = {
 // 工具类型映射，可扩展
 const toolRendererMap: ToolRenderers = {
   // 例如：exampleTool: ToolRenderer_ExampleTool,
-  assignTasks: AssignTask
+  assignTasks: AssignTask,
+  updateTodolist: UpdateTodolistRenderer,
 };
 
 const DefaultToolRenderer: React.FC<ToolRendererProps<ToolNames>> = ({

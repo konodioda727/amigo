@@ -184,7 +184,7 @@ export const AssignTasks = createTool({
    */
   async invoke({ params, getCurrentTask, getToolFromName }) {
     // 限制并发数为 1，顺序执行所有子任务
-    const CONCURRENCY_LIMIT = 1;
+    const CONCURRENCY_LIMIT = 2;
     const results = [];
 
     for (let i = 0; i < params.tasklist.length; i += CONCURRENCY_LIMIT) {

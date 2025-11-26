@@ -11,6 +11,7 @@ import { AlertRenderer } from "./alert";
 // DisplayMessage 渲染器映射
 export function renderDisplayMessage(msg: DisplayMessageType) {
   if (!("type" in msg)) return null;
+  
   switch (msg.type) {
     case "userSendMessage":
       return <UserMessageRenderer key={msg.updateTime} {...msg} />;

@@ -7,6 +7,7 @@ export const SessionHistoriesMessageSchema = z.object({
       z.object({
         taskId: z.string(),
         title: z.string(),
+        updatedAt: z.string(),
       })
     ),
   }),

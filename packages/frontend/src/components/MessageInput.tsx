@@ -1,4 +1,4 @@
-import { useState, useRef, forwardRef, useImperativeHandle, useEffect } from "react";
+import { useState, useRef, forwardRef, useImperativeHandle, useEffect, useCallback } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -9,18 +9,21 @@ import { toast } from "@/utils/toast";
 import { useActiveSessions } from "./MessageInput/useActiveSessions";
 import { useMentionSuggestion } from "./MessageInput/useMentionSuggestion";
 import { useButtonState } from "./MessageInput/useButtonState";
+import { usePendingResponseQueue } from "./MessageInput/usePendingResponseQueue";
 import { editorStyles } from "./MessageInput/styles";
 import { v4 as uuidv4 } from "uuid";
 
 export interface MessageInputRef {
   focus: () => void;
+  insertMention: (sessionId: string, sessionTitle: string) => void;
 }
 
 const MessageInput = forwardRef<MessageInputRef>((_, ref) => {
-  const { sendMessage, taskId, registerInputFocus } = useWebSocket();
+  const { sendMessage, taskId, registerInputFocus, registerInputReset } = useWebSocket();
   const { getActiveSessions } = useActiveSessions();
   const [targetSessionId, setTargetSessionId] = useState<string | null>(null);
   const isSuggestionActiveRef = useRef(false);
+  const editorRef = useRef<ReturnType<typeof useEditor>>(null);
 
   const suggestionConfig = useMentionSuggestion({
     getActiveSessions,
@@ -71,11 +74,50 @@ const MessageInput = forwardRef<MessageInputRef>((_, ref) => {
 
   const buttonState = useButtonState(editor);
 
+  // 插入 mention 到编辑器
+  const insertMention = useCallback((sessionId: string, sessionTitle: string) => {
+    if (!editor) return;
+    
+    editor.commands.clearContent();
+    editor.commands.insertContent([
+      {
+        type: "mention",
+        attrs: {
+          id: sessionId,
+          label: sessionTitle,
+        },
+      },
+      {
+        type: "text",
+        text: " ",
+      },
+    ]);
+    editor.commands.focus("end");
+    setTargetSessionId(sessionId);
+  }, [editor]);
+
+  // 处理需要用户回答的会话
+  const handleFocusSession = useCallback((sessionId: string, sessionTitle: string) => {
+    // 如果是主会话，不需要插入 mention
+    if (sessionId === taskId) {
+      editor?.commands.focus();
+      return;
+    }
+    // 子任务需要插入 mention
+    insertMention(sessionId, sessionTitle);
+  }, [taskId, editor, insertMention]);
+
+  // 使用队列管理器
+  const { markCurrentComplete } = usePendingResponseQueue({
+    onFocusSession: handleFocusSession,
+  });
+
   // Expose focus method via ref
   useImperativeHandle(ref, () => ({
     focus: () => {
       editor?.commands.focus();
     },
+    insertMention,
   }));
 
   // Register focus function with context
@@ -86,6 +128,39 @@ const MessageInput = forwardRef<MessageInputRef>((_, ref) => {
       });
     }
   }, [editor, registerInputFocus]);
+
+  // Register reset function with context (清除 mention，保留文本内容)
+  useEffect(() => {
+    if (editor) {
+      registerInputReset(() => {
+        // 获取当前内容，过滤掉所有 mention
+        const currentContent = editor.getJSON();
+        const existingContent = (currentContent.content?.[0]?.content || [])
+          .filter((node: { type?: string }) => node.type !== "mention");
+        
+        // 移除开头的空格
+        if (existingContent.length > 0 && existingContent[0].type === "text") {
+          const firstText = existingContent[0].text as string;
+          const trimmedText = firstText.replace(/^\s+/, "");
+          if (trimmedText) {
+            existingContent[0] = { ...existingContent[0], text: trimmedText };
+          } else {
+            existingContent.shift();
+          }
+        }
+        
+        // 设置内容（只保留文本）
+        if (existingContent.length > 0) {
+          editor.commands.setContent([{ type: "paragraph", content: existingContent }]);
+        } else {
+          editor.commands.clearContent();
+        }
+        
+        // 清除 targetSessionId
+        setTargetSessionId(null);
+      });
+    }
+  }, [editor, registerInputReset]);
 
   const extractSessionIdFromEditor = (): string | null => {
     if (!editor) return null;
@@ -161,15 +236,29 @@ const MessageInput = forwardRef<MessageInputRef>((_, ref) => {
     }
 
     const currentTaskId = taskId || uuidv4();
-    const messageTaskId = effectiveSessionId || currentTaskId;
 
-    sendMessage({
-      data: { message: content, taskId: messageTaskId, updateTime: Date.now() },
-      type: "userSendMessage",
-    });
+    // 如果 mention 了子任务，使用 callSubTask 消息
+    if (effectiveSessionId && effectiveSessionId !== currentTaskId) {
+      sendMessage({
+        type: "callSubTask",
+        data: {
+          taskId: currentTaskId,
+          subTaskId: effectiveSessionId,
+          message: content,
+        },
+      });
+    } else {
+      // 否则使用普通的 userSendMessage
+      sendMessage({
+        type: "userSendMessage",
+        data: { message: content, taskId: currentTaskId, updateTime: Date.now() },
+      });
+    }
 
     editor.commands.clearContent();
     setTargetSessionId(null);
+    // 标记当前会话已处理完成，处理队列中的下一个
+    markCurrentComplete();
   };
 
   const handleStop = () => {

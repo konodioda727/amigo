@@ -58,7 +58,7 @@ export class ToolService {
     getCurrentTask: () => string;
     signal?: AbortSignal;
     postMessage?: (msg: string | object) => void;
-  }): Promise<{ message: string; params: Record<string, any>; toolResult: ToolResult<any>; error?: string }> {
+  }): Promise<{ message: string; params: Record<string, any> | string; toolResult: ToolResult<any>; error?: string }> {
     try {
       const { params, toolName, error } = this.parseParams(xmlParams);
       
@@ -106,34 +106,99 @@ export class ToolService {
     }
   }
 
+  /**
+   * 从 params 定义中递归收集所有叶子节点（基本类型参数）的路径
+   * 用于配置 XMLParser 的 stopNodes，防止 HTML 标签被错误解析
+   */
+  private collectLeafNodePaths(
+    paramDefs: any[],
+    prefix: string,
+  ): string[] {
+    const paths: string[] = [];
+    for (const param of paramDefs) {
+      const currentPath = prefix ? `${prefix}.${param.name}` : param.name;
+      // 如果没有子 params，说明是叶子节点（基本类型）
+      if (!param.params || param.params.length === 0) {
+        paths.push(`*.${param.name}`); // 使用通配符匹配任意层级
+      } else {
+        // 递归处理子参数
+        paths.push(...this.collectLeafNodePaths(param.params, currentPath));
+      }
+    }
+    return paths;
+  }
+
+  /**
+   * 从所有工具的 params 定义中递归收集所有参数标签名
+   * 用于 completePartialXml 补全未闭合的参数标签
+   */
+  private collectAllParamTagNames(): string[] {
+    const tagNames = new Set<string>();
+    
+    const collectFromParams = (params: any[]) => {
+      for (const param of params) {
+        tagNames.add(param.name);
+        if (param.params && param.params.length > 0) {
+          collectFromParams(param.params);
+        }
+      }
+    };
+    
+    for (const tool of Object.values(this._availableTools)) {
+      if (tool.params) {
+        collectFromParams(tool.params);
+      }
+    }
+    
+    return [...tagNames];
+  }
+
   public parseParams(
     buffer: string,
     partial = false,
   ): {
-    params: Record<string, any>;
+    params: Record<string, any> | string;
     toolName: string;
     error?: string;
   } {
     try {
       const completedXml = this.completePartialXml(buffer);
+      
+      // 先用简单解析获取工具名
+      const simpleParser = new XMLParser({ ignoreAttributes: true });
+      const preParseResult = simpleParser.parse(completedXml);
+      const toolName = Object.keys(preParseResult).find((key) => this._availableTools[key]) || "";
+      const tool = this._availableTools[toolName];
+      
+      if (!tool) {
+        const firstKey = Object.keys(preParseResult)[0] || "";
+        if (!partial) {
+          logger.warn(`[parseTool] 未找到名为 '${toolName || firstKey}' 的工具。`);
+        }
+        return {
+          params: {},
+          toolName: toolName || firstKey,
+        };
+      }
+      
+      // 收集所有叶子节点路径作为 stopNodes，防止内容中的 HTML 标签被解析
+      // 如果 params 为空，则将工具名本身作为 stopNode
+      const hasParams = tool.params.length !== 0;
+      const stopNodes = hasParams
+        ? this.collectLeafNodePaths(tool.params, toolName)
+        : [toolName];
+      
       const parser = new XMLParser({
         ignoreAttributes: false,
         trimValues: true,
+        stopNodes,
       });
       const jsonOutput = parser.parse(completedXml);
-      const toolName = Object.keys(jsonOutput)[0] || "";
-      const tool = this._availableTools[toolName || ""];
-      if (!tool) {
-        logger.warn(`[parseTool] 未找到名为 '${toolName}' 的工具。`);
-        return {
-          params: jsonOutput,
-          toolName,
-        };
-      }
-      const hasParams = tool && tool.params.length !== 0;
+      
       const finalParams = hasParams
         ? this.mapAndValidateParams(jsonOutput[toolName], tool.params, partial, toolName)
-        : jsonOutput;
+        : String(jsonOutput[toolName]);
+        
       return { params: finalParams, toolName };
     } catch (err) {
       const errorMsg = `XML 解析错误: ${err instanceof Error ? err.message : String(err)}`;
@@ -186,9 +251,10 @@ export class ToolService {
       processedString = processedString.substring(0, lastOpenBracketIndex);
     }
 
-    const allTags = [...systemReservedTags, ...this.toolNames];
+    // 收集所有需要补全的标签：系统保留标签 + 工具名 + 工具参数标签
+    const allTags = [...systemReservedTags, ...this.toolNames, ...this.collectAllParamTagNames()];
     if (allTags.length === 0) {
-      return processedString; // 如果没有定义任何标签，直接返回处理过的字符串
+      return processedString;
     }
 
     const tagPattern = allTags.join("|");

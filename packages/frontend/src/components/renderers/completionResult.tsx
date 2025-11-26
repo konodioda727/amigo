@@ -5,7 +5,7 @@ import type { CompletionResultType } from "@/messages/types";
 
 const CompletionResultRenderer: React.FC<CompletionResultType> = ({ result }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-
+  
   return (
     <div className="flex justify-center w-full mb-3">
       <div className="px-3 py-2 bg-success/10 rounded-lg text-success text-xs w-[80%]">

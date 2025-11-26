@@ -1,21 +1,17 @@
 import type React from "react";
-import NewChatButton from "./NewChatButton";
 import ConversationHistory from "./ConversationHistory";
+import NewChatButton from "./NewChatButton";
 
 const Sidebar: React.FC = () => {
   return (
-    <aside
-      className="fixed left-0 top-0 h-screen w-[260px] border-r flex flex-col"
-      style={{
-        backgroundColor: "var(--color-neutral-50)",
-        borderColor: "var(--color-neutral-200)",
-        padding: "var(--spacing-4)",
-      }}
-    >
-      <div className="mb-4">
+    <aside className="w-full h-full border-r border-neutral-200 bg-neutral-50 flex flex-col shrink-0">
+      {/* 顶部操作栏 */}
+      <div className="p-3 border-b border-neutral-200">
         <NewChatButton />
       </div>
-      <div className="flex-1 overflow-y-auto">
+      
+      {/* 历史记录列表 */}
+      <div className="flex-1 overflow-y-auto p-3">
         <ConversationHistory />
       </div>
     </aside>
