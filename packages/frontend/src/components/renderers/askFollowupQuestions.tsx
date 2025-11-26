@@ -1,7 +1,7 @@
-import { useWebSocket } from "@/components/WebSocketProvider";
-import type { AskFollowupQuestionType } from "@/messages/types";
-import { Check, HelpCircle } from "lucide-react";
+import { Check } from "lucide-react";
 import { useState } from "react";
+import type { AskFollowupQuestionType } from "@/messages/types";
+import { useWebSocket } from "@/components/WebSocketProvider";
 
 const AskFollowupQuestionRenderer: React.FC<AskFollowupQuestionType> = ({
   question,
@@ -26,39 +26,50 @@ const AskFollowupQuestionRenderer: React.FC<AskFollowupQuestionType> = ({
   };
 
   return (
-    <div className="chat chat-start mb-4">
-      <div className="chat-bubble bg-base-200 text-base-content">
-        <div className="flex items-center gap-2 mb-3">
-          <HelpCircle className="h-5 w-5 text-info" />
-          <div className="font-semibold text-sm">跟进问题</div>
+    <div className="mb-4 max-w-[80%]">
+      {/* 问题作为普通的系统消息 */}
+      <div className="chat chat-start">
+        <div className="chat-bubble bg-neutral-100 text-neutral-900 rounded-xl px-4 py-3">
+          <div className="text-sm leading-relaxed whitespace-pre-wrap">{question}</div>
         </div>
-        <div className="mb-3 text-sm leading-relaxed">{question}</div>
-        {sugestions && sugestions.length > 0 && (
-          <div className="flex flex-col gap-2">
-            {sugestions.map((suggestion, index) => (
+      </div>
+
+      {/* 建议选项 - 简洁的气泡样式 */}
+      {sugestions && sugestions.length > 0 && (
+        <div className="flex flex-wrap gap-2 mt-2">
+          {sugestions.map((suggestion) => {
+            const isSelected = selectedOption === suggestion;
+            const isDisabled = selectedOption !== null && !isSelected;
+            
+            return (
               <button
                 key={suggestion}
                 type="button"
                 disabled={selectedOption !== null}
-                className={`btn btn-sm justify-start text-left h-auto min-h-[2.5rem] py-2 px-4 transition-all ${
-                  selectedOption === suggestion
-                    ? "btn-primary"
-                    : selectedOption !== null
-                      ? "btn-disabled opacity-50"
-                      : "btn-outline hover:btn-primary"
-                }`}
+                className={`
+                  px-3 py-1.5
+                  rounded-full
+                  text-sm
+                  transition-all duration-200
+                  ${
+                    isSelected
+                      ? "bg-primary text-white"
+                      : isDisabled
+                        ? "bg-neutral-100 text-neutral-400 cursor-not-allowed"
+                        : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
+                  }
+                `}
                 onClick={() => handleSuggestionClick(suggestion)}
               >
-                <span className="font-medium mr-2">{index + 1}.</span>
-                <span className="flex-1">{suggestion}</span>
-                {selectedOption === suggestion && (
-                  <Check className="h-4 w-4 ml-2" />
-                )}
+                <span className="flex items-center gap-1.5">
+                  {suggestion}
+                  {isSelected && <Check className="h-3 w-3" />}
+                </span>
               </button>
-            ))}
-          </div>
-        )}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

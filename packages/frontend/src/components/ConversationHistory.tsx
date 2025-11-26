@@ -1,7 +1,6 @@
-import React from "react";
 import { useWebSocket } from "./WebSocketProvider";
 
-const ConversationHistory: React.FC = () => {
+const ConversationHistory = () => {
   const { taskHistories, setTaskId, taskId: currentTaskId } = useWebSocket();
 
   const handleHistoryClick = (taskId: string) => {
@@ -12,27 +11,39 @@ const ConversationHistory: React.FC = () => {
   if (!taskHistories || taskHistories.length === 0) return null;
 
   return (
-    <div className="mb-4">
-      <div className="text-sm opacity-60 mb-1">会话历史</div>
-      <ul className="space-y-1">
-        {taskHistories.map((history) => (
+    <ul className="space-y-1">
+      {taskHistories.map((history) => {
+        const isActive = history.taskId === currentTaskId;
+        
+        return (
           <li key={history.taskId}>
             <button
               type="button"
-              className="text-sm cursor-pointer hover:text-blue-600 text-left w-full p-0 m-0 border-none bg-transparent underline-offset-2 hover:underline"
+              className={`
+                w-full text-left
+                px-3 py-2.5
+                rounded-lg
+                text-sm
+                transition-colors duration-150
+                ${isActive 
+                  ? 'bg-primary/10 text-primary font-medium' 
+                  : 'text-neutral-700 hover:bg-neutral-100'
+                }
+              `}
               onClick={() => handleHistoryClick(history.taskId)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
                   handleHistoryClick(history.taskId);
                 }
               }}
             >
-              {history.title} (ID: {history.taskId})
+              {history.title}
             </button>
           </li>
-        ))}
-      </ul>
-    </div>
+        );
+      })}
+    </ul>
   );
 };
 

@@ -279,6 +279,19 @@ export class ConversationManager {
     };
 
     this.memory.addWebsocketMessage(interruptMessage);
+    
+    // 发送 interrupt 消息到前端
+    this.emitMessage(interruptMessage);
+
+    // 设置状态为 idle 并清空用户输入
+    this.conversationStatus = "idle";
+    this.userInput = "";
+
+    // 发送 conversationOver 消息
+    this.emitMessage({
+      type: "conversationOver",
+      data: { reason: "interrupt" },
+    });
 
     // 递归打断所有子任务
     const currentTaskId = this.memory.currentTaskId;

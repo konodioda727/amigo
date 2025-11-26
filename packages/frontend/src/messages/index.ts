@@ -45,10 +45,16 @@ export const useMessages = () => {
     },
     [],
   );
+  // 清空消息
+  const clearMessages = useCallback(() => {
+    currentMessagesRef.current = [];
+    setMessages([]);
+  }, []);
   return {
     messages,
     processReceivedMessage,
     updateMessage,
+    clearMessages,
     combinedMessages
   };
 };

@@ -1,9 +1,9 @@
-import { useState, useRef } from "react";
+import { useState, useRef, forwardRef, useImperativeHandle, useEffect } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import Mention from "@tiptap/extension-mention";
-import { FaPaperPlane, FaPlay, FaStop } from "react-icons/fa";
+import { ArrowUp, Play, Square } from "lucide-react";
 import { useWebSocket } from "./WebSocketProvider";
 import { toast } from "@/utils/toast";
 import { useActiveSessions } from "./MessageInput/useActiveSessions";
@@ -12,8 +12,12 @@ import { useButtonState } from "./MessageInput/useButtonState";
 import { editorStyles } from "./MessageInput/styles";
 import { v4 as uuidv4 } from "uuid";
 
-const MessageInput = () => {
-  const { sendMessage, taskId } = useWebSocket();
+export interface MessageInputRef {
+  focus: () => void;
+}
+
+const MessageInput = forwardRef<MessageInputRef>((_, ref) => {
+  const { sendMessage, taskId, registerInputFocus } = useWebSocket();
   const { getActiveSessions } = useActiveSessions();
   const [targetSessionId, setTargetSessionId] = useState<string | null>(null);
   const isSuggestionActiveRef = useRef(false);
@@ -47,7 +51,7 @@ const MessageInput = () => {
         },
       }),
       Placeholder.configure({
-        placeholder: "输入消息... (输入 / 选择会话)",
+        placeholder: "输入消息或选择技能...",
       }),
       Mention.configure({
         HTMLAttributes: {
@@ -66,6 +70,22 @@ const MessageInput = () => {
   });
 
   const buttonState = useButtonState(editor);
+
+  // Expose focus method via ref
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      editor?.commands.focus();
+    },
+  }));
+
+  // Register focus function with context
+  useEffect(() => {
+    if (editor) {
+      registerInputFocus(() => {
+        editor.commands.focus();
+      });
+    }
+  }, [editor, registerInputFocus]);
 
   const extractSessionIdFromEditor = (): string | null => {
     if (!editor) return null;
@@ -181,18 +201,35 @@ const MessageInput = () => {
   return (
     <>
       <style>{editorStyles}</style>
-      <div className="flex gap-2 mb-4">
+      <div className="message-input-container">
         <div className="tiptap-editor-wrapper">
           <EditorContent editor={editor} />
+          <div className="send-button-wrapper">
+            <button
+              onClick={handleClick}
+              className={`btn btn-circle w-10 h-10 transition-all duration-200 border-0 ${
+                buttonState === "stop" 
+                  ? "bg-red-500 hover:bg-red-600 text-white" 
+                  : buttonState === "resume"
+                  ? "bg-green-500 hover:bg-green-600 text-white"
+                  : buttonState === "send" && !editor?.getText().trim()
+                  ? "bg-gray-200 text-black cursor-not-allowed"
+                  : "bg-blue-500 hover:bg-blue-600 text-white"
+              }`}
+              type="button"
+              disabled={buttonState === "send" && !editor?.getText().trim()}
+            >
+              {buttonState === "stop" && <Square className="w-4 h-4" fill="currentColor" />}
+              {buttonState === "resume" && <Play className="w-4 h-4" fill="currentColor" />}
+              {buttonState === "send" && <ArrowUp className="w-5 h-5" strokeWidth={2.5} />}
+            </button>
+          </div>
         </div>
-        <button onClick={handleClick} className="btn btn-primary btn-square" type="button">
-          {buttonState === "stop" && <FaStop className="w-4 h-4" />}
-          {buttonState === "resume" && <FaPlay className="w-4 h-4" />}
-          {buttonState === "send" && <FaPaperPlane className="w-4 h-4" />}
-        </button>
       </div>
     </>
   );
-};
+});
+
+MessageInput.displayName = "MessageInput";
 
 export default MessageInput;

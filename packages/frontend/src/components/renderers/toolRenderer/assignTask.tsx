@@ -1,33 +1,23 @@
-import type { ToolRendererProps } from ".";
-import { CheckCircle, Clock } from "lucide-react";
+import { AlertCircle, CheckCircle, ChevronDown, ChevronRight } from "lucide-react";
+import { useState } from "react";
+import { NestingProvider } from "@/components/NestingContext";
 import SubTaskRenderer from "@/components/SubTaskRenderer";
+import type { ToolRendererProps } from ".";
 
 const AssignTask: React.FC<ToolRendererProps<"assignTasks">> = (props) => {
-  const { params, toolOutput, error, updateTime, hasError } = props;
-  
-  // 如果有错误，显示错误信息
+  const { params, toolOutput, error, hasError } = props;
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  // 如果有错误，显示简洁的错误信息
   if (hasError && error) {
     return (
-      <div className="flex flex-col items-center w-full mb-4">
-        <div className="w-full max-w-4xl">
-          <div className="alert alert-error shadow-lg">
-            <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <div className="flex-1">
-              <h3 className="font-bold">分配任务工具调用失败</h3>
-              <div className="text-sm mt-2 whitespace-pre-wrap">{error}</div>
-            </div>
-          </div>
-          <div className="text-xs opacity-50 mt-2 text-center">
-            {updateTime && new Date(updateTime).toLocaleTimeString()}
-          </div>
-        </div>
+      <div className="flex items-start gap-2 py-2 text-error text-sm">
+        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+        <span>任务分配失败：{error}</span>
       </div>
     );
   }
 
-  // 从 params 中获取 tasklist，每个 task 可能包含 taskId
   const tasklist = (params.tasklist || []) as Array<{
     target: string;
     subAgentPrompt: string;
@@ -38,53 +28,43 @@ const AssignTask: React.FC<ToolRendererProps<"assignTasks">> = (props) => {
   const isCompleted = !!toolOutput;
 
   return (
-      <div className="flex flex-col items-center w-full">
-        <div className="w-full max-w-4xl">
-          <div className="font-bold text-lg mb-4 text-primary flex items-center gap-2">
-            <span>分配任务工具</span>
-            {isCompleted && (
-              <span className="badge badge-success gap-1">
-                <CheckCircle className="h-3 w-3" />
-                已完成
-              </span>
-            )}
-          </div>
-          
-          <div className="space-y-4">
+    <div className="py-2">
+      {/* 标题行 - 可折叠 */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-900 cursor-pointer mb-2"
+      >
+        {isExpanded ? (
+          <ChevronDown className="w-4 h-4" />
+        ) : (
+          <ChevronRight className="w-4 h-4" />
+        )}
+        <span className="font-medium">分配任务</span>
+        <span className="text-neutral-400">({tasklist.length})</span>
+        {isCompleted && <CheckCircle className="w-3.5 h-3.5 text-success" />}
+      </button>
+
+      {/* 任务列表 */}
+      {isExpanded && (
+        <NestingProvider level={0}>
+          <div className="space-y-3 pl-6 border-l-2 border-neutral-200">
             {tasklist.map((item, idx) => {
               const taskId = item.taskId;
-              
+
               if (!taskId) {
-                // 任务还没有分配 taskId，显示等待状态
                 return (
-                  <div
-                    key={`task-pending-${item.target}-${idx}`}
-                    className="card bg-base-100 shadow-xl border border-base-200"
-                  >
-                    <div className="card-body p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-mono text-base font-semibold text-primary">
-                          任务 #{idx + 1}
-                        </span>
-                        <span className="badge badge-sm badge-warning">
-                          <Clock className="h-3 w-3 animate-spin mr-1" />
-                          等待中
-                        </span>
-                      </div>
-                      <div className="mb-2">
-                        <span className="font-bold text-accent text-sm">目标：</span>
-                        <p className="text-sm mt-1">{item.target}</p>
-                      </div>
-                      <div className="text-xs text-base-content/50 mt-2 text-center">
-                        等待任务分配...
-                      </div>
+                  <div key={`task-pending-${item.target}-${idx}`} className="py-1">
+                    <div className="text-sm text-neutral-500">
+                      <span className="font-medium text-neutral-700">#{idx + 1}</span>
+                      <span className="mx-2">·</span>
+                      <span>{item.target}</span>
+                      <span className="ml-2 text-xs text-neutral-400">等待中...</span>
                     </div>
                   </div>
                 );
               }
-              
-              // 使用 SubTaskRenderer 渲染子任务（支持递归级联展示）
-              // 每个子任务都有独立的 WebSocketProvider
+
               return (
                 <SubTaskRenderer
                   key={taskId}
@@ -97,19 +77,16 @@ const AssignTask: React.FC<ToolRendererProps<"assignTasks">> = (props) => {
               );
             })}
           </div>
+        </NestingProvider>
+      )}
+
+      {error && !hasError && (
+        <div className="flex items-center gap-2 text-error text-xs mt-2 pl-6">
+          <AlertCircle className="w-3 h-3" />
+          <span>{error}</span>
         </div>
-        
-        {error && (
-          <div className="mt-4 p-4 bg-error/10 rounded-lg border border-error/20 w-full max-w-4xl">
-            <div className="font-bold text-error mb-2">错误</div>
-            <p className="text-sm">{error}</p>
-          </div>
-        )}
-        
-        <div className="text-xs opacity-50 mt-2">
-          {updateTime && new Date(updateTime).toLocaleTimeString()}
-        </div>
-      </div>
+      )}
+    </div>
   );
 };
 

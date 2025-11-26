@@ -26,21 +26,21 @@ export const useButtonState = (editor: Editor | null) => {
   }, [editor]);
 
   useEffect(() => {
-    // 如果正在 loading，显示 stop 按钮
-    if (isLoading) {
-      setButtonState("stop");
-      return;
-    }
-
     if (!lastMessage) {
       setButtonState("send");
       return;
     }
 
-    // 检查是否是中断状态
-    if (lastMessage.type === "interrupt") {
+    // 检查是否是中断状态（优先级最高）
+    if (lastMessage.type === "interrupt" && !isLoading) {
       const hasContent = editorContent.trim();
       setButtonState(hasContent ? "send" : "resume");
+      return;
+    }
+
+    // 如果正在 loading，显示 stop 按钮
+    if (isLoading) {
+      setButtonState("stop");
       return;
     }
 

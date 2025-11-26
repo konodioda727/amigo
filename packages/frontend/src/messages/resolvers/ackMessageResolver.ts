@@ -15,8 +15,11 @@ export const handleAckMessage: MessageResolvers<"ack"> = ({
   }
   // 更新最后一条消息的状态为 acked
   if (lastMessage && "status" in lastMessage.data) {
-    currentMessagesRef.current.at(-1)!.data.status = newMessage.data.status;
-    currentMessagesRef.current.at(-1)!.data.updateTime = newMessage.data.updateTime;
-    setMessages([...currentMessagesRef.current]);
+    const lastMsg = currentMessagesRef.current.at(-1);
+    if (lastMsg) {
+      lastMsg.data.status = newMessage.data.status;
+      lastMsg.data.updateTime = newMessage.data.updateTime;
+      setMessages([...currentMessagesRef.current]);
+    }
   }
 };

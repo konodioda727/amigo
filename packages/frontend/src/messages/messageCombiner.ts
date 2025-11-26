@@ -201,7 +201,7 @@ const interruptProcessor: MessageProcessor<'interrupt'> = ({ msg, res }) => {
   // 移除最后一条 partial 消息（如果存在）
   const lastMessage = res.at(-1);
   if (lastMessage && (lastMessage as any).partial) {
-    res.pop();
+    (lastMessage as any).partial = false;
   }
   
   res.push({

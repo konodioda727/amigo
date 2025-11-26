@@ -90,36 +90,26 @@ export class StreamHandler {
         ...callbacks,
       });
 
-      // 如果被中断，直接返回
+      // 如果被中断，直接返回（interrupt() 方法已经处理了消息发送）
       if (currentTool === "interrupt") {
         logger.info("\n会话已通过打断信号结束。");
-        this.setConversationStatus("idle");
-        this.setUserInput("");
-        this.messageEmitter.emitMessage({
-          type: "conversationOver",
-          data: { reason: "interrupt" },
-        });
         return;
       }
 
       // 成功执行，重置错误计数
       this.errorHandler.resetErrorCount();
 
-      // 处理完成逻辑
-      await this.handleStreamCompletion(currentTool);
-      this.handleStream();
+      // 处理完成逻辑，返回是否应该继续循环
+      const shouldContinue = await this.handleStreamCompletion(currentTool);
+      if (shouldContinue) {
+        this.handleStream();
+      }
     } catch (error: any) {
       this.currentAbortController = null;
 
-      // 如果是用户主动中断，不作为错误处理
+      // 如果是用户主动中断，不作为错误处理（interrupt() 方法已经处理了消息发送）
       if (error.name === "AbortError" || this.isAborted()) {
         logger.info("流式响应被用户中断");
-        this.setConversationStatus("idle");
-        this.setUserInput("");
-        this.messageEmitter.emitMessage({
-          type: "conversationOver",
-          data: { reason: "interrupt" },
-        });
         await pWaitFor(() => !!this.getUserInput());
         this.handleStream();
         return;
@@ -186,14 +176,16 @@ export class StreamHandler {
 
   /**
    * 处理 stream 完成后的逻辑
+   * @returns 是否应该继续循环调用 handleStream
    */
-  private async handleStreamCompletion(currentTool: string): Promise<void> {
+  private async handleStreamCompletion(currentTool: string): Promise<boolean> {
     switch (currentTool) {
       case "completionResult":
         logger.info("\n对话已完成。");
         this.setConversationStatus("completed");
+        // 子任务完成后不再继续循环
         if (this.conversationType !== "main") {
-          return;
+          return false;
         }
         this.setUserInput("");
         this.messageEmitter.emitMessage({
@@ -201,7 +193,7 @@ export class StreamHandler {
           data: { reason: "completionResult" },
         });
         await pWaitFor(() => !!this.getUserInput());
-        break;
+        return true;
       case "askFollowupQuestion":
         this.setUserInput("");
         this.messageEmitter.emitMessage({
@@ -209,7 +201,7 @@ export class StreamHandler {
           data: { reason: "askFollowupQuestion" },
         });
         await pWaitFor(() => !!this.getUserInput());
-        break;
+        return true;
       case "message":
         logger.warn("\n⚠️  LLM 未使用任何工具或结束标签，添加惩罚提示");
         this.memory.addMessage({
@@ -227,9 +219,10 @@ export class StreamHandler {
           partial: false,
         });
         this.setConversationStatus("idle");
-        break;
+        return true;
       default:
         this.setConversationStatus("idle");
+        return true;
     }
   }
 }

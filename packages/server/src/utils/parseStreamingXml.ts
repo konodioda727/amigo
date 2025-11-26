@@ -43,11 +43,8 @@ export const parseStreamingXml = async ({
   
   try {
     for await (const chunk of stream) {
-      // 如果 signal 被 abort，stream 会自动抛出 AbortError
-      // 不需要手动检查
 
     if (typeof chunk.content === "string") {
-      process.stdout.write(chunk.content);
       buffer += chunk.content;
     }
 
@@ -55,7 +52,7 @@ export const parseStreamingXml = async ({
       if (!buffer.trim().length) continue;
       const { labelIndex, currentTool: matchedTool } = findMatchedTag(startLabels, buffer);
 
-      currentTool = matchedTool as SYSTEM_RESERVED_TAGS | ToolNames;
+      currentTool = (matchedTool || 'message') as SYSTEM_RESERVED_TAGS | ToolNames;
 
       if (labelIndex !== -1) {
         isMatched = true;

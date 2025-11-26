@@ -1,0 +1,48 @@
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "列出制作西红柿炒蛋所需的全部食材和用量",
+      "type": "userSendMessage",
+      "partial": false,
+      "updateTime": 1764136813032
+    },
+    {
+      "role": "assistant",
+      "content": "制作一份经典西红柿炒蛋（约2人份）所需的食材及用量如下：\n\n### 食材清单及用量：\n\n1. **鸡蛋**：4个（约200克）  \n2. **西红柿**：2个（中等大小，约300克）  \n3. **食用油**：2汤匙（约30毫升，用于炒蛋和炒西红柿）  \n4. **盐**：适量（约1/2茶匙，根据口味调整）  \n5. **白糖**：1/2茶匙（可选，用于提鲜、中和酸味）  \n6. **葱花**：少许（约1汤匙，可选，出锅前增香）\n\n---\n\n### 小贴士：\n- 鸡蛋建议用新鲜的，口感更嫩滑。\n- 西红柿选择成熟多汁的，味道更佳。\n- 白糖可帮助平衡西红柿的酸味，使口感更柔和。\n- 若喜欢更浓郁的香味，可在炒蛋时加一点料酒（几滴）。\n\n按此份量可做出一道色香味俱全的家常西红柿炒蛋。",
+      "type": "message",
+      "partial": false,
+      "updateTime": 1764136813227
+    },
+    {
+      "role": "system",
+      "content": "警告：你的上一次回复只包含普通消息，没有使用任何工具或调用结束标签。\n\n请注意：\n1. 如果任务已完成，必须使用 <completionResult> 标签结束任务\n2. 如果需要用户提供更多信息，必须使用 <askFollowupQuestion> 标签提问\n3. 如果需要执行操作，必须调用相应的工具（如 <assignTask>、<updateTodoList> 等）\n4. 不要只输出普通文本消息后就停止\n\n请立即采取正确的行动。",
+      "type": "message",
+      "partial": false,
+      "updateTime": 1764136815451
+    },
+    {
+      "role": "assistant",
+      "content": "<completionResult>  \n制作西红柿炒蛋所需的全部食材及用量已完整列出，任务完成。  \n</completionResult>",
+      "originalMessage": "<completionResult>  \n制作西红柿炒蛋所需的全部食材及用量已完整列出，任务完成。  \n</completionResult>",
+      "type": "completionResult",
+      "partial": false,
+      "updateTime": 1764136815681
+    },
+    {
+      "role": "system",
+      "content": "当前工具调用：completionResult，\n工具执行信息：\n任务完成，已向用户提供最终结论。\n",
+      "type": "completionResult",
+      "partial": false,
+      "updateTime": 1764136815877
+    }
+  ],
+  "conversationStatus": "completed",
+  "updatedAt": "2025-11-26T06:00:15.914Z",
+  "taskId": "449cf53a-7e63-47dc-aee5-e0252db05207",
+  "fatherTaskId": "fc88ed88-f376-467d-9020-2b1cbd957893",
+  "toolNames": [
+    "updateTodolist",
+    "askFollowupQuestion"
+  ]
+}

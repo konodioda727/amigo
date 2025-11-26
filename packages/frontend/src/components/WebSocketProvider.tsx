@@ -12,9 +12,9 @@ import type {
   ServerSendMessageData,
   USER_SEND_MESSAGE_NAME,
 } from "@amigo/types";
-import _ from "lodash";
 import { useMessages } from "../messages";
 import { DisplayMessageType } from "@/messages/types";
+import { toast } from "@/utils/toast";
 
 type Unsubscribe = () => void;
 type Listener<T extends SERVER_SEND_MESSAGE_NAME> = (data: ServerSendMessageData<T>) => void;
@@ -28,6 +28,8 @@ interface WebSocketContextType {
   isLoading: boolean;
   sendMessage: <T extends USER_SEND_MESSAGE_NAME>(newMessage: WebSocketMessage<T>) => void;
   subscribe: <T extends SERVER_SEND_MESSAGE_NAME>(type: T, listener: Listener<T>) => Unsubscribe;
+  createNewConversation: () => void;
+  registerInputFocus: (focusFn: () => void) => void;
 }
 
 const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
@@ -49,8 +51,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
   const [taskId, setTaskId] = useState<string>('');
   const [taskHistories, setTaskHistories] = useState<Array<{ taskId: string; title: string }>>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const { processReceivedMessage, updateMessage, combinedMessages: displayMessages } = useMessages();
+  const { processReceivedMessage, updateMessage, clearMessages, combinedMessages: displayMessages } = useMessages();
   const listenersRef = useRef<Record<SERVER_SEND_MESSAGE_NAME, Listener<any>[]>>({} as any);
+  const inputFocusRef = useRef<(() => void) | null>(null);
 
   const subscribe = useCallback(<T extends SERVER_SEND_MESSAGE_NAME>(type: T, listener: Listener<T>): Unsubscribe => {
     const listeners = (listenersRef.current[type] || []) as Listener<T>[];
@@ -98,6 +101,20 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
         if (newMessage.type === 'conversationOver') {
           console.log(`[WebSocketProvider] Conversation over, stopping loading`);
           setIsLoading(false);
+        }
+        
+        // 监听 interrupt 消息，中断当前输出
+        if (newMessage.type === 'interrupt') {
+          console.log(`[WebSocketProvider] Conversation interrupted, stopping output`);
+          setIsLoading(false);
+        }
+        
+        // 监听 alert 消息，中断当前输出并弹出 toast
+        if (newMessage.type === 'alert') {
+          console.log(`[WebSocketProvider] Alert received, stopping output`);
+          setIsLoading(false);
+          const alertData = newMessage.data as { message: string };
+          toast.error(alertData.message);
         }
         
         // 先处理全局消息
@@ -178,7 +195,22 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
     }
   }, [socket, taskId]);
 
+  // 注册输入框焦点函数
+  const registerInputFocus = useCallback((focusFn: () => void) => {
+    inputFocusRef.current = focusFn;
+  }, []);
 
+  // 创建新对话
+  const createNewConversation = useCallback(() => {
+    // 清空消息
+    clearMessages();
+    
+    // 清空 taskId
+    setTaskId('');
+    prevTaskIdRef.current = '';
+    
+    console.log(`[WebSocketProvider] Created new conversation`);
+  }, [clearMessages]);
 
   return (
     <WebSocketContext.Provider
@@ -191,6 +223,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
         taskId,
         isLoading,
         subscribe,
+        createNewConversation,
+        registerInputFocus,
       }}
     >
       {children}
