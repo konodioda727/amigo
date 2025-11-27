@@ -48,6 +48,9 @@ export interface WebSocketStore {
   // 待处理的 askFollowupQuestion 队列
   followupQueue: Array<{ taskId: string; title: string }>;
 
+  // 请求清空输入框的标志
+  clearInputRequested: boolean;
+
   // Actions
   connect: () => void;
   disconnect: () => void;
@@ -76,6 +79,7 @@ export interface WebSocketStore {
   clearPendingMention: () => void;
   updateFollowupQueue: () => void;
   mentionNextInQueue: () => void;
+  acknowledgeClearInput: () => void;
   
   // 内部辅助方法
   handleSessionHistories: (histories: Array<{ taskId: string; title: string; updatedAt: string }>) => void;
@@ -94,6 +98,7 @@ export const useWebSocketStore = create<WebSocketStore>((set, get) => ({
   listeners: {},
   pendingMention: null,
   followupQueue: [],
+  clearInputRequested: false,
 
   connect: () => {
     const { socket } = get();
@@ -385,9 +390,14 @@ export const useWebSocketStore = create<WebSocketStore>((set, get) => ({
       const next = queue[0];
       state.requestMention(next.taskId, next.title);
     } else {
-      // 队列为空，清除 mention
+      // 队列为空，清除 mention 并清空输入框
       state.clearPendingMention();
+      set({ clearInputRequested: true });
     }
+  },
+
+  acknowledgeClearInput: () => {
+    set({ clearInputRequested: false });
   },
 
   updateUserMessageStatus: (taskId, message, status) => {

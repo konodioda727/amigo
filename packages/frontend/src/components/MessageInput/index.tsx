@@ -22,6 +22,8 @@ const MessageInput = forwardRef<MessageInputRef>((_, ref) => {
   const sendMessageAction = useWebSocketStore((state) => state.sendMessage);
   const pendingMention = useWebSocketStore((state) => state.pendingMention);
   const clearPendingMention = useWebSocketStore((state) => state.clearPendingMention);
+  const clearInputRequested = useWebSocketStore((state) => state.clearInputRequested);
+  const acknowledgeClearInput = useWebSocketStore((state) => state.acknowledgeClearInput);
   const { getActiveSessions } = useActiveSessions();
   const [targetSessionId, setTargetSessionId] = useState<string | null>(null);
   const isSuggestionActiveRef = useRef(false);
@@ -104,6 +106,15 @@ const MessageInput = forwardRef<MessageInputRef>((_, ref) => {
       clearPendingMention();
     }
   }, [pendingMention, editor, insertMention, clearPendingMention]);
+
+  // 监听 clearInputRequested 并清空输入框
+  useEffect(() => {
+    if (clearInputRequested && editor) {
+      editor.commands.clearContent();
+      setTargetSessionId(null);
+      acknowledgeClearInput();
+    }
+  }, [clearInputRequested, editor, acknowledgeClearInput]);
 
   // 这些功能现在通过 zustand store 的 setActiveTask 管理
 
