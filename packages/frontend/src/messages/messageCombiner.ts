@@ -45,18 +45,30 @@ const messageProcessor: MessageProcessor<'message'> = ({ msg, res, pendingThink 
   const messageData = msg.data as WebSocketMessage<"message">["data"] & {
     think?: string;
   };
+  const updateTime = messageData.updateTime || Date.now();
+  const isPartial = messageData.partial ?? false;
+  
   const messageEntry: FrontendCommonMessageType = {
     message: messageData.message ?? "",
-    updateTime: messageData.updateTime || Date.now(),
-    type: 'message'
-  };
+    updateTime,
+    type: 'message',
+    partial: isPartial,
+  } as any;
+  
   if (messageData.think) {
     messageEntry.think = messageData.think;
   } else if (pendingThink?.data?.message) {
     messageEntry.think = pendingThink.data.message;
   }
+  
   const lastMessage = res.at(-1);
-  if (isFrontendCommonMessage(lastMessage)) {
+  // 合并条件：type 相同、updateTime 相同、前一个消息 partial 为 true
+  const shouldMerge = 
+    isFrontendCommonMessage(lastMessage) &&
+    lastMessage.updateTime === updateTime &&
+    (lastMessage as any).partial === true;
+  
+  if (shouldMerge && isFrontendCommonMessage(lastMessage)) {
     res[res.length - 1] = {
       ...lastMessage,
       ...messageEntry,
@@ -79,12 +91,35 @@ const completionResultProcessor: MessageProcessor<'completionResult'> = ({ msg, 
   } catch (error) {
     console.error("处理 completionResult 消息时出错:", error);
   }
-  const completionEntry: CompletionResultType = {
-    result: conclusion,
-    updateTime: completionData.updateTime || Date.now(),
-    type: 'completionResult'
-  };
-  res.push(completionEntry);
+  
+  const updateTime = completionData.updateTime || Date.now();
+  const isPartial = completionData.partial ?? false;
+  
+  // 检查是否应该合并：type 相同、updateTime 相同、前一个消息 partial 为 true
+  const lastMessage = res.at(-1);
+  if (
+    lastMessage?.type === "completionResult" &&
+    lastMessage.updateTime === updateTime &&
+    (lastMessage as any).partial === true
+  ) {
+    // 合并消息：更新最后一条消息
+    res[res.length - 1] = {
+      type: "completionResult",
+      result: conclusion || lastMessage.result,
+      updateTime,
+      partial: isPartial,
+    } as any;
+  } else {
+    // 创建新消息
+    const completionEntry: CompletionResultType = {
+      result: conclusion,
+      updateTime,
+      type: 'completionResult',
+      partial: isPartial,
+    } as any;
+    res.push(completionEntry);
+  }
+  
   return { handled: true };
 }
 
@@ -94,27 +129,54 @@ const toolProcessor: MessageProcessor<'tool'> = ({ msg, res }) => {
   const parsed = JSON.parse(msg.data.message) as TransportToolContent<any> & { error?: string };
   const { toolName, params, result, error } = parsed;
   const updateTime = typeof msg.data.updateTime === "number" ? msg.data.updateTime : Date.now();
+  const isPartial = msg.data.partial ?? false;
   
-  // 查找是否已经有相同 toolName 和 updateTime 的 tool（partial 消息）
-  const existingToolIndex = res.findIndex(
-    (item) => 
-      item.type === "tool" && 
-      item.toolName === toolName && 
-      item.updateTime === updateTime
-  );
+  // 查找是否已经有相同 toolName 和 updateTime 的 tool（用于合并 partial 消息）
+  const lastMessage = res.at(-1);
+  const shouldMerge = 
+    lastMessage?.type === "tool" &&
+    lastMessage.toolName === toolName &&
+    lastMessage.updateTime === updateTime &&
+    (lastMessage as any).partial === true;
   
-  if (existingToolIndex !== -1 && res[existingToolIndex].type === "tool") {
-    // 更新已存在的 tool，添加 result 或 error
-    const existingTool = res[existingToolIndex];
-    res[existingToolIndex] = {
+  if (shouldMerge && lastMessage?.type === "tool") {
+    // 合并消息：更新最后一条 tool 消息
+    // 特殊处理 assignTasks：需要保留已经添加的 taskId
+    let mergedParams = params as unknown as ToolParams<any> || lastMessage.params;
+    
+    if (toolName === "assignTasks" && params && lastMessage.params) {
+      const oldParams = lastMessage.params as any;
+      const newParams = params as any;
+      
+      // 如果两边都有 tasklist，需要合并 taskId
+      if (oldParams?.tasklist && newParams?.tasklist && Array.isArray(oldParams.tasklist) && Array.isArray(newParams.tasklist)) {
+        const mergedTasklist = newParams.tasklist.map((newTask: any, index: number) => {
+          const oldTask = oldParams.tasklist[index];
+          // 保留旧的 taskId 和 taskStatus（如果存在）
+          return {
+            ...newTask,
+            ...(oldTask?.taskId && { taskId: oldTask.taskId }),
+            ...(oldTask?.taskStatus && { taskStatus: oldTask.taskStatus }),
+          };
+        });
+        
+        mergedParams = {
+          ...newParams,
+          tasklist: mergedTasklist,
+        } as unknown as ToolParams<any>;
+      }
+    }
+    
+    res[res.length - 1] = {
       type: "tool",
-      toolName: existingTool.toolName,
-      params: existingTool.params,
+      toolName: lastMessage.toolName,
+      params: mergedParams,
       toolOutput: result as unknown as ToolResult<any>,
       error: error,
       hasError: !!error,
-      updateTime: existingTool.updateTime,
-    };
+      updateTime: lastMessage.updateTime,
+      partial: isPartial,
+    } as any;
   } else {
     // 创建新的 tool 条目
     res.push({
@@ -125,7 +187,8 @@ const toolProcessor: MessageProcessor<'tool'> = ({ msg, res }) => {
       error: error,
       hasError: !!error,
       updateTime,
-    });
+      partial: isPartial,
+    } as any);
   }
   
   return { handled: true };
@@ -157,36 +220,70 @@ const askFollowupQuestionProcessor: MessageProcessor<'askFollowupQuestion'> = ({
     suggestOptions: string[];
   };
   
-  res.push({
-    type: "askFollowupQuestion",
-    question: followupData.question ?? "",
-    sugestions: followupData.suggestOptions ?? [],
-    updateTime: msg.data.updateTime || new Date().valueOf() + Math.random(),
-  });
+  const updateTime = msg.data.updateTime || Date.now();
+  const isPartial = msg.data.partial ?? false;
+  
+  // 检查是否应该合并：type 相同、updateTime 相同、前一个消息 partial 为 true
+  const lastMessage = res.at(-1);
+  if (
+    lastMessage?.type === "askFollowupQuestion" &&
+    lastMessage.updateTime === updateTime &&
+    (lastMessage as any).partial === true
+  ) {
+    // 合并消息：更新最后一条消息
+    res[res.length - 1] = {
+      type: "askFollowupQuestion",
+      question: followupData.question ?? lastMessage.question,
+      sugestions: followupData.suggestOptions ?? lastMessage.sugestions,
+      updateTime,
+      partial: isPartial,
+    } as any;
+  } else {
+    // 创建新消息
+    res.push({
+      type: "askFollowupQuestion",
+      question: followupData.question ?? "",
+      sugestions: followupData.suggestOptions ?? [],
+      updateTime,
+      partial: isPartial,
+    } as any);
+  }
+  
   return { handled: true };
 };
 
 const assignTaskUpdatedProcessor: MessageProcessor<'assignTaskUpdated'> = ({ msg, res }) => {
   if (msg.type !== "assignTaskUpdated") return { handled: false };
   
-  const updateData = msg.data as { index: number; taskId: string; parentTaskId?: string };
+  const updateData = msg.data as { index: number; taskId: string; parentTaskId?: string; taskStatus?: string };
   
   // 从后往前查找最近的 assignTasks tool
   for (let i = res.length - 1; i >= 0; i--) {
     const item = res[i];
     if (item.type === "tool" && item.toolName === "assignTasks") {
-      // 找到了 assignTasks，给对应的 task 添加 taskId
+      // 找到了 assignTasks，给对应的 task 添加 taskId 和 taskStatus
       const params = item.params as any;
       if (params?.tasklist && Array.isArray(params.tasklist)) {
         const task = params.tasklist[updateData.index];
         if (task) {
-          // 添加 taskId 到对应的 task
-          params.tasklist[updateData.index] = {
+          // 创建新的 tasklist 数组和 params 对象，确保 React 能检测到变化
+          const newTasklist = [...params.tasklist];
+          newTasklist[updateData.index] = {
             ...task,
             taskId: updateData.taskId,
+            taskStatus: updateData.taskStatus,
           };
-          // 更新 res 中的项
-          res[i] = { ...item, params };
+          
+          const newParams = {
+            ...params,
+            tasklist: newTasklist,
+          };
+          
+          // 更新 res 中的项，创建新的对象引用
+          res[i] = { 
+            ...item, 
+            params: newParams 
+          };
         }
       }
       break;

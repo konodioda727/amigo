@@ -1,5 +1,5 @@
-import { useSidebar } from "./Layout";
-import { useWebSocket } from "./WebSocketProvider";
+import { useSidebar } from "./Layout/index";
+import { useWebSocketStore } from "@/store/websocket";
 
 /**
  * 格式化时间显示
@@ -27,7 +27,9 @@ const formatTime = (dateStr: string | undefined) => {
 };
 
 const ConversationHistory = () => {
-  const { taskHistories, setTaskId, taskId: currentTaskId } = useWebSocket();
+  const taskHistories = useWebSocketStore((state) => state.taskHistories);
+  const currentTaskId = useWebSocketStore((state) => state.mainTaskId);
+  const setTaskId = useWebSocketStore((state) => state.setMainTaskId);
   const { close } = useSidebar();
 
   const handleHistoryClick = (taskId: string) => {

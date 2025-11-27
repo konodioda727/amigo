@@ -1,0 +1,211 @@
+{
+  "messages": [
+    {
+      "type": "userSendMessage",
+      "data": {
+        "message": "收集西红柿炒蛋的图片素材",
+        "updateTime": 1764261044106
+      }
+    },
+    {
+      "type": "askFollowupQuestion",
+      "data": {
+        "message": "{\"result\":\"\",\"params\":{\"question\":\"您希望获取哪些具体步骤的图片？请从以下选项中选择：\",\"suggestOptions\":[\"切西红柿\",\"打鸡蛋\",\"炒鸡蛋\",\"炒西红柿\",\"翻炒融合\",\"出锅装盘\"]},\"toolName\":\"askFollowupQuestion\"}",
+        "partial": false,
+        "updateTime": 1764261045110,
+        "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6"
+      }
+    },
+    {
+      "type": "userSendMessage",
+      "data": {
+        "message": "炒鸡蛋",
+        "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6",
+        "updateTime": 1764261453864
+      },
+      "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6"
+    },
+    {
+      "type": "tool",
+      "data": {
+        "message": "{\"result\":\"\\n    成功更新 1 个待办事项。当前进度：0/1 (已完成/总数)。\\n    \\n**下一个任务：** 获取“炒鸡蛋”步骤的图片素材\\n⚠️ 还有 1 个任务未完成，请继续执行。**不要在所有任务完成前调用 completionResult。**\",\"params\":{\"todolist\":\"\\n- [ ] 获取“炒鸡蛋”步骤的图片素材\\n  \"},\"toolName\":\"updateTodolist\"}",
+        "partial": false,
+        "updateTime": 1764261454806,
+        "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6"
+      }
+    },
+    {
+      "type": "message",
+      "data": {
+        "message": "\n\n<readFile>\n  <path>./data/recipes/tomato_eggs_steps.json</path>\n</readFile>",
+        "partial": false,
+        "updateTime": 1764261455095,
+        "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6"
+      }
+    },
+    {
+      "type": "message",
+      "data": {
+        "message": "<readFile>\n  <path>./data/recipes/tomato_eggs_steps.json</path>\n</readFile>",
+        "partial": false,
+        "updateTime": 1764261456260,
+        "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6"
+      }
+    },
+    {
+      "type": "message",
+      "data": {
+        "message": "<readFile>\n  <path>./data/recipes/tomato_eggs_steps.json</path>\n</readFile>",
+        "partial": false,
+        "updateTime": 1764261456769,
+        "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6"
+      }
+    },
+    {
+      "type": "message",
+      "data": {
+        "message": "<readFile>\n  <path>./data/recipes/tomato_eggs_steps.json</path>\n</readFile>",
+        "partial": false,
+        "updateTime": 1764261457784,
+        "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6"
+      }
+    },
+    {
+      "type": "message",
+      "data": {
+        "message": "<readFile>\n  <path>./data/recipes/tomato_eggs_steps.json</path>\n</readFile>",
+        "partial": false,
+        "updateTime": 1764261458254,
+        "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6"
+      }
+    },
+    {
+      "type": "message",
+      "data": {
+        "message": "<readFile>\n  <path>./data/recipes/tomato_eggs_steps.json</path>\n</readFile>",
+        "partial": false,
+        "updateTime": 1764261459332,
+        "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6"
+      }
+    },
+    {
+      "type": "message",
+      "data": {
+        "message": "<readFile>\n  <path>./data/recipes/tomato_eggs_steps.json</path>\n</readFile>",
+        "partial": false,
+        "updateTime": 1764261459768,
+        "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6"
+      }
+    },
+    {
+      "type": "message",
+      "data": {
+        "message": "<readFile>\n  <path>./data/recipes/tomato_eggs_steps.json</path>\n</readFile>",
+        "partial": false,
+        "updateTime": 1764261460312,
+        "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6"
+      }
+    },
+    {
+      "type": "message",
+      "data": {
+        "message": "<readFile>\n  <path>./data/recipes/tomato_eggs_steps.json</path>\n</readFile>",
+        "partial": false,
+        "updateTime": 1764261460827,
+        "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6"
+      }
+    },
+    {
+      "type": "message",
+      "data": {
+        "message": "<readFile>\n  <path>./data/recipes/tomato_eggs_steps.json</path>\n</readFile>",
+        "partial": false,
+        "updateTime": 1764261462008,
+        "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6"
+      }
+    },
+    {
+      "type": "message",
+      "data": {
+        "message": "<readFile>\n  <path>./data/recipes/tomato_eggs_steps.json</path>\n</readFile>",
+        "partial": false,
+        "updateTime": 1764261462606,
+        "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6"
+      }
+    },
+    {
+      "type": "message",
+      "data": {
+        "message": "<readFile>\n  <path>./data/recipes/tomato_eggs_steps.json</path>\n</readFile>",
+        "partial": false,
+        "updateTime": 1764261463144,
+        "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6"
+      }
+    },
+    {
+      "type": "message",
+      "data": {
+        "message": "<readFile>\n  <path>./data/recipes/tomato_eggs_steps.json</path>\n</readFile>",
+        "partial": false,
+        "updateTime": 1764261463736,
+        "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6"
+      }
+    },
+    {
+      "type": "message",
+      "data": {
+        "message": "<readFile>\n  <path>./data/recipes/tomato_eggs_steps.json</path>\n</readFile>",
+        "partial": false,
+        "updateTime": 1764261464203,
+        "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6"
+      }
+    },
+    {
+      "type": "message",
+      "data": {
+        "message": "<readFile>\n  <path>./data/recipes/tomato_eggs_steps.json</path>\n</readFile>",
+        "partial": false,
+        "updateTime": 1764261464868,
+        "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6"
+      }
+    },
+    {
+      "type": "message",
+      "data": {
+        "message": "<readFile>\n  <path>./data/recipes/tomato_eggs_steps.json</path>\n</readFile>",
+        "partial": false,
+        "updateTime": 1764261466192,
+        "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6"
+      }
+    },
+    {
+      "type": "message",
+      "data": {
+        "message": "<readFile>\n  <path>./data/recipes/tomato_eggs_steps.json</path>\n</readFile>",
+        "partial": false,
+        "updateTime": 1764261466745,
+        "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6"
+      }
+    },
+    {
+      "type": "message",
+      "data": {
+        "message": "<readFile>\n  <path>./data/recipes/tomato_eggs_steps.json</path>\n</readFile>",
+        "partial": false,
+        "updateTime": 1764261467420,
+        "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6"
+      }
+    },
+    {
+      "type": "message",
+      "data": {
+        "message": "<readFile>\n",
+        "partial": true,
+        "updateTime": 1764261468610,
+        "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6"
+      }
+    }
+  ],
+  "updatedAt": "2025-11-27T16:37:48.626Z",
+  "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6"
+}

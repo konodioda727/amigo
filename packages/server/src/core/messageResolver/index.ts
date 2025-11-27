@@ -6,12 +6,11 @@ import { InterruptMessageResolver } from "./interruptMessageResolver";
 import { LoadTaskMessageResolver } from "./loadTaskMessageResolver";
 import { LoadSubTaskMessageResolver } from "./loadSubTaskMessageResolver";
 import { ResumeMessageResolver } from "./resumeMessageResolver";
-import { CallSubTaskMessageResolver } from "./callSubTaskMessageResolver";
 
 /**
  * 不同 message 处理器
  */
-const resolvers = [CommonMessageResolver, InterruptMessageResolver, LoadTaskMessageResolver, LoadSubTaskMessageResolver, ResumeMessageResolver, CallSubTaskMessageResolver];
+const resolvers = [CommonMessageResolver, InterruptMessageResolver, LoadTaskMessageResolver, LoadSubTaskMessageResolver, ResumeMessageResolver];
 
 const defaultResolver = CommonMessageResolver;
 

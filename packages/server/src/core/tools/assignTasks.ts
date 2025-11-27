@@ -247,7 +247,7 @@ export const AssignTasks = createTool({
       message: `所有子任务已执行完毕，结果如下：${warningMessage}\n${results
         .map(
           (r, i) =>
-            `步骤${i + 1}（目标：${r.target}）：${typeof r.summary === "string" ? r.summary : JSON.stringify(r.summary)}${r.invalidTools ? ` [无效工具: ${r.invalidTools.join(', ')}]` : ''}`
+            `步骤${i + 1}（目标：${r.target}）：${r.summary}${r.invalidTools ? ` [无效工具: ${r.invalidTools.join(', ')}]` : ''}`
         )
         .join("\n")}`,
       toolResult: {

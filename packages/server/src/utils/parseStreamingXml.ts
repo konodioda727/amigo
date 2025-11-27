@@ -83,7 +83,7 @@ export const parseStreamingXml = async ({
     const isEndTagFound = endLabelIndex !== -1;
     const isSystemPreservedTag =
       currentTool && systemReservedTags.includes(currentTool as SYSTEM_RESERVED_TAGS);
-    const currentType = (isSystemPreservedTag ? currentTool! : "tool") as ChatMessage["type"];
+    const currentType = (isSystemPreservedTag ? currentTool : "tool") as ChatMessage["type"];
 
     if (isEndTagFound) {
       const fullToolCall = buffer.slice(0, endLabelIndex + endTag.length);

@@ -1,10 +1,10 @@
 import { Plus } from "lucide-react";
 import type React from "react";
-import { useSidebar } from "./Layout";
-import { useWebSocket } from "./WebSocketProvider";
+import { useSidebar } from "./Layout/index";
+import { useWebSocketStore } from "@/store/websocket";
 
 const NewChatButton: React.FC = () => {
-  const { createNewConversation } = useWebSocket();
+  const createNewConversation = useWebSocketStore((state) => state.createNewConversation);
   const { isOpen, close } = useSidebar();
 
   const handleClick = () => {

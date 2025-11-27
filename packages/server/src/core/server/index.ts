@@ -5,6 +5,7 @@ import { getResolver } from "@/core/messageResolver";
 import { setGlobalState } from "@/globalState";
 import { getSessionHistories } from "@/utils/getSessions";
 import { logger } from "@/utils/logger";
+import { v4 as uuidV4 } from "uuid";
 
 /**
  * 服务接口暴露
@@ -31,14 +32,14 @@ class AmigoServer {
           try {
             parsedMessage = JSON.parse(message) as WebSocketMessage<USER_SEND_MESSAGE_NAME>;
 
-            let manager = ConversationManager.taskMapToConversationManager[parsedMessage.data.taskId];
+            const taskId = parsedMessage.data.taskId || uuidV4();
+            let manager = ConversationManager.taskMapToConversationManager[taskId];
             let isNewSession = false;
-
             if (!manager) {
               manager = new ConversationManager({
-                taskId: parsedMessage.data.taskId,
+                taskId,
               });
-              ConversationManager.taskMapToConversationManager[parsedMessage.data.taskId] = manager;
+              ConversationManager.taskMapToConversationManager[taskId] = manager;
               isNewSession = manager.isNewSession();
             }
             if (!manager.connections.includes(ws)) {
@@ -47,7 +48,7 @@ class AmigoServer {
             manager.emitMessage({
               type: "ack",
               data: {
-                taskId: parsedMessage.data.taskId,
+                taskId,
                 targetMessage: parsedMessage,
                 updateTime: Date.now().valueOf(),
                 status: manager.conversationStatus === "streaming" ? "failed" : "acked",

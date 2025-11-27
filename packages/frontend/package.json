@@ -23,7 +23,8 @@
     "react-icons": "^4.11.0",
     "streamdown": "^1.3.0",
     "tippy.js": "^6.3.7",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "zustand": "^5.0.8"
   },
   "devDependencies": {
     "@amigo/types": "workspace:*",

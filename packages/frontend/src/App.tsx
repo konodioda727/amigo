@@ -1,13 +1,26 @@
 import type React from "react";
+import { useEffect } from "react";
 import { Toaster } from "react-hot-toast";
-import ChatWindow from "./components/ChatWindow";
+import ChatWindow from "./components/ChatWindow/ChatWindow";
+import ErrorBoundary from "./components/ErrorBoundary";
 import Layout from "./components/Layout";
 import MessageInput from "./components/MessageInput";
-import { WebSocketProvider } from "./components/WebSocketProvider";
+import { useWebSocketStore } from "./store/websocket";
 
 const App: React.FC = () => {
+  // 初始化全局 WebSocket 连接
+  const connect = useWebSocketStore((state) => state.connect);
+  const disconnect = useWebSocketStore((state) => state.disconnect);
+  
+  useEffect(() => {
+    connect();
+    return () => {
+      disconnect();
+    };
+  }, [connect, disconnect]);
+
   return (
-    <WebSocketProvider>
+    <ErrorBoundary>
       <Toaster
         position="top-right"
         toastOptions={{
@@ -21,7 +34,7 @@ const App: React.FC = () => {
         <ChatWindow />
         <MessageInput />
       </Layout>
-    </WebSocketProvider>
+    </ErrorBoundary>
   );
 };
 

@@ -1,0 +1,60 @@
+{
+  "messages": [
+    {
+      "type": "userSendMessage",
+      "data": {
+        "message": "利用assignTask工具帮我做一份西红柿炒蛋的教程",
+        "taskId": "b6054b6d-4dc7-48ed-97e0-464a726d70a6",
+        "updateTime": 1764261040770
+      },
+      "taskId": "b6054b6d-4dc7-48ed-97e0-464a726d70a6"
+    },
+    {
+      "type": "message",
+      "data": {
+        "message": "让我先理个思路，我计划先执行任务分解，将西红柿炒蛋的教程制作拆解为多个可并行执行的步骤。\n\n",
+        "partial": false,
+        "updateTime": 1764261041072,
+        "taskId": "b6054b6d-4dc7-48ed-97e0-464a726d70a6"
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "message": "{\"params\":{\"tasklist\":[{\"target\":\"编写西红柿炒蛋的详细步骤说明\",\"subAgentPrompt\":\"你是一个专业的烹饪教程撰写专家，请详细描述西红柿炒蛋的制作步骤，包括食材准备、烹饪流程和注意事项。\",\"tools\":[\"updateTodolist\",\"completionResult\"]},{\"target\":\"收集西红柿炒蛋的图片素材\",\"subAgentPrompt\":\"你是一个图片素材收集专家，请搜索并获取西红柿炒蛋制作过程中的关键步骤图片，如切西红柿、打蛋、翻炒等。\",\"tools\":[\"updateTodolist\",\"completionResult\"]},{\"target\":\"整理并优化教程内容格式\",\"subAgentPrompt\":\"你是一个内容编辑专家，请将收集到的步骤说明和图片素材整合成一份结构清晰、排版美观的烹饪教程文档。\",\"tools\":[\"updateTodolist\",\"completionResult\"]}]},\"toolName\":\"assignTasks\"}",
+        "partial": true,
+        "updateTime": 1764261041428,
+        "taskId": "b6054b6d-4dc7-48ed-97e0-464a726d70a6"
+      }
+    },
+    {
+      "type": "assignTaskUpdated",
+      "data": {
+        "index": 0,
+        "taskId": "c133779b-445f-4f13-8481-34d42363b7a6",
+        "parentTaskId": "b6054b6d-4dc7-48ed-97e0-464a726d70a6",
+        "taskStatus": "running"
+      }
+    },
+    {
+      "type": "assignTaskUpdated",
+      "data": {
+        "index": 1,
+        "taskId": "7ffb8872-be38-44e2-b832-428c7a462cc6",
+        "parentTaskId": "b6054b6d-4dc7-48ed-97e0-464a726d70a6",
+        "taskStatus": "running"
+      }
+    },
+    {
+      "type": "assignTaskUpdated",
+      "data": {
+        "index": 0,
+        "taskId": "c133779b-445f-4f13-8481-34d42363b7a6",
+        "parentTaskId": "b6054b6d-4dc7-48ed-97e0-464a726d70a6",
+        "taskStatus": "completed"
+      }
+    }
+  ],
+  "updatedAt": "2025-11-27T16:31:35.463Z",
+  "taskId": "b6054b6d-4dc7-48ed-97e0-464a726d70a6"
+}

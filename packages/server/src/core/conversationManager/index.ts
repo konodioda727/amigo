@@ -5,6 +5,7 @@ import type {
   ToolInterface,
   WebSocketMessage,
 } from "@amigo/types";
+import type { ChatOpenAI } from "@langchain/openai";
 import type { ServerWebSocket } from "bun";
 import pWaitFor from "p-wait-for";
 import { systemReservedTags } from "@amigo/types";
@@ -24,7 +25,6 @@ import { StreamHandler } from "./StreamHandler";
  */
 export class ConversationManager {
   private startLabels: string[];
-  private endLabels: string[];
   private isAborted: boolean = false;
 
   public connections: ServerWebSocket[] = [];
@@ -32,7 +32,7 @@ export class ConversationManager {
 
   public memory!: FilePersistedMemory;
   private toolService!: ToolService;
-  private llm: any;
+  private llm: ChatOpenAI;
   private conversationType!: "main" | "sub";
 
   private messageEmitter!: MessageEmitter;
@@ -46,7 +46,7 @@ export class ConversationManager {
     taskId?: string;
     memory?: FilePersistedMemory;
     toolService?: ToolService;
-    llm?: any;
+    llm?: ChatOpenAI;
     conversationType?: "main" | "sub";
     customPrompt?: () => string;
   }) {
@@ -103,21 +103,19 @@ export class ConversationManager {
     }
 
     // 初始化标签
-    const { startLabels, endLabels } = this.toolService.toolNames
+    const { startLabels } = this.toolService.toolNames
       .concat(systemReservedTags)
       .reduce(
         (acc, cur) => {
           return {
             startLabels: [...acc.startLabels, `<${cur}>`],
-            endLabels: [...acc.endLabels, `</${cur}>`],
           };
         },
-        { startLabels: [] as string[], endLabels: [] as string[] }
+        { startLabels: [] as string[] }
       );
 
     ConversationManager.taskMapToConversationManager[this.memory.currentTaskId] = this;
     this.startLabels = startLabels;
-    this.endLabels = endLabels;
 
     // 初始化各个管理器
     this.initializeManagers();
@@ -144,8 +142,12 @@ export class ConversationManager {
     this.errorHandler = new ErrorHandler({
       messageEmitter: this.messageEmitter,
       getUserInput: () => this.userInput,
-      setUserInput: (input) => (this.userInput = input),
-      setConversationStatus: (status) => (this.conversationStatus = status),
+      setUserInput: (input) => {
+        this.userInput = input;
+      },
+      setConversationStatus: (status) => {
+        this.conversationStatus = status;
+      },
     });
 
     this.streamHandler = new StreamHandler({
@@ -157,9 +159,13 @@ export class ConversationManager {
       startLabels: this.startLabels,
       conversationType: this.conversationType,
       getUserInput: () => this.userInput,
-      setUserInput: (input) => (this.userInput = input),
+      setUserInput: (input) => {
+        this.userInput = input;
+      },
       getConversationStatus: () => this.conversationStatus,
-      setConversationStatus: (status) => (this.conversationStatus = status),
+      setConversationStatus: (status) => {
+        this.conversationStatus = status;
+      },
       isAborted: () => this.isAborted,
     });
   }
@@ -244,7 +250,17 @@ export class ConversationManager {
       type: "userSendMessage",
       partial: false,
     });
-    this.memory.addWebsocketMessage(message);
+    
+    // 确保消息有 updateTime
+    const messageWithTime: WebSocketMessage<"userSendMessage"> = {
+      ...message,
+      data: {
+        ...message.data,
+        updateTime: message.data.updateTime || Date.now(),
+      },
+    };
+    
+    this.memory.addWebsocketMessage(messageWithTime);
   }
 
   /**
@@ -350,7 +366,7 @@ export class ConversationManager {
     parentTaskId: string;
     tools: ToolInterface<any>[];
     index?: number;
-  }): Promise<ChatMessage> {
+  }): Promise<string> {
     const { subPrompt, parentTaskId, tools, target, index = 0 } = props;
     const llm = getLlm();
     const subTaskId = uuidV4();
@@ -372,7 +388,10 @@ export class ConversationManager {
     // 触发子会话输入
     subManager.setUserInput({
       type: "userSendMessage",
-      data: { message: target },
+      data: { 
+        message: target,
+        updateTime: Date.now(),
+      },
     } as any);
 
     const parentConversationManager =
@@ -414,6 +433,26 @@ export class ConversationManager {
     parentConversationManager.memory.addWebsocketMessage(completedMessage);
     parentConversationManager.emitMessage(completedMessage);
 
-    return subManager.memory.lastMessage!;
+    // 查找最后一条 completionResult 消息
+    const messages = subManager.memory.messages;
+    let completionMessage = null;
+    
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.type === 'completionResult' && messages[i]?.role === 'assistant') {
+        completionMessage = messages[i];
+        break;
+      }
+    }
+    
+    if (!completionMessage) {
+      // 如果没有 completionResult，返回最后一条消息
+      const lastMessage = subManager.memory.lastMessage;
+      if (!lastMessage) {
+        throw new Error(`子会话 ${subTaskId} 没有返回最终消息`);
+      }
+      return lastMessage.content;
+    }
+    
+    return completionMessage.content;
   }
 }

@@ -1,4 +1,5 @@
 import type { ChatMessage, ConversationStatus } from "@amigo/types";
+import type { ChatOpenAI } from "@langchain/openai";
 import type { FilePersistedMemory } from "../memory";
 import type { MessageEmitter } from "./MessageEmitter";
 import type { ToolExecutor } from "./ToolExecutor";
@@ -9,7 +10,7 @@ import { logger } from "@/utils/logger";
 import pWaitFor from "p-wait-for";
 
 interface StreamHandlerConfig {
-  llm: any;
+  llm: ChatOpenAI;
   memory: FilePersistedMemory;
   messageEmitter: MessageEmitter;
   toolExecutor: ToolExecutor;
@@ -28,7 +29,7 @@ interface StreamHandlerConfig {
  */
 export class StreamHandler {
   private currentAbortController: AbortController | null = null;
-  private llm: any;
+  private llm: ChatOpenAI;
   private memory: FilePersistedMemory;
   private messageEmitter: MessageEmitter;
   private toolExecutor: ToolExecutor;
@@ -37,7 +38,6 @@ export class StreamHandler {
   private conversationType: "main" | "sub";
   private getUserInput: () => string;
   private setUserInput: (input: string) => void;
-  private getConversationStatus: () => ConversationStatus;
   private setConversationStatus: (status: ConversationStatus) => void;
   private isAborted: () => boolean;
 
@@ -51,7 +51,6 @@ export class StreamHandler {
     this.conversationType = config.conversationType;
     this.getUserInput = config.getUserInput;
     this.setUserInput = config.setUserInput;
-    this.getConversationStatus = config.getConversationStatus;
     this.setConversationStatus = config.setConversationStatus;
     this.isAborted = config.isAborted;
   }
@@ -74,6 +73,12 @@ export class StreamHandler {
    * 处理流式响应
    */
   public async handleStream(): Promise<void> {
+    // 在开始新的 stream 前检查是否已被中断
+    if (this.isAborted()) {
+      logger.info("检测到中断状态，停止 handleStream");
+      return;
+    }
+
     const controller = new AbortController();
     const { signal } = controller;
 
@@ -101,7 +106,7 @@ export class StreamHandler {
 
       // 处理完成逻辑，返回是否应该继续循环
       const shouldContinue = await this.handleStreamCompletion(currentTool);
-      if (shouldContinue) {
+      if (shouldContinue && !this.isAborted()) {
         this.handleStream();
       }
     } catch (error: any) {
@@ -218,7 +223,7 @@ export class StreamHandler {
           type: "message",
           partial: false,
         });
-        this.setConversationStatus("idle");
+        this.setConversationStatus("streaming");
         return true;
       default:
         this.setConversationStatus("idle");

@@ -224,14 +224,18 @@ export class ToolService {
     const cdataEndPattern = /\]\]>/g;
     let cdataStartCount = 0;
     let cdataEndCount = 0;
-    let cdataMatch: RegExpExecArray | null;
     
     // 计算 CDATA 开始和结束标签的数量
-    while ((cdataMatch = cdataStartPattern.exec(processedString)) !== null) {
+    let match = cdataStartPattern.exec(processedString);
+    while (match !== null) {
       cdataStartCount++;
+      match = cdataStartPattern.exec(processedString);
     }
-    while ((cdataMatch = cdataEndPattern.exec(processedString)) !== null) {
+    
+    match = cdataEndPattern.exec(processedString);
+    while (match !== null) {
       cdataEndCount++;
+      match = cdataEndPattern.exec(processedString);
     }
     
     // 如果有未闭合的 CDATA，找到最后一个 <![CDATA[ 并移除它之后的所有内容
@@ -261,15 +265,15 @@ export class ToolService {
     const tagRegex = new RegExp(`<(${tagPattern})\\b[^>]*>|<\\/(${tagPattern})>`, "g");
 
     const openTags: string[] = [];
-    let match: RegExpExecArray | null;
+    let tagMatch: RegExpExecArray | null;
 
     // 遍历所有完整的标签，维护一个开放标签的栈
-    while ((match = tagRegex.exec(processedString)) !== null) {
-      if (match[1]) {
-        openTags.push(match[1]);
-      } else if (match[2]) {
+    while ((tagMatch = tagRegex.exec(processedString)) !== null) {
+      if (tagMatch[1]) {
+        openTags.push(tagMatch[1]);
+      } else if (tagMatch[2]) {
         // 如果栈顶是对应的开始标签，则出栈
-        if (openTags.length > 0 && openTags[openTags.length - 1] === match[2]) {
+        if (openTags.length > 0 && openTags[openTags.length - 1] === tagMatch[2]) {
           openTags.pop();
         }
       }
@@ -277,8 +281,10 @@ export class ToolService {
 
     let completedString = processedString;
     while (openTags.length > 0) {
-      const tagToClose = openTags.pop()!;
-      completedString += `</${tagToClose}>`;
+      const tagToClose = openTags.pop();
+      if (tagToClose) {
+        completedString += `</${tagToClose}>`;
+      }
     }
 
     return completedString;
@@ -336,9 +342,11 @@ export class ToolService {
           continue;
         }
         if (Object.keys(rawValue).length !== 1) {
-          logger.warn(
-            `\n[parseTool] Array type param '${paramDef.name}' should have exactly one child element instance named ${paramDef.params[0]?.name}.`,
-          );
+          const errorMsg = `Array type param '${paramDef.name}' should have exactly one child element instance named ${paramDef.params[0]?.name}.`;
+          if (!partial) {
+            logger.warn(`\n[parseTool] ${errorMsg}`);
+            missingParams.push(errorMsg);
+          }
           finalParams[paramDef.name] = [];
           continue;
         }
@@ -347,9 +355,9 @@ export class ToolService {
         const rawArray = ensureArray(rawValue[childTagName]);
 
         // 如果数组元素有更深层次的定义, 递归处理数组中的每个元素
-        if (childTag.params) {
+        if (childTag.params && childTag.params.length > 0) {
           finalParams[paramDef.name] = rawArray.map((item: any) =>
-            this.mapAndValidateParams(item, childTag.params!, partial),
+            this.mapAndValidateParams(item, childTag.params, partial),
           );
         } else {
           finalParams[paramDef.name] = rawArray;

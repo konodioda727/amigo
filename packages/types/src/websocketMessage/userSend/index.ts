@@ -4,7 +4,6 @@ import { IntertuptSchema } from "./interrupt";
 import { LoadTaskSchema } from "./loadTask";
 import { LoadSubTaskSchema } from "./loadSubTask";
 import { ResumeSchema } from "./resume";
-import { CallSubTaskSchema } from "./callSubTask";
 
 export const UserSendMessageSchema = z.discriminatedUnion("type", [
 	SocketMessageSchema,
@@ -12,7 +11,6 @@ export const UserSendMessageSchema = z.discriminatedUnion("type", [
 	LoadTaskSchema,
 	LoadSubTaskSchema,
 	ResumeSchema,
-	CallSubTaskSchema,
 ]);
 
 /**

@@ -1,6 +1,7 @@
 import { ChevronLeft, Menu } from "lucide-react";
 import { useSidebar } from "./Layout";
-import { useWebSocket, type ConnectionStatus } from "./WebSocketProvider";
+import { useWebSocketStore } from "@/store/websocket";
+import type { ConnectionStatus } from "@/store/websocket";
 
 const statusConfig: Record<ConnectionStatus, { label: string; color: string; pulse?: boolean }> = {
   connected: { label: "已连接", color: "bg-green-500" },
@@ -10,7 +11,7 @@ const statusConfig: Record<ConnectionStatus, { label: string; color: string; pul
 };
 
 const Header: React.FC = () => {
-  const { connectionStatus } = useWebSocket();
+  const connectionStatus = useWebSocketStore((state) => state.connectionStatus);
   const { isOpen, toggle } = useSidebar();
   const config = statusConfig[connectionStatus];
 

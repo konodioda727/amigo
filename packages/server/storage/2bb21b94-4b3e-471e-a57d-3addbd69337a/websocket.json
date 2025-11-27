@@ -1,0 +1,49 @@
+{
+  "messages": [
+    {
+      "type": "userSendMessage",
+      "data": {
+        "message": "hi",
+        "taskId": "2bb21b94-4b3e-471e-a57d-3addbd69337a",
+        "updateTime": 1764260995854
+      },
+      "taskId": "2bb21b94-4b3e-471e-a57d-3addbd69337a"
+    },
+    {
+      "type": "message",
+      "data": {
+        "message": "你好！很高兴见到你。有什么我可以帮你的吗？",
+        "partial": false,
+        "updateTime": 1764260996791,
+        "taskId": "2bb21b94-4b3e-471e-a57d-3addbd69337a"
+      }
+    },
+    {
+      "type": "interrupt",
+      "data": {
+        "taskId": "2bb21b94-4b3e-471e-a57d-3addbd69337a",
+        "updateTime": 1764260996918
+      }
+    },
+    {
+      "type": "message",
+      "data": {
+        "message": "用户已提供初始互动，但未明确需求。需要进一步收集信息以推进任务。\n\n",
+        "partial": false,
+        "updateTime": 1764261004569,
+        "taskId": "2bb21b94-4b3e-471e-a57d-3addbd69337a"
+      }
+    },
+    {
+      "type": "askFollowupQuestion",
+      "data": {
+        "message": "{\"result\":\"\",\"params\":{\"question\":\"您需要什么帮助？\",\"suggestOptions\":[\"创建项目文件结构\",\"优化代码性能\",\"查询技术文档\",\"其他需求\"]},\"toolName\":\"askFollowupQuestion\"}",
+        "partial": false,
+        "updateTime": 1764261004810,
+        "taskId": "2bb21b94-4b3e-471e-a57d-3addbd69337a"
+      }
+    }
+  ],
+  "updatedAt": "2025-11-27T16:30:05.495Z",
+  "taskId": "2bb21b94-4b3e-471e-a57d-3addbd69337a"
+}
