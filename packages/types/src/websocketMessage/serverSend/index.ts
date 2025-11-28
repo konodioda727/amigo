@@ -6,7 +6,6 @@ import { CompletionResultMessageSchema } from "./completionResult";
 import { ThinkMessageSchema } from './think';
 import { AckMessageSchema } from './ack';
 import { TaskHistoryMessageSchema } from './taskHistory';
-import { SubTaskHistoryMessageSchema } from './subTaskHistory';
 import { SessionHistoriesMessageSchema } from './sessionHistories';
 import { AskFollowupQuestionSchema } from "./askFollowupQuestion";
 import { AssignTaskUpdatedMessageSchema } from "./assignTaskUpdated";
@@ -30,7 +29,6 @@ export const ServerSendMessageSchema = z.discriminatedUnion("type", [
 	ThinkMessageSchema,
 	AckMessageSchema,
 	TaskHistoryMessageSchema,
-	SubTaskHistoryMessageSchema,
 	SessionHistoriesMessageSchema,
 	AskFollowupQuestionSchema,
 	AssignTaskUpdatedMessageSchema,

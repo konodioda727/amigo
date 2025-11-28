@@ -4,13 +4,12 @@ import type BaseMessageResolver from "./base";
 import { CommonMessageResolver } from "./commonMessageResolver";
 import { InterruptMessageResolver } from "./interruptMessageResolver";
 import { LoadTaskMessageResolver } from "./loadTaskMessageResolver";
-import { LoadSubTaskMessageResolver } from "./loadSubTaskMessageResolver";
 import { ResumeMessageResolver } from "./resumeMessageResolver";
 
 /**
  * 不同 message 处理器
  */
-const resolvers = [CommonMessageResolver, InterruptMessageResolver, LoadTaskMessageResolver, LoadSubTaskMessageResolver, ResumeMessageResolver];
+const resolvers = [CommonMessageResolver, InterruptMessageResolver, LoadTaskMessageResolver, ResumeMessageResolver];
 
 const defaultResolver = CommonMessageResolver;
 

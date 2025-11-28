@@ -1,5 +1,4 @@
 import type {
-  ChatMessage,
   ConversationStatus,
   SERVER_SEND_MESSAGE_NAME,
   ToolInterface,
@@ -19,6 +18,7 @@ import { MessageEmitter } from "./MessageEmitter";
 import { ToolExecutor } from "./ToolExecutor";
 import { ErrorHandler } from "./ErrorHandler";
 import { StreamHandler } from "./StreamHandler";
+import { getSessionHistories } from "@/utils/getSessions";
 
 /**
  * 会话管理类 - 主控制器
@@ -57,20 +57,17 @@ export class ConversationManager {
       this.memory = new FilePersistedMemory(params.taskId);
       this.llm = getLlm();
 
-      // 判断是主任务还是子任务
       this.conversationType = this.memory.getFatherTaskId ? "sub" : "main";
 
-      // 从 memory 中读取工具名称
       const toolNames = this.memory.toolNames;
       const totalTools = BASIC_TOOLS.concat(CUSTOMED_TOOLS);
       const userCustomedTools = (toolNames
         .map((name) => totalTools.find((tool) => tool.name === name))
         .filter(Boolean) || totalTools) as ToolInterface<any>[];
 
-      // 创建 toolService
       this.toolService = new ToolService(
         BASIC_TOOLS,
-        this.conversationType === "main" ? CUSTOMED_TOOLS : userCustomedTools
+        this.conversationType === "main" ? CUSTOMED_TOOLS : userCustomedTools,
       );
     }
     // 方式2: 完整参数创建
@@ -90,7 +87,6 @@ export class ConversationManager {
       systemPrompt += `\n\n=====用户自定义提示词:\n${params.customPrompt()}`;
     }
 
-    // 如果是新会话，插入 systemMessage
     const isNewSession = this.memory.isNewSession();
     if (isNewSession) {
       this.memory.addMessage({
@@ -102,22 +98,18 @@ export class ConversationManager {
       this.sendSessionHistoriesAfterInit();
     }
 
-    // 初始化标签
-    const { startLabels } = this.toolService.toolNames
-      .concat(systemReservedTags)
-      .reduce(
-        (acc, cur) => {
-          return {
-            startLabels: [...acc.startLabels, `<${cur}>`],
-          };
-        },
-        { startLabels: [] as string[] }
-      );
+    const { startLabels } = this.toolService.toolNames.concat(systemReservedTags).reduce(
+      (acc, cur) => {
+        return {
+          startLabels: [...acc.startLabels, `<${cur}>`],
+        };
+      },
+      { startLabels: [] as string[] },
+    );
 
     ConversationManager.taskMapToConversationManager[this.memory.currentTaskId] = this;
     this.startLabels = startLabels;
 
-    // 初始化各个管理器
     this.initializeManagers();
 
     this.start();
@@ -196,7 +188,6 @@ export class ConversationManager {
    */
   private async sendSessionHistoriesAfterInit() {
     setTimeout(async () => {
-      const { getSessionHistories } = await import("@/utils/getSessions");
       const sessionHistories = await getSessionHistories();
       this.emitMessage({
         type: "sessionHistories",
@@ -205,7 +196,7 @@ export class ConversationManager {
         },
       });
       logger.info(
-        `[ConversationManager] Sent session histories for new session: ${this.memory.currentTaskId}`
+        `[ConversationManager] Sent session histories for new session: ${this.memory.currentTaskId}`,
       );
     }, 0);
   }
@@ -240,7 +231,7 @@ export class ConversationManager {
    */
   public setUserInput(message: WebSocketMessage<"userSendMessage">) {
     logger.info(
-      `[ConversationManager] setUserInput - taskId: ${this.memory.currentTaskId}, message: ${message.data.message}, conversationType: ${this.conversationType}`
+      `[ConversationManager] setUserInput - taskId: ${this.memory.currentTaskId}, message: ${message.data.message}, conversationType: ${this.conversationType}`,
     );
     this.userInput = message.data.message;
     this.isAborted = false;
@@ -250,7 +241,7 @@ export class ConversationManager {
       type: "userSendMessage",
       partial: false,
     });
-    
+
     // 确保消息有 updateTime
     const messageWithTime: WebSocketMessage<"userSendMessage"> = {
       ...message,
@@ -259,7 +250,7 @@ export class ConversationManager {
         updateTime: message.data.updateTime || Date.now(),
       },
     };
-    
+
     this.memory.addWebsocketMessage(messageWithTime);
   }
 
@@ -293,7 +284,7 @@ export class ConversationManager {
     };
 
     this.memory.addWebsocketMessage(interruptMessage);
-    
+
     // 发送 interrupt 消息到前端
     this.emitMessage(interruptMessage);
 
@@ -388,7 +379,7 @@ export class ConversationManager {
     // 触发子会话输入
     subManager.setUserInput({
       type: "userSendMessage",
-      data: { 
+      data: {
         message: target,
         updateTime: Date.now(),
       },
@@ -436,14 +427,14 @@ export class ConversationManager {
     // 查找最后一条 completionResult 消息
     const messages = subManager.memory.messages;
     let completionMessage = null;
-    
+
     for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i]?.type === 'completionResult' && messages[i]?.role === 'assistant') {
+      if (messages[i]?.type === "completionResult" && messages[i]?.role === "assistant") {
         completionMessage = messages[i];
         break;
       }
     }
-    
+
     if (!completionMessage) {
       // 如果没有 completionResult，返回最后一条消息
       const lastMessage = subManager.memory.lastMessage;
@@ -452,7 +443,7 @@ export class ConversationManager {
       }
       return lastMessage.content;
     }
-    
+
     return completionMessage.content;
   }
 }
