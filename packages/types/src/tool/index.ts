@@ -3,12 +3,14 @@ import { AskFollowupQuestionSchema } from "./askFollowupQuestions";
 import { TodoListSchema } from "./updateTodolist";
 import { TaskListSchema } from "./assingTasks";
 import { CompletionResultSchema } from "./completionResult";
+import { BrowserSearchSchema } from "./browserSearch";
 
 export const toolSchemas = z.discriminatedUnion("name", [
   AskFollowupQuestionSchema,
   TaskListSchema,
   TodoListSchema,
   CompletionResultSchema,
+  BrowserSearchSchema,
 ]);
 
 export type ToolNames = z.infer<typeof toolSchemas>["name"];

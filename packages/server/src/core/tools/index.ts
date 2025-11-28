@@ -7,6 +7,7 @@ import { AskFollowupQuestions } from "./askFollowupQuestions";
 import { UpdateTodolist } from "./todolist";
 import { CompletionResult } from "./completionResult";
 import { AssignTasks } from "./assignTasks";
+import { BrowserSearch } from "./browserSearch";
 
 export class ToolService {
   private _availableTools: Record<string, ToolInterface<any>> = {};
@@ -392,8 +393,9 @@ export const BASIC_TOOLS: ToolInterface<any>[] = [
   AskFollowupQuestions,
   UpdateTodolist,
   CompletionResult,
+  BrowserSearch
 ];
 
 export const CUSTOMED_TOOLS: ToolInterface<any>[] = [AssignTasks];
 
-export { AskFollowupQuestions, UpdateTodolist, CompletionResult, AssignTasks };
+export { AskFollowupQuestions, UpdateTodolist, CompletionResult, AssignTasks, BrowserSearch };

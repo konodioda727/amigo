@@ -4,6 +4,7 @@ import type React from "react";
 import type { FrontendToolMessageType } from "@/messages/types";
 import AssignTask from "./assignTask";
 import UpdateTodolistRenderer from "./updateTodolist";
+import BrowserSearchRenderer from "./browserSearch";
 
 export type ToolRendererProps<T extends ToolNames> = FrontendToolMessageType<T> & { updateTime?: number };
 type ToolRenderers = {
@@ -14,6 +15,7 @@ const toolRendererMap: ToolRenderers = {
   // 例如：exampleTool: ToolRenderer_ExampleTool,
   assignTasks: AssignTask,
   updateTodolist: UpdateTodolistRenderer,
+  browserSearch: BrowserSearchRenderer,
 };
 
 const DefaultToolRenderer: React.FC<ToolRendererProps<ToolNames>> = ({
