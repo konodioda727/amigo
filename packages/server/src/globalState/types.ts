@@ -1,4 +1,4 @@
-import type { ConversationManager } from "core/conversationManager";
+import type { ConversationManager } from "../core/conversationManager";
 
 /**
  * GlobalState 类型

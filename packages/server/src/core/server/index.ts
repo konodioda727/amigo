@@ -6,15 +6,48 @@ import { setGlobalState } from "@/globalState";
 import { getSessionHistories } from "@/utils/getSessions";
 import { logger } from "@/utils/logger";
 import { v4 as uuidV4 } from "uuid";
+import type { ServerConfig } from "../config";
+import type { ToolRegistry, MessageRegistry } from "../registry";
+
+/**
+ * 服务器构造选项
+ */
+export interface AmigoServerOptions {
+  /** 服务器配置 */
+  config: ServerConfig;
+  /** 工具注册表 */
+  toolRegistry?: ToolRegistry;
+  /** 消息注册表 */
+  messageRegistry?: MessageRegistry;
+}
 
 /**
  * 服务接口暴露
  */
 class AmigoServer {
-  private port: string = "10013";
-  constructor({ port, globalStoragePath }: { port: string; globalStoragePath: string }) {
-    this.port = port;
-    setGlobalState("globalStoragePath", globalStoragePath);
+  private port: number;
+  private _toolRegistry?: ToolRegistry;
+  private _messageRegistry?: MessageRegistry;
+
+  constructor(options: AmigoServerOptions) {
+    this.port = options.config.port;
+    setGlobalState("globalStoragePath", options.config.storagePath);
+    this._toolRegistry = options.toolRegistry;
+    this._messageRegistry = options.messageRegistry;
+  }
+
+  /**
+   * 获取工具注册表
+   */
+  get toolRegistry(): ToolRegistry | undefined {
+    return this._toolRegistry;
+  }
+
+  /**
+   * 获取消息注册表
+   */
+  get messageRegistry(): MessageRegistry | undefined {
+    return this._messageRegistry;
   }
 
   init() {

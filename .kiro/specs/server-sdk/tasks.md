@@ -46,7 +46,7 @@
     - Methods: port(), storagePath(), registerTool(), registerMessage(), build()
     - Chainable API returning this
     - _Requirements: 4.1, 4.2_
-  - [-] 5.2 Integrate builder with existing AmigoServer
+  - [x] 5.2 Integrate builder with existing AmigoServer
     - Pass config, toolRegistry, messageRegistry to server
     - _Requirements: 4.2_
   - [ ]* 5.3 Write property tests for builder

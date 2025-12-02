@@ -7,6 +7,7 @@
 import type { ToolInterface, ToolNames } from "@amigo/types";
 import { ServerConfigSchema, type ServerConfig } from "../config";
 import { ToolRegistry, MessageRegistry } from "../registry";
+import AmigoServer from "../server";
 
 /**
  * Amigo 服务器流式构建器
@@ -15,11 +16,13 @@ import { ToolRegistry, MessageRegistry } from "../registry";
  * ```typescript
  * import { AmigoServerBuilder } from "@amigo/server";
  *
- * const { config, toolRegistry, messageRegistry } = new AmigoServerBuilder()
+ * const server = new AmigoServerBuilder()
  *   .port(8080)
  *   .storagePath("./my-storage")
  *   .registerTool(myTool)
  *   .build();
+ *
+ * server.init();
  * ```
  */
 export class AmigoServerBuilder {
@@ -74,19 +77,15 @@ export class AmigoServerBuilder {
   }
 
   /**
-   * 构建服务器配置
-   * @returns 验证后的服务器配置和注册表
+   * 构建并返回配置好的服务器实例
+   * @returns 配置好的 AmigoServer 实例
    */
-  build(): {
-    config: ServerConfig;
-    toolRegistry: ToolRegistry;
-    messageRegistry: MessageRegistry;
-  } {
+  build(): AmigoServer {
     const validatedConfig = ServerConfigSchema.parse(this.config);
-    return {
+    return new AmigoServer({
       config: validatedConfig,
       toolRegistry: this._toolRegistry,
       messageRegistry: this._messageRegistry,
-    };
+    });
   }
 }

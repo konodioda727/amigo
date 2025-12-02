@@ -15,4 +15,4 @@ export { ToolRegistry, MessageRegistry, RegistrationError } from "./registry";
 export { AmigoServerBuilder } from "./builder";
 
 // 服务器
-export { default as AmigoServer } from "./server";
+export { default as AmigoServer, type AmigoServerOptions } from "./server";
