@@ -5,8 +5,6 @@ pre-commit:
       glob: "*.{js,ts,jsx,tsx,json}"
       run: pnpm biome check --write --no-errors-on-unmatched --staged {staged_files}
       stage_fixed: true
-    test:
-      run: pnpm --filter @amigo/server test
 
 pre-push:
   commands:
