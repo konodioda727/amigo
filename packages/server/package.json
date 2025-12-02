@@ -24,7 +24,8 @@
     "zod": "^4.1.8"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "^1.3.3",
+    "fast-check": "^4.3.0"
   },
   "peerDependencies": {
     "typescript": "^5"
