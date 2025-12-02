@@ -32,7 +32,7 @@
     - Methods: register, get, getAll, getAllSchemas, has, size
     - Duplicate type detection with RegistrationError
     - _Requirements: 3.4_
-  - [ ]* 3.3 Write property tests for registry operations
+  - [x] 3.3 Write property tests for registry operations
     - **Property 5: Duplicate tool rejection**
     - **Property 8: Duplicate message rejection**
     - **Property 13: Registry retrieval correctness**
