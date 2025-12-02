@@ -7,3 +7,8 @@ pre-commit:
       stage_fixed: true
     test:
       run: pnpm --filter @amigo/server test
+
+pre-push:
+  commands:
+    build:
+      run: pnpm build
