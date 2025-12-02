@@ -6,12 +6,16 @@
   "description": "",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "pnpm --filter '!@amigo/types' start"
+    "dev": "pnpm --filter '!@amigo/types' start",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "prepare": "lefthook install"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@biomejs/biome": "^2.2.4"
+    "@biomejs/biome": "^2.2.4",
+    "lefthook": "^1.9.4"
   }
 }

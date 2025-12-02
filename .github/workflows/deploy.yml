@@ -1,0 +1,66 @@
+name: Deploy Amigo
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build types package
+        run: pnpm --filter @amigo/types build
+
+      - name: Build frontend
+        run: pnpm --filter @amigo/frontend build
+
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            cd ~/amigo
+            git pull origin main
+            
+            # Install pnpm if not exists
+            command -v pnpm || npm install -g pnpm
+            
+            # Install bun if not exists
+            command -v bun || curl -fsSL https://bun.sh/install | bash
+            export PATH="$HOME/.bun/bin:$PATH"
+            
+            # Install dependencies
+            pnpm install
+            
+            # Build types
+            cd packages/types && pnpm build && cd ../..
+            
+            # Build frontend
+            cd packages/frontend && pnpm build && cd ../..
+            
+            # Restart server with pm2
+            pm2 describe amigo-server > /dev/null 2>&1 && pm2 restart amigo-server || pm2 start "cd ~/amigo/packages/server && bun run src/index.ts" --name amigo-server
+            
+            echo "Deployment completed!"
