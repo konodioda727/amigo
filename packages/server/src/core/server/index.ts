@@ -7,7 +7,7 @@ import { getSessionHistories } from "@/utils/getSessions";
 import { logger } from "@/utils/logger";
 import { v4 as uuidV4 } from "uuid";
 import type { ServerConfig } from "../config";
-import type { ToolRegistry, MessageRegistry } from "../registry";
+import type { MessageRegistry, ToolRegistry } from "../registry";
 
 /**
  * 服务器构造选项
@@ -34,6 +34,14 @@ class AmigoServer {
     setGlobalState("globalStoragePath", options.config.storagePath);
     this._toolRegistry = options.toolRegistry;
     this._messageRegistry = options.messageRegistry;
+
+    // 将注册表中的工具和消息存储到全局状态，供 ConversationManager 使用
+    if (options.toolRegistry) {
+      setGlobalState("registryTools", options.toolRegistry.getAll());
+    }
+    if (options.messageRegistry) {
+      setGlobalState("registryMessages", options.messageRegistry.getAll());
+    }
   }
 
   /**

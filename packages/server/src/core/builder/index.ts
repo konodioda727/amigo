@@ -4,9 +4,10 @@
  * 用于配置 Amigo 服务器实例的流式构建器
  */
 
-import type { ToolInterface, ToolNames } from "@amigo/types";
+import type { MessageDefinition, ToolInterface, ToolNames } from "@amigo/types";
+import type { ZodObject } from "zod";
 import { ServerConfigSchema, type ServerConfig } from "../config";
-import { ToolRegistry, MessageRegistry } from "../registry";
+import { MessageRegistry, ToolRegistry } from "../registry";
 import AmigoServer from "../server";
 
 /**
@@ -57,7 +58,9 @@ export class AmigoServerBuilder {
   /**
    * 注册自定义消息类型
    */
-  registerMessage(message: { type: string; schema: unknown }): this {
+  registerMessage<TType extends string, TData extends ZodObject<any>>(
+    message: MessageDefinition<TType, TData>,
+  ): this {
     this._messageRegistry.register(message);
     return this;
   }

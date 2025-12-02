@@ -49,7 +49,7 @@
   - [x] 5.2 Integrate builder with existing AmigoServer
     - Pass config, toolRegistry, messageRegistry to server
     - _Requirements: 4.2_
-  - [ ]* 5.3 Write property tests for builder
+  - [x] 5.3 Write property tests for builder
     - **Property 9: Builder chaining**
     - **Property 10: Builder produces server**
     - **Property 11: Registry accumulation**
@@ -58,19 +58,19 @@
 - [ ] 6. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 7. Integrate with existing server
-  - [ ] 7.1 Modify AmigoServer to accept configuration from builder
+- [-] 7. Integrate with existing server
+  - [x] 7.1 Modify AmigoServer to accept configuration from builder
     - Accept toolRegistry and messageRegistry from builder
     - Merge custom tools with BASIC_TOOLS
     - _Requirements: 2.2, 3.2_
-  - [ ] 7.2 Modify tool execution to support registry tools
+  - [x] 7.2 Modify tool execution to support registry tools
     - Accept tools from registry in ToolExecutor
     - Maintain backward compatibility with existing tools
     - _Requirements: 2.2, 2.3_
   - [ ] 7.3 Modify message handling to support custom messages
     - Merge custom message schemas with existing ServerSendMessageSchema
     - _Requirements: 3.2, 3.3_
-  - [ ]* 7.4 Write property tests for tool and message validation
+  - [x] 7.4 Write property tests for tool and message validation
     - **Property 3: Tool parameter validation**
     - **Property 6: Message validation**
     - **Validates: Requirements 2.2, 2.3, 3.2, 3.3**

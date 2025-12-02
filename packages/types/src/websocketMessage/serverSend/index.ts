@@ -21,7 +21,10 @@ export const ErrorMessageSchema = z.object({
 	}),
 });
 
-export const ServerSendMessageSchema = z.discriminatedUnion("type", [
+/**
+ * 基础消息 Schema 数组（用于 SDK 扩展）
+ */
+export const BASE_SERVER_MESSAGE_SCHEMAS = [
 	CommonMessageSchema,
 	ConnectedSchema,
 	ToolMessageSchema,
@@ -36,7 +39,13 @@ export const ServerSendMessageSchema = z.discriminatedUnion("type", [
 	ConversationOverSchema,
 	ErrorMessageSchema,
 	AlertMessageSchema,
-]);
+] as const;
+
+export const ServerSendMessageSchema = z.discriminatedUnion(
+	"type",
+	BASE_SERVER_MESSAGE_SCHEMAS,
+);
+
 
 /**
  * 用户传入消息种类

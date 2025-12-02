@@ -4,7 +4,8 @@
  * 用于动态管理工具和消息的注册表类
  */
 
-import type { ToolInterface, ToolNames } from "@amigo/types";
+import type { MessageDefinition, ToolInterface, ToolNames } from "@amigo/types";
+import type { ZodObject } from "zod";
 
 /**
  * 注册重复时抛出的错误
@@ -66,13 +67,15 @@ export class ToolRegistry {
  * 消息注册表
  */
 export class MessageRegistry {
-  private messages: Map<string, { type: string; schema: unknown }> = new Map();
+  private messages: Map<string, MessageDefinition> = new Map();
 
   /**
    * 注册消息类型
    * @throws {RegistrationError} 如果同类型消息已存在
    */
-  register(message: { type: string; schema: unknown }): void {
+  register<TType extends string, TData extends ZodObject<any>>(
+    message: MessageDefinition<TType, TData>,
+  ): void {
     if (this.messages.has(message.type)) {
       throw new RegistrationError(`消息类型 "${message.type}" 已被注册`);
     }
@@ -82,21 +85,21 @@ export class MessageRegistry {
   /**
    * 根据类型获取消息定义
    */
-  get(type: string): { type: string; schema: unknown } | undefined {
+  get(type: string): MessageDefinition | undefined {
     return this.messages.get(type);
   }
 
   /**
    * 获取所有已注册的消息定义
    */
-  getAll(): { type: string; schema: unknown }[] {
+  getAll(): MessageDefinition[] {
     return Array.from(this.messages.values());
   }
 
   /**
-   * 获取所有消息的 Schema
+   * 获取所有消息的 Schema（用于合并到 discriminatedUnion）
    */
-  getAllSchemas(): unknown[] {
+  getAllSchemas(): MessageDefinition["schema"][] {
     return this.getAll().map((msg) => msg.schema);
   }
 

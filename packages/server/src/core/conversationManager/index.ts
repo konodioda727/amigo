@@ -19,6 +19,23 @@ import { ToolExecutor } from "./ToolExecutor";
 import { ErrorHandler } from "./ErrorHandler";
 import { StreamHandler } from "./StreamHandler";
 import { getSessionHistories } from "@/utils/getSessions";
+import { getGlobalState } from "@/globalState";
+
+/**
+ * 获取所有自定义工具（内置 CUSTOMED_TOOLS + SDK 注册的工具）
+ * 合并时会去重，SDK 注册的工具优先级更高
+ */
+function getAllCustomTools(): ToolInterface<any>[] {
+  const registryTools = getGlobalState("registryTools") || [];
+  const registryToolNames = new Set(registryTools.map((t) => t.name));
+
+  // 过滤掉与 registry 工具同名的内置工具，registry 工具优先
+  const filteredCustomedTools = CUSTOMED_TOOLS.filter(
+    (tool) => !registryToolNames.has(tool.name),
+  );
+
+  return [...filteredCustomedTools, ...registryTools];
+}
 
 /**
  * 会话管理类 - 主控制器
@@ -60,14 +77,15 @@ export class ConversationManager {
       this.conversationType = this.memory.getFatherTaskId ? "sub" : "main";
 
       const toolNames = this.memory.toolNames;
-      const totalTools = BASIC_TOOLS.concat(CUSTOMED_TOOLS);
+      const allCustomTools = getAllCustomTools();
+      const totalTools = BASIC_TOOLS.concat(allCustomTools);
       const userCustomedTools = (toolNames
         .map((name) => totalTools.find((tool) => tool.name === name))
         .filter(Boolean) || totalTools) as ToolInterface<any>[];
 
       this.toolService = new ToolService(
         BASIC_TOOLS,
-        this.conversationType === "main" ? CUSTOMED_TOOLS : userCustomedTools,
+        this.conversationType === "main" ? allCustomTools : userCustomedTools,
       );
     }
     // 方式2: 完整参数创建
