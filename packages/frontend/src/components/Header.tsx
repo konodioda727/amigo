@@ -1,7 +1,7 @@
 import { ChevronLeft, Menu } from "lucide-react";
 import { useSidebar } from "./Layout";
 import { useWebSocketStore } from "@/store/websocket";
-import type { ConnectionStatus } from "@/store/websocket";
+import type { ConnectionStatus } from "@/store/slices/connectionSlice";
 
 const statusConfig: Record<ConnectionStatus, { label: string; color: string; pulse?: boolean }> = {
   connected: { label: "已连接", color: "bg-green-500" },
