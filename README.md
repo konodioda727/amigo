@@ -336,6 +336,391 @@ ISC
 欢迎提交 Issue 和 Pull Request！
 
 
+## 📦 Server SDK
+
+Amigo Server 提供了一套流式构建器 API，让你可以轻松配置和扩展服务器功能。
+
+### 快速开始
+
+```typescript
+import { AmigoServerBuilder } from "@amigo/server";
+
+const server = new AmigoServerBuilder()
+  .port(8080)
+  .storagePath("./my-storage")
+  .build();
+
+server.init();
+```
+
+### 核心 API
+
+#### AmigoServerBuilder
+
+流式构建器，用于配置服务器实例。
+
+```typescript
+import { AmigoServerBuilder } from "@amigo/server";
+
+const server = new AmigoServerBuilder()
+  // 设置服务器端口（默认 10013）
+  .port(8080)
+  
+  // 设置会话持久化存储路径（默认 ./storage）
+  .storagePath("./data")
+  
+  // 注册自定义工具
+  .registerTool(myCustomTool)
+  
+  // 注册自定义消息类型
+  .registerMessage(myCustomMessage)
+  
+  // 构建服务器实例
+  .build();
+
+// 启动服务器
+server.init();
+```
+
+#### ServerConfig
+
+服务器配置 Schema，使用 Zod 进行验证。
+
+```typescript
+import { ServerConfigSchema, type ServerConfig } from "@amigo/server";
+
+// 配置项
+interface ServerConfig {
+  port: number;              // 端口号 (1-65535)，默认 10013
+  storagePath: string;       // 存储路径，默认 "./storage"
+  maxConnections?: number;   // 最大连接数（可选）
+  heartbeatInterval?: number; // 心跳间隔（可选）
+}
+
+// 验证配置
+const config = ServerConfigSchema.parse({
+  port: 8080,
+  storagePath: "./my-storage"
+});
+```
+
+### 自定义工具
+
+工具是 Amigo 的核心扩展机制，让 AI 智能体能够执行具体操作。
+
+#### 工具接口定义
+
+```typescript
+interface ToolInterface<K extends ToolNames> {
+  name: K;                    // 工具名称（唯一标识）
+  description: string;        // 工具描述（LLM 用于理解工具用途）
+  whenToUse: string;          // 使用场景说明
+  params: ToolParam<K>[];     // 参数定义
+  useExamples: string[];      // 使用示例（XML 格式）
+  
+  invoke: (props: {
+    params: ToolParams<K>;                              // 解析后的参数
+    getCurrentTask: () => string;                       // 获取当前任务 ID
+    getToolFromName: (name: string) => ToolInterface;   // 获取其他工具
+    signal?: AbortSignal;                               // 中断信号
+    postMessage?: (msg: string | object) => void;       // 发送消息
+  }) => Promise<{ message: string; toolResult: ToolResult<K> }>;
+}
+```
+
+#### 创建自定义工具
+
+**步骤 1: 定义工具 Schema** (`packages/types/src/tool/myTool.ts`)
+
+```typescript
+import { z } from "zod";
+
+export const MyToolSchema = z.object({
+  name: z.literal("myTool"),
+  params: z.object({
+    query: z.string(),
+    options: z.object({
+      limit: z.number().optional(),
+    }).optional(),
+  }),
+  result: z.object({
+    data: z.array(z.string()),
+    total: z.number(),
+  }),
+});
+
+export type MyToolParams = z.infer<typeof MyToolSchema>["params"];
+export type MyToolResult = z.infer<typeof MyToolSchema>["result"];
+```
+
+**步骤 2: 实现工具逻辑** (`packages/server/src/core/tools/myTool.ts`)
+
+```typescript
+import { createTool } from "./base";
+import { logger } from "@/utils/logger";
+
+export const MyTool = createTool({
+  name: "myTool",
+  description: "执行自定义查询操作",
+  whenToUse: "当用户需要查询特定数据时使用此工具",
+  
+  params: [
+    {
+      name: "query",
+      optional: false,
+      description: "查询关键词",
+    },
+    {
+      name: "options",
+      optional: true,
+      description: "查询选项",
+      type: "object",
+      params: [
+        {
+          name: "limit",
+          optional: true,
+          description: "返回结果数量限制",
+        },
+      ],
+    },
+  ],
+  
+  useExamples: [
+    `<myTool>
+  <query>搜索关键词</query>
+  <options>
+    <limit>10</limit>
+  </options>
+</myTool>`,
+  ],
+  
+  async invoke({ params, signal, postMessage }) {
+    const { query, options } = params;
+    
+    logger.info(`[MyTool] 执行查询: ${query}`);
+    
+    // 检查中断信号
+    if (signal?.aborted) {
+      throw new Error("操作已取消");
+    }
+    
+    // 发送进度消息（可选）
+    postMessage?.({ type: "progress", data: { status: "processing" } });
+    
+    // 执行业务逻辑
+    const results = await performQuery(query, options?.limit);
+    
+    return {
+      message: `查询完成，找到 ${results.length} 条结果`,
+      toolResult: {
+        data: results,
+        total: results.length,
+      },
+    };
+  },
+});
+```
+
+**步骤 3: 注册工具到 Schema** (`packages/types/src/tool/index.ts`)
+
+```typescript
+import { MyToolSchema } from "./myTool";
+
+export const toolSchemas = z.discriminatedUnion("name", [
+  // ... 其他工具
+  MyToolSchema,
+]);
+```
+
+**步骤 4: 通过 Builder 注册**
+
+```typescript
+import { AmigoServerBuilder } from "@amigo/server";
+import { MyTool } from "./tools/myTool";
+
+const server = new AmigoServerBuilder()
+  .port(8080)
+  .registerTool(MyTool)
+  .build();
+```
+
+### 自定义消息类型
+
+消息类型用于定义服务器与客户端之间的通信协议。
+
+#### 定义消息
+
+```typescript
+import { defineMessage } from "@amigo/server";
+import { z } from "zod";
+
+// 定义自定义消息
+const MyCustomMessage = defineMessage({
+  type: "myCustomEvent",
+  dataSchema: z.object({
+    eventId: z.string(),
+    payload: z.any(),
+    timestamp: z.number(),
+  }),
+  // 可选：消息处理器
+  handler: async (data) => {
+    console.log("收到自定义消息:", data);
+  },
+});
+```
+
+#### 注册消息
+
+```typescript
+import { AmigoServerBuilder } from "@amigo/server";
+
+const server = new AmigoServerBuilder()
+  .port(8080)
+  .registerMessage(MyCustomMessage)
+  .build();
+```
+
+### 注册表 API
+
+#### ToolRegistry
+
+工具注册表，用于管理已注册的工具。
+
+```typescript
+import { ToolRegistry, RegistrationError } from "@amigo/server";
+
+const registry = new ToolRegistry();
+
+// 注册工具
+registry.register(myTool);
+
+// 获取工具
+const tool = registry.get("myTool");
+
+// 检查工具是否存在
+if (registry.has("myTool")) {
+  // ...
+}
+
+// 获取所有工具
+const allTools = registry.getAll();
+
+// 获取工具数量
+console.log(`已注册 ${registry.size} 个工具`);
+```
+
+#### MessageRegistry
+
+消息注册表，用于管理自定义消息类型。
+
+```typescript
+import { MessageRegistry } from "@amigo/server";
+
+const registry = new MessageRegistry();
+
+// 注册消息
+registry.register(myMessage);
+
+// 获取消息定义
+const message = registry.get("myCustomEvent");
+
+// 获取所有消息 Schema（用于合并验证）
+const schemas = registry.getAllSchemas();
+```
+
+### 错误处理
+
+```typescript
+import { ValidationError, RegistrationError } from "@amigo/server";
+
+try {
+  const server = new AmigoServerBuilder()
+    .port(99999) // 无效端口
+    .build();
+} catch (error) {
+  if (error instanceof ValidationError) {
+    console.error("配置验证失败:", error.details);
+  }
+}
+
+try {
+  registry.register(duplicateTool);
+} catch (error) {
+  if (error instanceof RegistrationError) {
+    console.error("注册失败:", error.message);
+  }
+}
+```
+
+### 完整示例
+
+```typescript
+import path from "node:path";
+import dotenv from "dotenv";
+import { AmigoServerBuilder, defineMessage } from "@amigo/server";
+import { z } from "zod";
+import { MyTool } from "./tools/myTool";
+
+dotenv.config();
+
+// 定义自定义消息
+const AnalyticsMessage = defineMessage({
+  type: "analytics",
+  dataSchema: z.object({
+    event: z.string(),
+    properties: z.record(z.any()),
+  }),
+});
+
+// 配置
+const PORT = Number(process.env.SERVER_PORT) || 10013;
+const STORAGE_PATH = process.env.STORAGE_PATH || path.resolve(process.cwd(), "storage");
+
+// 构建服务器
+const server = new AmigoServerBuilder()
+  .port(PORT)
+  .storagePath(STORAGE_PATH)
+  .registerTool(MyTool)
+  .registerMessage(AnalyticsMessage)
+  .build();
+
+// 启动
+server.init();
+
+console.log(`Amigo Server 已启动: ws://localhost:${PORT}`);
+```
+
+### 导出清单
+
+```typescript
+// 从 @amigo/server 导出
+export {
+  // 构建器
+  AmigoServerBuilder,
+  
+  // 服务器
+  AmigoServer,
+  type AmigoServerOptions,
+  
+  // 配置
+  ServerConfigSchema,
+  type ServerConfig,
+  ValidationError,
+  
+  // 注册表
+  ToolRegistry,
+  MessageRegistry,
+  RegistrationError,
+  
+  // 消息定义
+  defineMessage,
+  type MessageDefinition,
+  type MessageSchema,
+};
+```
+
+---
+
 ## 📚 开发指南
 
 ### 项目规范
@@ -385,85 +770,6 @@ biome check .
 # 类型检查
 pnpm --filter frontend tsc --noEmit
 pnpm --filter server tsc --noEmit
-```
-
-### 添加新工具
-
-1. **定义工具参数类型** (`packages/types/src/tool/yourTool.ts`)
-
-```typescript
-import { z } from "zod"
-
-export const YourToolParamsSchema = z.object({
-  input: z.string().describe("工具输入参数"),
-  options: z.object({
-    mode: z.enum(["fast", "accurate"]).optional()
-  }).optional()
-})
-
-export type YourToolParams = z.infer<typeof YourToolParamsSchema>
-```
-
-2. **实现工具逻辑** (`packages/server/src/core/tools/yourTool.ts`)
-
-```typescript
-import type { YourToolParams } from "@amigo/types/tool/yourTool"
-import type { ToolContext } from "./types"
-
-export async function yourTool(
-  params: YourToolParams,
-  context: ToolContext
-) {
-  const { input, options } = params
-  const { conversationId, sendMessage } = context
-
-  // 发送进度消息
-  await sendMessage({
-    type: "tool_progress",
-    data: { status: "processing", progress: 0.5 }
-  })
-
-  // 执行工具逻辑
-  const result = await doSomething(input, options)
-
-  // 返回结果
-  return {
-    success: true,
-    data: result
-  }
-}
-```
-
-3. **注册工具** (`packages/server/src/core/tools/index.ts`)
-
-```typescript
-import { yourTool } from "./yourTool"
-import { YourToolParamsSchema } from "@amigo/types/tool/yourTool"
-
-export const tools = [
-  // ... 其他工具
-  {
-    name: "your_tool",
-    description: "工具的功能描述，LLM 会根据这个决定何时调用",
-    schema: YourToolParamsSchema,
-    handler: yourTool
-  }
-]
-```
-
-4. **添加前端渲染器**（可选，`packages/frontend/src/components/MessageRenderers/toolRenderer/yourTool.tsx`）
-
-```typescript
-import type { YourToolParams } from "@amigo/types/tool/yourTool"
-
-export function YourToolRenderer({ params }: { params: YourToolParams }) {
-  return (
-    <div className="tool-result">
-      <h3>工具执行结果</h3>
-      <pre>{JSON.stringify(params, null, 2)}</pre>
-    </div>
-  )
-}
 ```
 
 ### 调试技巧
