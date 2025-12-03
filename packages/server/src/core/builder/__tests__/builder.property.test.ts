@@ -7,12 +7,12 @@
  * - 属性 11: 注册表累积
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
+import type { ToolInterface, ToolNames } from "@amigo-llm/types";
 import * as fc from "fast-check";
 import { z } from "zod";
-import { AmigoServerBuilder } from "../index";
-import type { ToolInterface, ToolNames } from "@amigo/types";
 import AmigoServer from "../../server";
+import { AmigoServerBuilder } from "../index";
 
 // ============================================================================
 // 测试生成器 (Arbitraries)
@@ -82,7 +82,7 @@ describe("构建器属性测试", () => {
           const result = builder.port(port);
           expect(result).toBe(builder);
         }),
-        { numRuns: 100 }
+        { numRuns: 100 },
       );
     });
 
@@ -93,7 +93,7 @@ describe("构建器属性测试", () => {
           const result = builder.storagePath(path);
           expect(result).toBe(builder);
         }),
-        { numRuns: 100 }
+        { numRuns: 100 },
       );
     });
 
@@ -106,9 +106,9 @@ describe("构建器属性测试", () => {
             const tool = createMockTool(toolName);
             const result = builder.registerTool(tool);
             expect(result).toBe(builder);
-          }
+          },
         ),
-        { numRuns: 100 }
+        { numRuns: 100 },
       );
     });
 
@@ -121,9 +121,9 @@ describe("构建器属性测试", () => {
             const message = createMockMessage(messageType);
             const result = builder.registerMessage(message);
             expect(result).toBe(builder);
-          }
+          },
         ),
-        { numRuns: 100 }
+        { numRuns: 100 },
       );
     });
 
@@ -147,9 +147,9 @@ describe("构建器属性测试", () => {
               .registerMessage(message);
 
             expect(result).toBe(builder);
-          }
+          },
         ),
-        { numRuns: 100 }
+        { numRuns: 100 },
       );
     });
   });
@@ -171,7 +171,7 @@ describe("构建器属性测试", () => {
 
           expect(server).toBeInstanceOf(AmigoServer);
         }),
-        { numRuns: 100 }
+        { numRuns: 100 },
       );
     });
 
@@ -194,9 +194,9 @@ describe("构建器属性测试", () => {
             expect(server).toBeInstanceOf(AmigoServer);
             expect(server.toolRegistry).toBeDefined();
             expect(server.messageRegistry).toBeDefined();
-          }
+          },
         ),
-        { numRuns: 100 }
+        { numRuns: 100 },
       );
     });
 
@@ -220,7 +220,10 @@ describe("构建器属性测试", () => {
       fc.assert(
         fc.property(
           fc
-            .array(toolNameArb.filter((name) => name.length > 0), { minLength: 1, maxLength: 20 })
+            .array(
+              toolNameArb.filter((name) => name.length > 0),
+              { minLength: 1, maxLength: 20 },
+            )
             .map((names) => [...new Set(names)]) // 确保名称唯一
             .filter((names) => names.length > 0),
           (toolNames) => {
@@ -239,9 +242,9 @@ describe("构建器属性测试", () => {
             for (const tool of tools) {
               expect(server.toolRegistry?.has(tool.name)).toBe(true);
             }
-          }
+          },
         ),
-        { numRuns: 100 }
+        { numRuns: 100 },
       );
     });
 
@@ -249,7 +252,10 @@ describe("构建器属性测试", () => {
       fc.assert(
         fc.property(
           fc
-            .array(messageTypeArb.filter((type) => type.length > 0), { minLength: 1, maxLength: 20 })
+            .array(
+              messageTypeArb.filter((type) => type.length > 0),
+              { minLength: 1, maxLength: 20 },
+            )
             .map((types) => [...new Set(types)]) // 确保类型唯一
             .filter((types) => types.length > 0),
           (messageTypes) => {
@@ -268,9 +274,9 @@ describe("构建器属性测试", () => {
             for (const message of messages) {
               expect(server.messageRegistry?.has(message.type)).toBe(true);
             }
-          }
+          },
         ),
-        { numRuns: 100 }
+        { numRuns: 100 },
       );
     });
 
@@ -278,11 +284,17 @@ describe("构建器属性测试", () => {
       fc.assert(
         fc.property(
           fc
-            .array(toolNameArb.filter((name) => name.length > 0), { minLength: 1, maxLength: 10 })
+            .array(
+              toolNameArb.filter((name) => name.length > 0),
+              { minLength: 1, maxLength: 10 },
+            )
             .map((names) => [...new Set(names)])
             .filter((names) => names.length > 0),
           fc
-            .array(messageTypeArb.filter((type) => type.length > 0), { minLength: 1, maxLength: 10 })
+            .array(
+              messageTypeArb.filter((type) => type.length > 0),
+              { minLength: 1, maxLength: 10 },
+            )
             .map((types) => [...new Set(types)])
             .filter((types) => types.length > 0),
           (toolNames, messageTypes) => {
@@ -313,9 +325,9 @@ describe("构建器属性测试", () => {
             for (const message of messages) {
               expect(server.messageRegistry?.has(message.type)).toBe(true);
             }
-          }
+          },
         ),
-        { numRuns: 100 }
+        { numRuns: 100 },
       );
     });
 
@@ -323,11 +335,17 @@ describe("构建器属性测试", () => {
       fc.assert(
         fc.property(
           fc
-            .array(toolNameArb.filter((name) => name.length > 0), { minLength: 1, maxLength: 5 })
+            .array(
+              toolNameArb.filter((name) => name.length > 0),
+              { minLength: 1, maxLength: 5 },
+            )
             .map((names) => [...new Set(names)])
             .filter((names) => names.length > 0),
           fc
-            .array(messageTypeArb.filter((type) => type.length > 0), { minLength: 1, maxLength: 5 })
+            .array(
+              messageTypeArb.filter((type) => type.length > 0),
+              { minLength: 1, maxLength: 5 },
+            )
             .map((types) => [...new Set(types)])
             .filter((types) => types.length > 0),
           (toolNames, messageTypes) => {
@@ -351,9 +369,9 @@ describe("构建器属性测试", () => {
             // 构建后服务器的注册表应与构建器的注册表一致
             expect(server.toolRegistry?.size).toBe(builder.toolRegistry.size);
             expect(server.messageRegistry?.size).toBe(builder.messageRegistry.size);
-          }
+          },
         ),
-        { numRuns: 100 }
+        { numRuns: 100 },
       );
     });
   });

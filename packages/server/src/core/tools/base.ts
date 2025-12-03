@@ -1,4 +1,4 @@
-import type { ToolInterface, ToolNames } from "@amigo/types/src/tool";
+import type { ToolInterface, ToolNames } from "@amigo-llm/types/src/tool";
 /**
  * 创建工具, 用于类型推导
  * @param tool 工具信息

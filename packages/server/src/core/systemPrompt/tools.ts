@@ -1,4 +1,4 @@
-import type { ToolInterface, ToolParam} from "@amigo/types";
+import type { ToolInterface, ToolParam } from "@amigo-llm/types";
 
 // 辅助函数：根据参数结构智能推断类型
 function inferParameterType(param: ToolParam<string>): "string" | "array" | "object" {
@@ -99,7 +99,7 @@ function generateParamsDescription(
  */
 export function generateToolsPrompt(
   tools: Array<ToolInterface<any>>,
-  allToolNames?: string[]
+  allToolNames?: string[],
 ): string {
   return tools
     .map((tool) => {
@@ -115,7 +115,7 @@ export function generateToolsPrompt(
       // 特殊处理：为 assignTasks 工具动态注入可用工具列表
       let whenToUseText = tool.whenToUse;
       if (tool.name === "assignTasks" && allToolNames && allToolNames.length > 0) {
-        whenToUseText = `${tool.whenToUse}\n\n**当前可用的工具名称列表：**\n${allToolNames.map(name => `  - ${name}`).join('\n')}\n\n**请只使用上述列表中的工具名称。如果需要的工具不在列表中，请将 tools 留空。**`;
+        whenToUseText = `${tool.whenToUse}\n\n**当前可用的工具名称列表：**\n${allToolNames.map((name) => `  - ${name}`).join("\n")}\n\n**请只使用上述列表中的工具名称。如果需要的工具不在列表中，请将 tools 留空。**`;
       }
 
       return [

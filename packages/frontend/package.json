@@ -1,5 +1,5 @@
 {
-  "name": "@amigo/frontend",
+  "name": "@amigo-llm/frontend",
   "version": "0.0.1",
   "type": "module",
   "scripts": {
@@ -28,7 +28,7 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
-    "@amigo/types": "workspace:*",
+    "@amigo-llm/types": "workspace:*",
     "@types/lodash": "^4.17.20",
     "@types/react": "^18.2.15",
     "@types/react-dom": "^18.2.7",

@@ -1,7 +1,7 @@
-import type { ChatMessage, SERVER_SEND_MESSAGE_NAME, WebSocketMessage } from "@amigo/types";
+import type { ChatMessage, SERVER_SEND_MESSAGE_NAME, WebSocketMessage } from "@amigo-llm/types";
 import type { ServerWebSocket } from "bun";
-import type { FilePersistedMemory } from "../memory";
 import { isWhitespaceOnly } from "@/utils/isWhiteSpaceOnly";
+import type { FilePersistedMemory } from "../memory";
 
 interface MessageEmitterConfig {
   memory: FilePersistedMemory;
@@ -36,7 +36,7 @@ export class MessageEmitter {
         JSON.stringify({
           type,
           data: { ...data, updateTime: (data as any).updateTime || Date.now() },
-        } as WebSocketMessage<T>)
+        } as WebSocketMessage<T>),
       );
     });
   }
@@ -46,7 +46,7 @@ export class MessageEmitter {
    * 适用于 alert、conversationOver 等系统消息
    */
   public emitAndSaveMessage<T extends SERVER_SEND_MESSAGE_NAME>(
-    message: WebSocketMessage<T>
+    message: WebSocketMessage<T>,
   ): void {
     this.emitMessage(message);
     this.memory.addWebsocketMessage(message as any);

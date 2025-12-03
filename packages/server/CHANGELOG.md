@@ -1,4 +1,4 @@
-# @amigo/server
+# @amigo-llm/server
 
 ## 1.0.1
 
@@ -6,4 +6,4 @@
 
 - init update
 - Updated dependencies
-  - @amigo/types@1.0.3
+  - @amigo-llm/types@1.0.3

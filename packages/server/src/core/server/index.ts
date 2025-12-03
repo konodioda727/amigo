@@ -1,11 +1,11 @@
-import type { USER_SEND_MESSAGE_NAME, WebSocketMessage } from "@amigo/types";
+import type { USER_SEND_MESSAGE_NAME, WebSocketMessage } from "@amigo-llm/types";
 import Bun, { type ServerWebSocket } from "bun";
+import { v4 as uuidV4 } from "uuid";
 import { ConversationManager } from "@/core/conversationManager";
 import { getResolver } from "@/core/messageResolver";
 import { setGlobalState } from "@/globalState";
 import { getSessionHistories } from "@/utils/getSessions";
 import { logger } from "@/utils/logger";
-import { v4 as uuidV4 } from "uuid";
 import type { ServerConfig } from "../config";
 import type { MessageRegistry, ToolRegistry } from "../registry";
 
@@ -95,11 +95,11 @@ class AmigoServer {
                 status: manager.conversationStatus === "streaming" ? "failed" : "acked",
               },
             });
-            
+
             // 创建对应的resolver
             const resolver = getResolver(parsedMessage.type as USER_SEND_MESSAGE_NAME, manager);
             await resolver.process(parsedMessage.data);
-            
+
             // 如果是新会话，在处理完消息后发送更新后的会话历史列表
             if (isNewSession) {
               manager.emitMessage({
@@ -123,7 +123,7 @@ class AmigoServer {
               },
             } as WebSocketMessage<"connected">),
           );
-          
+
           // 发送会话历史列表
           ws.send(
             JSON.stringify({
@@ -140,10 +140,9 @@ class AmigoServer {
             if (manager.connections.includes(ws)) {
               manager.removeConnection(ws);
               const isLastConnectionAndSreaming =
-                !manager.connections.length &&
-                manager.conversationStatus === "streaming"
-                
-              if(isLastConnectionAndSreaming) manager.interrupt();
+                !manager.connections.length && manager.conversationStatus === "streaming";
+
+              if (isLastConnectionAndSreaming) manager.interrupt();
               return;
             }
           }

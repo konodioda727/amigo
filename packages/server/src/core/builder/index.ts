@@ -4,9 +4,9 @@
  * 用于配置 Amigo 服务器实例的流式构建器
  */
 
-import type { MessageDefinition, ToolInterface, ToolNames } from "@amigo/types";
+import type { MessageDefinition, ToolInterface, ToolNames } from "@amigo-llm/types";
 import type { ZodObject } from "zod";
-import { ServerConfigSchema, type ServerConfig } from "../config";
+import { type ServerConfig, ServerConfigSchema } from "../config";
 import { MessageRegistry, ToolRegistry } from "../registry";
 import AmigoServer from "../server";
 
@@ -15,7 +15,7 @@ import AmigoServer from "../server";
  *
  * @example
  * ```typescript
- * import { AmigoServerBuilder } from "@amigo/server";
+ * import { AmigoServerBuilder } from "@amigo-llm/server";
  *
  * const server = new AmigoServerBuilder()
  *   .port(8080)

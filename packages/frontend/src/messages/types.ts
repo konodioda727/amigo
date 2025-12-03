@@ -1,4 +1,10 @@
-import type { SERVER_SEND_MESSAGE_NAME, ToolNames, ToolParams, ToolResult, WebSocketMessage } from "@amigo/types";
+import type {
+  SERVER_SEND_MESSAGE_NAME,
+  ToolNames,
+  ToolParams,
+  ToolResult,
+  WebSocketMessage,
+} from "@amigo-llm/types";
 
 /**
  * message 接收函数类型
@@ -95,7 +101,7 @@ export type DisplayMessageType =
 /**
  * 展示消息类型名称
  */
-export const DisplayMessageTypeNames: WebSocketMessage<any>["type"][]= [
+export const DisplayMessageTypeNames: WebSocketMessage<any>["type"][] = [
   "message",
   "completionResult",
   "tool",

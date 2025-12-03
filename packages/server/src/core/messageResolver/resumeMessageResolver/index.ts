@@ -1,6 +1,6 @@
-import type { USER_SEND_MESSAGE_NAME } from "@amigo/types";
-import BaseMessageResolver from "../base";
+import type { USER_SEND_MESSAGE_NAME } from "@amigo-llm/types";
 import { logger } from "@/utils/logger";
+import BaseMessageResolver from "../base";
 
 export class ResumeMessageResolver extends BaseMessageResolver<"resume"> {
   static override resolverName: USER_SEND_MESSAGE_NAME = "resume";

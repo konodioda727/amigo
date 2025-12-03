@@ -1,7 +1,7 @@
-import type { ConversationStatus } from "@amigo/types";
-import type { MessageEmitter } from "./MessageEmitter";
-import { logger } from "@/utils/logger";
+import type { ConversationStatus } from "@amigo-llm/types";
 import pWaitFor from "p-wait-for";
+import { logger } from "@/utils/logger";
+import type { MessageEmitter } from "./MessageEmitter";
 
 interface ErrorHandlerConfig {
   messageEmitter: MessageEmitter;

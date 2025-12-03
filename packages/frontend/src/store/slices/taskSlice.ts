@@ -1,7 +1,7 @@
+import type { SERVER_SEND_MESSAGE_NAME, WebSocketMessage } from "@amigo-llm/types";
 import type { StateCreator } from "zustand";
-import type { WebSocketStore } from "../websocket";
 import type { DisplayMessageType } from "@/messages/types";
-import type { WebSocketMessage, SERVER_SEND_MESSAGE_NAME } from "@amigo/types";
+import type { WebSocketStore } from "../websocket";
 
 export interface TaskState {
   rawMessages: Array<WebSocketMessage<SERVER_SEND_MESSAGE_NAME> | WebSocketMessage<any>>;
@@ -23,15 +23,12 @@ export interface TaskSlice {
   clearMessages: (taskId: string) => void;
   setMainTaskId: (taskId: string) => void;
   createNewConversation: () => void;
-  handleSessionHistories: (histories: Array<{ taskId: string; title: string; updatedAt: string }>) => void;
+  handleSessionHistories: (
+    histories: Array<{ taskId: string; title: string; updatedAt: string }>,
+  ) => void;
 }
 
-export const createTaskSlice: StateCreator<
-  WebSocketStore,
-  [],
-  [],
-  TaskSlice
-> = (set, get) => ({
+export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = (set, get) => ({
   tasks: {},
   activeTaskId: null,
   mainTaskId: "",
@@ -100,18 +97,18 @@ export const createTaskSlice: StateCreator<
 
   setMainTaskId: (taskId) => {
     const { socket, mainTaskId: currentTaskId } = get();
-    
+
     if (taskId === currentTaskId) return;
-    
+
     set({ mainTaskId: taskId });
     get().registerTask(taskId);
-    
+
     if (socket && socket.readyState === WebSocket.OPEN && taskId) {
       socket.send(
         JSON.stringify({
           type: "loadTask",
           data: { taskId },
-        })
+        }),
       );
     }
   },

@@ -1,4 +1,3 @@
-import { getGlobalState } from "@/globalState";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
@@ -7,7 +6,8 @@ import {
   StorageType,
   type USER_SEND_MESSAGE_NAME,
   type WebSocketMessage,
-} from "@amigo/types";
+} from "@amigo-llm/types";
+import { getGlobalState } from "@/globalState";
 import { logger } from "@/utils/logger";
 
 /**

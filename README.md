@@ -343,7 +343,7 @@ Amigo Server 提供了一套流式构建器 API，让你可以轻松配置和扩
 ### 快速开始
 
 ```typescript
-import { AmigoServerBuilder } from "@amigo/server";
+import { AmigoServerBuilder } from "@amigo-llm/server";
 
 const server = new AmigoServerBuilder()
   .port(8080)
@@ -360,7 +360,7 @@ server.init();
 流式构建器，用于配置服务器实例。
 
 ```typescript
-import { AmigoServerBuilder } from "@amigo/server";
+import { AmigoServerBuilder } from "@amigo-llm/server";
 
 const server = new AmigoServerBuilder()
   // 设置服务器端口（默认 10013）
@@ -387,7 +387,7 @@ server.init();
 服务器配置 Schema，使用 Zod 进行验证。
 
 ```typescript
-import { ServerConfigSchema, type ServerConfig } from "@amigo/server";
+import { ServerConfigSchema, type ServerConfig } from "@amigo-llm/server";
 
 // 配置项
 interface ServerConfig {
@@ -535,7 +535,7 @@ export const toolSchemas = z.discriminatedUnion("name", [
 **步骤 4: 通过 Builder 注册**
 
 ```typescript
-import { AmigoServerBuilder } from "@amigo/server";
+import { AmigoServerBuilder } from "@amigo-llm/server";
 import { MyTool } from "./tools/myTool";
 
 const server = new AmigoServerBuilder()
@@ -551,7 +551,7 @@ const server = new AmigoServerBuilder()
 #### 定义消息
 
 ```typescript
-import { defineMessage } from "@amigo/server";
+import { defineMessage } from "@amigo-llm/server";
 import { z } from "zod";
 
 // 定义自定义消息
@@ -572,7 +572,7 @@ const MyCustomMessage = defineMessage({
 #### 注册消息
 
 ```typescript
-import { AmigoServerBuilder } from "@amigo/server";
+import { AmigoServerBuilder } from "@amigo-llm/server";
 
 const server = new AmigoServerBuilder()
   .port(8080)
@@ -587,7 +587,7 @@ const server = new AmigoServerBuilder()
 工具注册表，用于管理已注册的工具。
 
 ```typescript
-import { ToolRegistry, RegistrationError } from "@amigo/server";
+import { ToolRegistry, RegistrationError } from "@amigo-llm/server";
 
 const registry = new ToolRegistry();
 
@@ -614,7 +614,7 @@ console.log(`已注册 ${registry.size} 个工具`);
 消息注册表，用于管理自定义消息类型。
 
 ```typescript
-import { MessageRegistry } from "@amigo/server";
+import { MessageRegistry } from "@amigo-llm/server";
 
 const registry = new MessageRegistry();
 
@@ -631,7 +631,7 @@ const schemas = registry.getAllSchemas();
 ### 错误处理
 
 ```typescript
-import { ValidationError, RegistrationError } from "@amigo/server";
+import { ValidationError, RegistrationError } from "@amigo-llm/server";
 
 try {
   const server = new AmigoServerBuilder()
@@ -657,7 +657,7 @@ try {
 ```typescript
 import path from "node:path";
 import dotenv from "dotenv";
-import { AmigoServerBuilder, defineMessage } from "@amigo/server";
+import { AmigoServerBuilder, defineMessage } from "@amigo-llm/server";
 import { z } from "zod";
 import { MyTool } from "./tools/myTool";
 
@@ -693,7 +693,7 @@ console.log(`Amigo Server 已启动: ws://localhost:${PORT}`);
 ### 导出清单
 
 ```typescript
-// 从 @amigo/server 导出
+// 从 @amigo-llm/server 导出
 export {
   // 构建器
   AmigoServerBuilder,

@@ -1,4 +1,4 @@
-import type { USER_SEND_MESSAGE_NAME } from "@amigo/types";
+import type { USER_SEND_MESSAGE_NAME } from "@amigo-llm/types";
 import type { ConversationManager } from "@/core/conversationManager";
 import type BaseMessageResolver from "./base";
 import { CommonMessageResolver } from "./commonMessageResolver";
@@ -9,7 +9,12 @@ import { ResumeMessageResolver } from "./resumeMessageResolver";
 /**
  * 不同 message 处理器
  */
-const resolvers = [CommonMessageResolver, InterruptMessageResolver, LoadTaskMessageResolver, ResumeMessageResolver];
+const resolvers = [
+  CommonMessageResolver,
+  InterruptMessageResolver,
+  LoadTaskMessageResolver,
+  ResumeMessageResolver,
+];
 
 const defaultResolver = CommonMessageResolver;
 

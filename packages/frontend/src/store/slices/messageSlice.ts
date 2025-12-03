@@ -1,14 +1,14 @@
-import type { StateCreator } from "zustand";
-import type { WebSocketStore } from "../websocket";
 import type {
-  WebSocketMessage,
   SERVER_SEND_MESSAGE_NAME,
-  USER_SEND_MESSAGE_NAME,
   ServerSendMessageData,
-} from "@amigo/types";
+  USER_SEND_MESSAGE_NAME,
+  WebSocketMessage,
+} from "@amigo-llm/types";
+import type { StateCreator } from "zustand";
 import { combineMessages } from "@/messages/messageCombiner";
 import { toast } from "@/utils/toast";
 import { getMessageHandler } from "../messageHandlers";
+import type { WebSocketStore } from "../websocket";
 
 type Listener<T extends SERVER_SEND_MESSAGE_NAME> = (data: ServerSendMessageData<T>) => void;
 type Unsubscribe = () => void;
@@ -18,29 +18,27 @@ export interface MessageSlice {
 
   sendMessage: <T extends USER_SEND_MESSAGE_NAME>(
     taskId: string,
-    message: WebSocketMessage<T>
+    message: WebSocketMessage<T>,
   ) => void;
-  subscribe: <T extends SERVER_SEND_MESSAGE_NAME>(
-    type: T,
-    listener: Listener<T>
-  ) => Unsubscribe;
+  subscribe: <T extends SERVER_SEND_MESSAGE_NAME>(type: T, listener: Listener<T>) => Unsubscribe;
   processMessage: (message: WebSocketMessage<SERVER_SEND_MESSAGE_NAME>) => void;
   updateUserMessageStatus: (
     taskId: string,
     message: string,
-    status: 'pending' | 'acked' | 'failed'
+    status: "pending" | "acked" | "failed",
   ) => void;
-  handleTaskHistory: (taskId: string, messages: Array<WebSocketMessage<SERVER_SEND_MESSAGE_NAME>>) => void;
+  handleTaskHistory: (
+    taskId: string,
+    messages: Array<WebSocketMessage<SERVER_SEND_MESSAGE_NAME>>,
+  ) => void;
   addMessageToTask: (taskId: string, message: WebSocketMessage<SERVER_SEND_MESSAGE_NAME>) => void;
   notifyListeners: (message: WebSocketMessage<SERVER_SEND_MESSAGE_NAME>) => void;
 }
 
-export const createMessageSlice: StateCreator<
-  WebSocketStore,
-  [],
-  [],
-  MessageSlice
-> = (set, get) => ({
+export const createMessageSlice: StateCreator<WebSocketStore, [], [], MessageSlice> = (
+  set,
+  get,
+) => ({
   listeners: {},
 
   sendMessage: (taskId, message) => {
@@ -58,22 +56,22 @@ export const createMessageSlice: StateCreator<
       },
     };
 
-    if (message.type === 'userSendMessage') {
+    if (message.type === "userSendMessage") {
       const task = tasks[taskId];
       if (task) {
-        const pendingMessage: WebSocketMessage<'userSendMessage'> = {
-          type: 'userSendMessage',
+        const pendingMessage: WebSocketMessage<"userSendMessage"> = {
+          type: "userSendMessage",
           data: {
             message: (message.data as any).message,
             taskId,
             updateTime: Date.now(),
-            status: 'pending',
+            status: "pending",
           },
         };
-        
+
         const newRawMessages = [...task.rawMessages, pendingMessage as any];
         const newDisplayMessages = combineMessages(newRawMessages as any);
-        
+
         set({
           tasks: {
             ...get().tasks,
@@ -115,9 +113,9 @@ export const createMessageSlice: StateCreator<
   processMessage: (message) => {
     const state = get();
     const messageData = message.data as any;
-    
+
     let taskId = messageData.taskId || state.mainTaskId;
-    if (message.type === 'assignTaskUpdated' && messageData.parentTaskId) {
+    if (message.type === "assignTaskUpdated" && messageData.parentTaskId) {
       taskId = messageData.parentTaskId;
     }
 
@@ -139,8 +137,8 @@ export const createMessageSlice: StateCreator<
 
     const updatedRawMessages = task.rawMessages.map((msg) => {
       if (
-        msg.type === 'userSendMessage' &&
-        (msg.data as any).status === 'pending' &&
+        msg.type === "userSendMessage" &&
+        (msg.data as any).status === "pending" &&
         (msg.data as any).message === message
       ) {
         return {
@@ -170,15 +168,15 @@ export const createMessageSlice: StateCreator<
 
   handleTaskHistory: (taskId, messages) => {
     const task = get().tasks[taskId];
-    
+
     if (!task) {
       get().registerTask(taskId);
     }
 
     const newDisplayMessages = combineMessages(messages as any);
     const latestTask = get().tasks[taskId];
-    console.log('his', newDisplayMessages);
-    
+    console.log("his", newDisplayMessages);
+
     set({
       tasks: {
         ...get().tasks,
@@ -192,7 +190,7 @@ export const createMessageSlice: StateCreator<
     });
 
     get().updateFollowupQueue();
-    
+
     const currentQueue = get().followupQueue;
     const currentPending = get().pendingMention;
     if (currentQueue.length > 0 && !currentPending) {
@@ -212,9 +210,9 @@ export const createMessageSlice: StateCreator<
 
     const newRawMessages = [...task.rawMessages, message];
     const newDisplayMessages = combineMessages(newRawMessages as any);
-    
+
     const latestTask = get().tasks[taskId];
-    
+
     set({
       tasks: {
         ...get().tasks,
@@ -228,7 +226,7 @@ export const createMessageSlice: StateCreator<
     });
 
     get().updateFollowupQueue();
-    
+
     const currentQueue = get().followupQueue;
     const currentPending = get().pendingMention;
     if (currentQueue.length > 0 && !currentPending) {
@@ -240,7 +238,7 @@ export const createMessageSlice: StateCreator<
     const state = get();
     const messageType = message.type as SERVER_SEND_MESSAGE_NAME;
     const listeners = state.listeners[messageType];
-    
+
     if (listeners) {
       for (const listener of listeners) {
         listener(message.data);

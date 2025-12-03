@@ -9,10 +9,10 @@
     - _Requirements: 6.1, 6.2_
 
 - [x] 2. Implement core types and interfaces
-  - [x] 2.1 Reuse existing ToolInterface and ToolParam from @amigo/types
+  - [x] 2.1 Reuse existing ToolInterface and ToolParam from @amigo-llm/types
     - No new interfaces needed, use existing types
     - _Requirements: 2.4, 2.5_
-  - [x] 2.2 Reuse existing message schemas from @amigo/types
+  - [x] 2.2 Reuse existing message schemas from @amigo-llm/types
     - Use existing ServerSendMessageSchema structure
     - _Requirements: 3.5_
   - [x] 2.3 Create ServerConfig schema with Zod in packages/server/src/core/config/

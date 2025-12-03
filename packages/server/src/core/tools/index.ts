@@ -1,13 +1,13 @@
-import type { ToolInterface, ToolResult } from "@amigo/types/src/tool";
+import { systemReservedTags } from "@amigo-llm/types";
+import type { ToolInterface, ToolResult } from "@amigo-llm/types/src/tool";
 import { XMLParser } from "fast-xml-parser";
-import { systemReservedTags } from "@amigo/types";
 import { ensureArray } from "@/utils/array";
 import { logger } from "@/utils/logger";
 import { AskFollowupQuestions } from "./askFollowupQuestions";
-import { UpdateTodolist } from "./todolist";
-import { CompletionResult } from "./completionResult";
 import { AssignTasks } from "./assignTasks";
 import { BrowserSearch } from "./browserSearch";
+import { CompletionResult } from "./completionResult";
+import { UpdateTodolist } from "./todolist";
 
 export class ToolService {
   private _availableTools: Record<string, ToolInterface<any>> = {};
@@ -59,10 +59,15 @@ export class ToolService {
     getCurrentTask: () => string;
     signal?: AbortSignal;
     postMessage?: (msg: string | object) => void;
-  }): Promise<{ message: string; params: Record<string, any> | string; toolResult: ToolResult<any>; error?: string }> {
+  }): Promise<{
+    message: string;
+    params: Record<string, any> | string;
+    toolResult: ToolResult<any>;
+    error?: string;
+  }> {
     try {
       const { params, toolName, error } = this.parseParams(xmlParams);
-      
+
       // If there's a parsing error, return it
       if (error) {
         logger.error("[ToolService] 工具参数解析错误:", error);
@@ -73,7 +78,7 @@ export class ToolService {
           error,
         };
       }
-      
+
       const tool = this._availableTools[toolName || ""];
       if (!tool) {
         const errorMsg = `工具 '${toolName}' 不存在。请使用正确的工具名称。`;
@@ -84,7 +89,7 @@ export class ToolService {
           error: errorMsg,
         };
       }
-      
+
       const { toolResult, message } = await tool.invoke({
         params: params as any,
         getCurrentTask,
@@ -111,10 +116,7 @@ export class ToolService {
    * 从 params 定义中递归收集所有叶子节点（基本类型参数）的路径
    * 用于配置 XMLParser 的 stopNodes，防止 HTML 标签被错误解析
    */
-  private collectLeafNodePaths(
-    paramDefs: any[],
-    prefix: string,
-  ): string[] {
+  private collectLeafNodePaths(paramDefs: any[], prefix: string): string[] {
     const paths: string[] = [];
     for (const param of paramDefs) {
       const currentPath = prefix ? `${prefix}.${param.name}` : param.name;
@@ -135,7 +137,7 @@ export class ToolService {
    */
   private collectAllParamTagNames(): string[] {
     const tagNames = new Set<string>();
-    
+
     const collectFromParams = (params: any[]) => {
       for (const param of params) {
         tagNames.add(param.name);
@@ -144,13 +146,13 @@ export class ToolService {
         }
       }
     };
-    
+
     for (const tool of Object.values(this._availableTools)) {
       if (tool.params) {
         collectFromParams(tool.params);
       }
     }
-    
+
     return [...tagNames];
   }
 
@@ -164,13 +166,13 @@ export class ToolService {
   } {
     try {
       const completedXml = this.completePartialXml(buffer);
-      
+
       // 先用简单解析获取工具名
       const simpleParser = new XMLParser({ ignoreAttributes: true });
       const preParseResult = simpleParser.parse(completedXml);
       const toolName = Object.keys(preParseResult).find((key) => this._availableTools[key]) || "";
       const tool = this._availableTools[toolName];
-      
+
       if (!tool) {
         const firstKey = Object.keys(preParseResult)[0] || "";
         if (!partial) {
@@ -181,25 +183,23 @@ export class ToolService {
           toolName: toolName || firstKey,
         };
       }
-      
+
       // 收集所有叶子节点路径作为 stopNodes，防止内容中的 HTML 标签被解析
       // 如果 params 为空，则将工具名本身作为 stopNode
       const hasParams = tool.params.length !== 0;
-      const stopNodes = hasParams
-        ? this.collectLeafNodePaths(tool.params, toolName)
-        : [toolName];
-      
+      const stopNodes = hasParams ? this.collectLeafNodePaths(tool.params, toolName) : [toolName];
+
       const parser = new XMLParser({
         ignoreAttributes: false,
         trimValues: true,
         stopNodes,
       });
       const jsonOutput = parser.parse(completedXml);
-      
+
       const finalParams = hasParams
         ? this.mapAndValidateParams(jsonOutput[toolName], tool.params, partial, toolName)
         : String(jsonOutput[toolName]);
-        
+
       return { params: finalParams, toolName };
     } catch (err) {
       const errorMsg = `XML 解析错误: ${err instanceof Error ? err.message : String(err)}`;
@@ -225,23 +225,23 @@ export class ToolService {
     const cdataEndPattern = /\]\]>/g;
     let cdataStartCount = 0;
     let cdataEndCount = 0;
-    
+
     // 计算 CDATA 开始和结束标签的数量
     let match = cdataStartPattern.exec(processedString);
     while (match !== null) {
       cdataStartCount++;
       match = cdataStartPattern.exec(processedString);
     }
-    
+
     match = cdataEndPattern.exec(processedString);
     while (match !== null) {
       cdataEndCount++;
       match = cdataEndPattern.exec(processedString);
     }
-    
+
     // 如果有未闭合的 CDATA，找到最后一个 <![CDATA[ 并移除它之后的所有内容
     if (cdataStartCount > cdataEndCount) {
-      const lastCdataStart = processedString.lastIndexOf('<![CDATA[');
+      const lastCdataStart = processedString.lastIndexOf("<![CDATA[");
       if (lastCdataStart > -1) {
         processedString = processedString.substring(0, lastCdataStart);
       }
@@ -381,7 +381,7 @@ export class ToolService {
     // 检查是否有缺失的必需参数
     if (missingParams.length > 0 && !partial) {
       throw new Error(
-        `工具 '${toolName}' 缺少必需参数: ${missingParams.join(", ")}。请按照工具定义的格式提供所有必需参数。`
+        `工具 '${toolName}' 缺少必需参数: ${missingParams.join(", ")}。请按照工具定义的格式提供所有必需参数。`,
       );
     }
 
@@ -393,7 +393,7 @@ export const BASIC_TOOLS: ToolInterface<any>[] = [
   AskFollowupQuestions,
   UpdateTodolist,
   CompletionResult,
-  BrowserSearch
+  BrowserSearch,
 ];
 
 export const CUSTOMED_TOOLS: ToolInterface<any>[] = [AssignTasks];

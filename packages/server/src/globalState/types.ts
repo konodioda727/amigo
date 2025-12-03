@@ -1,4 +1,4 @@
-import type { MessageDefinition, ToolInterface, ToolNames } from "@amigo/types";
+import type { MessageDefinition, ToolInterface, ToolNames } from "@amigo-llm/types";
 import type { ConversationManager } from "../core/conversationManager";
 
 /**

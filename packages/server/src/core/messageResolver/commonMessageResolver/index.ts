@@ -1,4 +1,4 @@
-import type { USER_SEND_MESSAGE_NAME, WebSocketMessage } from "@amigo/types";
+import type { USER_SEND_MESSAGE_NAME, WebSocketMessage } from "@amigo-llm/types";
 import BaseMessageResolver from "../base";
 
 export class CommonMessageResolver extends BaseMessageResolver<"userSendMessage"> {

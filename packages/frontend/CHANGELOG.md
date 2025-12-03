@@ -1,4 +1,4 @@
-# @amigo/frontend
+# @amigo-llm/frontend
 
 ## 0.0.1
 

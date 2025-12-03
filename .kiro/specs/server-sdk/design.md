@@ -556,7 +556,7 @@ export { ToolRegistry, MessageRegistry } from "./registry";
 export { RegistrationError, ValidationError } from "./errors";
 
 // 使用示例
-import { AmigoServerBuilder, defineTool, defineMessage } from "@amigo/server";
+import { AmigoServerBuilder, defineTool, defineMessage } from "@amigo-llm/server";
 import { z } from "zod";
 
 const server = new AmigoServerBuilder()

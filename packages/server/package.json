@@ -1,5 +1,5 @@
 {
-  "name": "@amigo/server",
+  "name": "@amigo-llm/server",
   "version": "1.0.1",
   "description": "",
   "main": "dist/index.js",
@@ -15,7 +15,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@amigo/types": "workspace:*",
+    "@amigo-llm/types": "workspace:*",
     "@langchain/core": "^0.3.75",
     "chromium-bidi": "^11.0.1",
     "dotenv": "^17.2.2",

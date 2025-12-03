@@ -43,13 +43,13 @@ jobs:
         working-directory: packages/server
         run: bun run build
 
-      - name: Publish @amigo/types
+      - name: Publish @amigo-llm/types
         working-directory: packages/types
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish @amigo/server
+      - name: Publish @amigo-llm/server
         working-directory: packages/server
         run: npm publish --access public
         env:

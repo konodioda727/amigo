@@ -1,4 +1,4 @@
-# @amigo/types
+# @amigo-llm/types
 
 ## 1.0.3
 

@@ -1,8 +1,8 @@
-import type { ChatMessage, TransportToolContent } from "@amigo/types";
+import type { ChatMessage, TransportToolContent } from "@amigo-llm/types";
+import { logger } from "@/utils/logger";
+import type { FilePersistedMemory } from "../memory";
 import type { ToolService } from "../tools";
 import type { MessageEmitter } from "./MessageEmitter";
-import type { FilePersistedMemory } from "../memory";
-import { logger } from "@/utils/logger";
 
 interface ToolExecutorConfig {
   toolService: ToolService;
@@ -30,7 +30,7 @@ export class ToolExecutor {
   public async handleToolExecution(
     fullToolCall: string,
     currentTool: string,
-    currentType: ChatMessage["type"]
+    currentType: ChatMessage["type"],
   ): Promise<void> {
     // 发送 partial 消息
     this.sendPartialToolMessage(fullToolCall, currentTool, currentType);
@@ -55,7 +55,7 @@ export class ToolExecutor {
   private sendPartialToolMessage(
     fullToolCall: string,
     toolName: string,
-    type: ChatMessage["type"]
+    type: ChatMessage["type"],
   ): void {
     this.messageEmitter.postMessage({
       role: "assistant",
@@ -78,7 +78,7 @@ export class ToolExecutor {
     result: any,
     message: string,
     originalMessage: string,
-    type: ChatMessage["type"]
+    type: ChatMessage["type"],
   ): void {
     this.messageEmitter.postMessage({
       role: "assistant",
@@ -108,7 +108,7 @@ export class ToolExecutor {
     params: any,
     error: string,
     originalMessage: string,
-    type: ChatMessage["type"]
+    type: ChatMessage["type"],
   ): void {
     // 发送错误消息
     this.messageEmitter.postMessage({
@@ -139,7 +139,7 @@ export class ToolExecutor {
   public handlePartialToolCall(
     partialToolCall: string,
     currentTool: string,
-    currentType: ChatMessage["type"]
+    currentType: ChatMessage["type"],
   ): void {
     const { params } = this.toolService.parseParams(partialToolCall, true);
     this.messageEmitter.postMessage({

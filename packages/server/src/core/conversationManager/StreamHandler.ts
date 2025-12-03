@@ -1,13 +1,13 @@
-import type { ChatMessage, ConversationStatus } from "@amigo/types";
+import type { ChatMessage, ConversationStatus } from "@amigo-llm/types";
 import type { ChatOpenAI } from "@langchain/openai";
-import type { FilePersistedMemory } from "../memory";
-import type { MessageEmitter } from "./MessageEmitter";
-import type { ToolExecutor } from "./ToolExecutor";
-import type { ErrorHandler } from "./ErrorHandler";
-import { parseStreamingXml } from "@/utils/parseStreamingXml";
+import pWaitFor from "p-wait-for";
 import { isWhitespaceOnly } from "@/utils/isWhiteSpaceOnly";
 import { logger } from "@/utils/logger";
-import pWaitFor from "p-wait-for";
+import { parseStreamingXml } from "@/utils/parseStreamingXml";
+import type { FilePersistedMemory } from "../memory";
+import type { ErrorHandler } from "./ErrorHandler";
+import type { MessageEmitter } from "./MessageEmitter";
+import type { ToolExecutor } from "./ToolExecutor";
 
 interface StreamHandlerConfig {
   llm: ChatOpenAI;
@@ -164,7 +164,7 @@ export class StreamHandler {
       onFullToolCallFound: async (
         fullToolCall: string,
         currentTool: string,
-        currentType: ChatMessage["type"]
+        currentType: ChatMessage["type"],
       ) => {
         this.setConversationStatus("tool_executing");
         await this.toolExecutor.handleToolExecution(fullToolCall, currentTool, currentType);
@@ -172,7 +172,7 @@ export class StreamHandler {
       onPartialToolCallFound: async (
         partialToolCall: string,
         currentTool: string,
-        currentType: ChatMessage["type"]
+        currentType: ChatMessage["type"],
       ) => {
         this.toolExecutor.handlePartialToolCall(partialToolCall, currentTool, currentType);
       },

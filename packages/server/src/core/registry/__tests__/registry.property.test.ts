@@ -7,11 +7,11 @@
  * - 属性 13: 注册表检索正确性
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
+import type { ToolInterface, ToolNames } from "@amigo-llm/types";
 import * as fc from "fast-check";
 import { z } from "zod";
-import { ToolRegistry, MessageRegistry, RegistrationError } from "../index";
-import type { ToolInterface, ToolNames } from "@amigo/types";
+import { MessageRegistry, RegistrationError, ToolRegistry } from "../index";
 
 // ============================================================================
 // 测试生成器 (Arbitraries)
@@ -65,7 +65,10 @@ describe("注册表属性测试", () => {
    * SDK 应当抛出错误指示名称冲突。
    */
   describe("属性 5: 重复工具拒绝", () => {
-    const toolNames = fc.sample(toolNameArb.filter((name) => name.length > 0), 5);
+    const toolNames = fc.sample(
+      toolNameArb.filter((name) => name.length > 0),
+      5,
+    );
 
     for (const toolName of toolNames) {
       test(`注册重复工具 '${toolName}' 应抛出 RegistrationError`, () => {
@@ -94,7 +97,10 @@ describe("注册表属性测试", () => {
    * SDK 应当抛出错误指示类型冲突。
    */
   describe("属性 8: 重复消息拒绝", () => {
-    const messageTypes = fc.sample(messageTypeArb.filter((type) => type.length > 0), 5);
+    const messageTypes = fc.sample(
+      messageTypeArb.filter((type) => type.length > 0),
+      5,
+    );
 
     for (const messageType of messageTypes) {
       test(`注册重复消息类型 '${messageType}' 应抛出 RegistrationError`, () => {
@@ -126,10 +132,13 @@ describe("注册表属性测试", () => {
     describe("工具注册表检索", () => {
       const toolNameArrays = fc.sample(
         fc
-          .array(toolNameArb.filter((name) => name.length > 0), { minLength: 1, maxLength: 20 })
+          .array(
+            toolNameArb.filter((name) => name.length > 0),
+            { minLength: 1, maxLength: 20 },
+          )
           .map((names) => [...new Set(names)]) // 确保名称唯一
           .filter((names) => names.length > 0),
-        5
+        5,
       );
 
       for (const toolNames of toolNameArrays) {
@@ -173,10 +182,13 @@ describe("注册表属性测试", () => {
     describe("消息注册表检索", () => {
       const messageTypeArrays = fc.sample(
         fc
-          .array(messageTypeArb.filter((type) => type.length > 0), { minLength: 1, maxLength: 20 })
+          .array(
+            messageTypeArb.filter((type) => type.length > 0),
+            { minLength: 1, maxLength: 20 },
+          )
           .map((types) => [...new Set(types)]) // 确保类型唯一
           .filter((types) => types.length > 0),
-        5
+        5,
       );
 
       for (const messageTypes of messageTypeArrays) {

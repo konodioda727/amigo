@@ -4,7 +4,7 @@
  * 用于动态管理工具和消息的注册表类
  */
 
-import type { MessageDefinition, ToolInterface, ToolNames } from "@amigo/types";
+import type { MessageDefinition, ToolInterface, ToolNames } from "@amigo-llm/types";
 import type { ZodObject } from "zod";
 
 /**

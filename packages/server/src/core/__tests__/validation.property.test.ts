@@ -10,12 +10,12 @@
  * **Validates: Requirements 2.2, 2.3, 3.2, 3.3**
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
+import type { ToolInterface, ToolNames, ToolParam } from "@amigo-llm/types";
+import { defineMessage } from "@amigo-llm/types/src/message";
 import * as fc from "fast-check";
 import { z } from "zod";
 import { ToolService } from "../tools";
-import { defineMessage } from "@amigo/types/src/message";
-import type { ToolInterface, ToolNames, ToolParam } from "@amigo/types";
 
 // ============================================================================
 // 辅助函数
@@ -27,7 +27,7 @@ import type { ToolInterface, ToolNames, ToolParam } from "@amigo/types";
 function createTestTool(
   name: string,
   requiredParams: string[],
-  optionalParams: string[] = []
+  optionalParams: string[] = [],
 ): ToolInterface<ToolNames> {
   const params: ToolParam<string>[] = [
     ...requiredParams.map((p) => ({
@@ -72,7 +72,6 @@ function generateToolXml(toolName: string, params: Record<string, string>): stri
 const messageTypeArb = fc.stringMatching(/^[a-zA-Z][a-zA-Z0-9]{2,15}$/);
 const safeStringArb = fc.stringMatching(/^[a-zA-Z0-9]{1,20}$/);
 
-
 // ============================================================================
 // 属性测试
 // ============================================================================
@@ -105,7 +104,7 @@ describe("验证属性测试", () => {
             expect(result.error).toBeUndefined();
             expect(result.message).toBe("成功");
           }),
-          { numRuns: 100 }
+          { numRuns: 100 },
         );
       });
 
@@ -127,7 +126,7 @@ describe("验证属性测试", () => {
             expect(result.error).toBeUndefined();
             expect(result.message).toBe("成功");
           }),
-          { numRuns: 100 }
+          { numRuns: 100 },
         );
       });
 
@@ -149,7 +148,7 @@ describe("验证属性测试", () => {
             expect(result.error).toBeUndefined();
             expect(result.message).toBe("成功");
           }),
-          { numRuns: 100 }
+          { numRuns: 100 },
         );
       });
 
@@ -168,7 +167,7 @@ describe("验证属性测试", () => {
             expect(result.error).toBeUndefined();
             expect(result.message).toBe("成功");
           }),
-          { numRuns: 100 }
+          { numRuns: 100 },
         );
       });
     });
@@ -189,7 +188,7 @@ describe("验证属性测试", () => {
             expect(result.error).toBeDefined();
             expect(result.error).toContain("缺少必需参数");
           }),
-          { numRuns: 100 }
+          { numRuns: 100 },
         );
       });
 
@@ -208,7 +207,7 @@ describe("验证属性测试", () => {
             expect(result.error).toBeDefined();
             expect(result.error).toContain("不存在");
           }),
-          { numRuns: 100 }
+          { numRuns: 100 },
         );
       });
     });
@@ -216,28 +215,24 @@ describe("验证属性测试", () => {
     describe("参数值验证", () => {
       test("包含数字的参数值应被接受", async () => {
         await fc.assert(
-          fc.asyncProperty(
-            fc.integer({ min: 0, max: 10000 }).map(String),
-            async (numericValue) => {
-              const tool = createTestTool(TOOL_NAME, [PARAM_A]);
-              const toolService = new ToolService([tool], []);
-              const xml = generateToolXml(TOOL_NAME, { [PARAM_A]: numericValue });
+          fc.asyncProperty(fc.integer({ min: 0, max: 10000 }).map(String), async (numericValue) => {
+            const tool = createTestTool(TOOL_NAME, [PARAM_A]);
+            const toolService = new ToolService([tool], []);
+            const xml = generateToolXml(TOOL_NAME, { [PARAM_A]: numericValue });
 
-              const result = await toolService.parseAndExecute({
-                xmlParams: xml,
-                getCurrentTask: () => "test-task",
-              });
+            const result = await toolService.parseAndExecute({
+              xmlParams: xml,
+              getCurrentTask: () => "test-task",
+            });
 
-              expect(result.error).toBeUndefined();
-              expect(result.message).toBe("成功");
-            }
-          ),
-          { numRuns: 100 }
+            expect(result.error).toBeUndefined();
+            expect(result.message).toBe("成功");
+          }),
+          { numRuns: 100 },
         );
       });
     });
   });
-
 
   /**
    * **Feature: server-sdk, Property 6: Message validation**
@@ -257,7 +252,7 @@ describe("验证属性测试", () => {
             const result = message.schema.safeParse(validData);
             expect(result.success).toBe(true);
           }),
-          { numRuns: 100 }
+          { numRuns: 100 },
         );
       });
 
@@ -281,9 +276,9 @@ describe("验证属性测试", () => {
               const validData = { type: messageType, data: { title, count, enabled } };
               const result = message.schema.safeParse(validData);
               expect(result.success).toBe(true);
-            }
+            },
           ),
-          { numRuns: 100 }
+          { numRuns: 100 },
         );
       });
 
@@ -308,9 +303,9 @@ describe("验证属性测试", () => {
               };
               const result = message.schema.safeParse(validData);
               expect(result.success).toBe(true);
-            }
+            },
           ),
-          { numRuns: 100 }
+          { numRuns: 100 },
         );
       });
     });
@@ -318,19 +313,24 @@ describe("验证属性测试", () => {
     describe("无效消息数据应被拒绝", () => {
       test("类型不匹配的消息应被拒绝", () => {
         fc.assert(
-          fc.property(messageTypeArb, messageTypeArb, safeStringArb, (messageType, wrongType, content) => {
-            if (messageType === wrongType) return;
+          fc.property(
+            messageTypeArb,
+            messageTypeArb,
+            safeStringArb,
+            (messageType, wrongType, content) => {
+              if (messageType === wrongType) return;
 
-            const message = defineMessage({
-              type: messageType,
-              dataSchema: z.object({ content: z.string() }),
-            });
+              const message = defineMessage({
+                type: messageType,
+                dataSchema: z.object({ content: z.string() }),
+              });
 
-            const invalidData = { type: wrongType, data: { content } };
-            const result = message.schema.safeParse(invalidData);
-            expect(result.success).toBe(false);
-          }),
-          { numRuns: 100 }
+              const invalidData = { type: wrongType, data: { content } };
+              const result = message.schema.safeParse(invalidData);
+              expect(result.success).toBe(false);
+            },
+          ),
+          { numRuns: 100 },
         );
       });
 
@@ -349,7 +349,7 @@ describe("验证属性测试", () => {
             const result = message.schema.safeParse(invalidData);
             expect(result.success).toBe(false);
           }),
-          { numRuns: 100 }
+          { numRuns: 100 },
         );
       });
 
@@ -365,7 +365,7 @@ describe("验证属性测试", () => {
             const result = message.schema.safeParse(invalidData);
             expect(result.success).toBe(false);
           }),
-          { numRuns: 100 }
+          { numRuns: 100 },
         );
       });
 
@@ -381,23 +381,28 @@ describe("验证属性测试", () => {
             const result = message.schema.safeParse(invalidData);
             expect(result.success).toBe(false);
           }),
-          { numRuns: 100 }
+          { numRuns: 100 },
         );
       });
 
       test("额外字段应被 strict schema 拒绝", () => {
         fc.assert(
-          fc.property(messageTypeArb, safeStringArb, safeStringArb, (messageType, content, extraValue) => {
-            const message = defineMessage({
-              type: messageType,
-              dataSchema: z.object({ content: z.string() }).strict(),
-            });
+          fc.property(
+            messageTypeArb,
+            safeStringArb,
+            safeStringArb,
+            (messageType, content, extraValue) => {
+              const message = defineMessage({
+                type: messageType,
+                dataSchema: z.object({ content: z.string() }).strict(),
+              });
 
-            const invalidData = { type: messageType, data: { content, extraField: extraValue } };
-            const result = message.schema.safeParse(invalidData);
-            expect(result.success).toBe(false);
-          }),
-          { numRuns: 100 }
+              const invalidData = { type: messageType, data: { content, extraField: extraValue } };
+              const result = message.schema.safeParse(invalidData);
+              expect(result.success).toBe(false);
+            },
+          ),
+          { numRuns: 100 },
         );
       });
     });
@@ -425,9 +430,9 @@ describe("验证属性测试", () => {
               };
               const result = message.schema.safeParse(validData);
               expect(result.success).toBe(true);
-            }
+            },
           ),
-          { numRuns: 100 }
+          { numRuns: 100 },
         );
       });
 
@@ -445,9 +450,9 @@ describe("验证属性测试", () => {
               const validData = { type: messageType, data: { items } };
               const result = message.schema.safeParse(validData);
               expect(result.success).toBe(true);
-            }
+            },
           ),
-          { numRuns: 100 }
+          { numRuns: 100 },
         );
       });
 
@@ -465,9 +470,9 @@ describe("验证属性测试", () => {
               const validData = { type: messageType, data: { priority } };
               const result = message.schema.safeParse(validData);
               expect(result.success).toBe(true);
-            }
+            },
           ),
-          { numRuns: 100 }
+          { numRuns: 100 },
         );
       });
 
@@ -485,9 +490,9 @@ describe("验证属性测试", () => {
               const invalidData = { type: messageType, data: { priority: invalidPriority } };
               const result = message.schema.safeParse(invalidData);
               expect(result.success).toBe(false);
-            }
+            },
           ),
-          { numRuns: 100 }
+          { numRuns: 100 },
         );
       });
     });

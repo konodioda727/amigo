@@ -3,23 +3,23 @@ import type {
   SERVER_SEND_MESSAGE_NAME,
   ToolInterface,
   WebSocketMessage,
-} from "@amigo/types";
+} from "@amigo-llm/types";
+import { systemReservedTags } from "@amigo-llm/types";
 import type { ChatOpenAI } from "@langchain/openai";
 import type { ServerWebSocket } from "bun";
 import pWaitFor from "p-wait-for";
-import { systemReservedTags } from "@amigo/types";
+import { v4 as uuidV4 } from "uuid";
+import { getGlobalState } from "@/globalState";
+import { getSessionHistories } from "@/utils/getSessions";
+import { logger } from "@/utils/logger";
 import { FilePersistedMemory } from "../memory";
 import { getLlm } from "../model";
 import { getSystemPrompt } from "../systemPrompt";
 import { BASIC_TOOLS, CUSTOMED_TOOLS, ToolService } from "../tools";
-import { v4 as uuidV4 } from "uuid";
-import { logger } from "@/utils/logger";
-import { MessageEmitter } from "./MessageEmitter";
-import { ToolExecutor } from "./ToolExecutor";
 import { ErrorHandler } from "./ErrorHandler";
+import { MessageEmitter } from "./MessageEmitter";
 import { StreamHandler } from "./StreamHandler";
-import { getSessionHistories } from "@/utils/getSessions";
-import { getGlobalState } from "@/globalState";
+import { ToolExecutor } from "./ToolExecutor";
 
 /**
  * 获取所有自定义工具（内置 CUSTOMED_TOOLS + SDK 注册的工具）
@@ -30,9 +30,7 @@ function getAllCustomTools(): ToolInterface<any>[] {
   const registryToolNames = new Set(registryTools.map((t) => t.name));
 
   // 过滤掉与 registry 工具同名的内置工具，registry 工具优先
-  const filteredCustomedTools = CUSTOMED_TOOLS.filter(
-    (tool) => !registryToolNames.has(tool.name),
-  );
+  const filteredCustomedTools = CUSTOMED_TOOLS.filter((tool) => !registryToolNames.has(tool.name));
 
   return [...filteredCustomedTools, ...registryTools];
 }
