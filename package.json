@@ -2,12 +2,11 @@
   "name": "amigo",
   "version": "1.0.0",
   "private": true,
-  "packageManager": "pnpm@10.15.0",
   "description": "",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "pnpm --filter '!@amigo/types' start",
-    "build": "pnpm -r build",
+    "dev": "bun --filter '!@amigo/types' start",
+    "build": "bun run --filter '*' build",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "prepare": "lefthook install"
@@ -18,5 +17,8 @@
   "devDependencies": {
     "@biomejs/biome": "^2.2.4",
     "lefthook": "^1.9.4"
-  }
+  },
+  "workspaces": [
+    "packages/**"
+  ]
 }
