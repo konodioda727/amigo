@@ -12,7 +12,7 @@
     },
     "packages/frontend": {
       "name": "@amigo-llm/frontend",
-      "version": "0.0.0",
+      "version": "0.0.2",
       "dependencies": {
         "@tiptap/extension-mention": "^2.27.1",
         "@tiptap/extension-placeholder": "^2.1.0",
@@ -45,10 +45,11 @@
     },
     "packages/server": {
       "name": "@amigo-llm/server",
-      "version": "1.0.0",
+      "version": "1.0.2",
       "dependencies": {
         "@amigo-llm/types": "workspace:*",
         "@langchain/core": "^0.3.75",
+        "@langchain/openai": "^1.1.3",
         "chromium-bidi": "^11.0.1",
         "dotenv": "^17.2.2",
         "electron": "^39.2.4",
@@ -68,7 +69,7 @@
     },
     "packages/types": {
       "name": "@amigo-llm/types",
-      "version": "1.0.2",
+      "version": "1.0.4",
       "dependencies": {
         "zod": "^4.1.8",
       },
@@ -162,6 +163,8 @@
     "@inquirer/external-editor": ["@inquirer/external-editor@1.0.3", "", { "dependencies": { "chardet": "^2.1.1", "iconv-lite": "^0.7.0" }, "peerDependencies": { "@types/node": ">=18" }, "optionalPeers": ["@types/node"] }, "sha512-RWbSrDiYmO4LbejWY7ttpxczuwQyZLBUyygsA9Nsv95hpzUWwnNTVQmAq3xuh7vNwCp07UTmE5i11XAEExx4RA=="],
 
     "@langchain/core": ["@langchain/core@0.3.75", "https://registry.npmmirror.com/@langchain/core/-/core-0.3.75.tgz", { "dependencies": { "@cfworker/json-schema": "4.1.1", "ansi-styles": "5.2.0", "camelcase": "6.3.0", "decamelize": "1.2.0", "js-tiktoken": "1.0.21", "langsmith": "0.3.68", "mustache": "4.2.0", "p-queue": "6.6.2", "p-retry": "4.6.2", "uuid": "10.0.0", "zod": "3.25.76", "zod-to-json-schema": "3.24.6" } }, "sha512-kTyBS0DTeD0JYa9YH5lg6UdDbHmvplk3t9PCjP5jDQZCK5kPe2aDFToqdiCaLzZg8RzzM+clXLVyJtPTE8bZ2Q=="],
+
+    "@langchain/openai": ["@langchain/openai@1.1.3", "", { "dependencies": { "js-tiktoken": "^1.0.12", "openai": "^6.9.0", "zod": "^3.25.76 || ^4" }, "peerDependencies": { "@langchain/core": "^1.0.0" } }, "sha512-p+xR+4HRms5Ozjf5miC6U2AYRyNVSTdO7AMBkMYs1Tp6DWHBd+mQ72H8Ogd2dKrPuS5UDJ5dbpI1fS+OrTbgQQ=="],
 
     "@manypkg/find-root": ["@manypkg/find-root@1.1.0", "", { "dependencies": { "@babel/runtime": "^7.5.5", "@types/node": "^12.7.1", "find-up": "^4.1.0", "fs-extra": "^8.1.0" } }, "sha512-mki5uBvhHzO8kYYix/WRy2WX8S3B5wdVSc9D6KcU5lQNglP2yt58/VfLuAK49glRXChosY8ap2oJ1qgma3GUVA=="],
 
