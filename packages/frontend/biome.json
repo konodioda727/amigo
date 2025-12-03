@@ -10,7 +10,8 @@
         "noUnknownProperty": "off"
       },
       "suspicious": {
-        "noUnknownAtRules": "off"
+        "noUnknownAtRules": "off",
+        "noAssignInExpressions": "off"
       }
     }
   },

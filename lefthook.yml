@@ -3,10 +3,10 @@ pre-commit:
   commands:
     biome:
       glob: "*.{js,ts,jsx,tsx,json}"
-      run: pnpm biome check --write --no-errors-on-unmatched --staged {staged_files}
+      run: bunx biome check --write --no-errors-on-unmatched --staged {staged_files}
       stage_fixed: true
 
 pre-push:
   commands:
     build:
-      run: pnpm build
+      run: bun run build
