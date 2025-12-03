@@ -1,4 +1,5 @@
 import type { StateCreator } from "zustand";
+import { isLocalhost } from "@/utils/isLocalHost";
 import type { WebSocketStore } from "../websocket";
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "reconnecting";
@@ -22,7 +23,7 @@ export const createConnectionSlice: StateCreator<WebSocketStore, [], [], Connect
     if (socket?.readyState === WebSocket.OPEN) return;
 
     set({ connectionStatus: "connecting" });
-    const ws = new WebSocket(`ws://${window.location.hostname}:10013`);
+    const ws = new WebSocket(`${isLocalhost() ? "ws" : "wss"}://${window.location.hostname}:10013`);
 
     ws.onopen = () => {
       set({ socket: ws, connectionStatus: "connected" });
