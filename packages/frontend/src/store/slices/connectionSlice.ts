@@ -10,12 +10,10 @@ export interface ConnectionSlice {
   disconnect: () => void;
 }
 
-export const createConnectionSlice: StateCreator<
-  WebSocketStore,
-  [],
-  [],
-  ConnectionSlice
-> = (set, get) => ({
+export const createConnectionSlice: StateCreator<WebSocketStore, [], [], ConnectionSlice> = (
+  set,
+  get,
+) => ({
   socket: null,
   connectionStatus: "disconnected",
 
@@ -24,7 +22,7 @@ export const createConnectionSlice: StateCreator<
     if (socket?.readyState === WebSocket.OPEN) return;
 
     set({ connectionStatus: "connecting" });
-    const ws = new WebSocket("ws://localhost:10013");
+    const ws = new WebSocket(`ws://${window.location.hostname}:10013`);
 
     ws.onopen = () => {
       set({ socket: ws, connectionStatus: "connected" });
