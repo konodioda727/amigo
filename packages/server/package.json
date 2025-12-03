@@ -1,8 +1,11 @@
 {
   "name": "@amigo/server",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "",
-  "main": "index.js",
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "test": "bun test",
     "build": "bun build ./src/index.ts --outdir ./dist --target='bun'",

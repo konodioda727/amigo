@@ -28,6 +28,10 @@ jobs:
         working-directory: packages/frontend
         run: bun run build
 
+      - name: Build server
+        working-directory: packages/server
+        run: bun run build
+
       - name: Upload frontend dist
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -38,17 +42,17 @@ jobs:
           target: "~/amigo/packages/frontend"
           strip_components: 3
 
-      - name: Upload server
+      - name: Upload server dist
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
-          source: "packages/server/src/*,packages/server/package.json"
+          source: "packages/server/dist/*,packages/server/package.json"
           target: "~/amigo/packages/server"
           strip_components: 2
 
-      - name: Upload types
+      - name: Upload types dist
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -74,6 +78,6 @@ jobs:
             bun install
             
             # Restart server with pm2
-            pm2 describe amigo-server > /dev/null 2>&1 && pm2 restart amigo-server || pm2 start "bun run src/index.ts" --name amigo-server
+            pm2 describe amigo-server > /dev/null 2>&1 && pm2 restart amigo-server || pm2 start "bun run dist/index.js" --name amigo-server
             
             echo "Deployment completed!"
