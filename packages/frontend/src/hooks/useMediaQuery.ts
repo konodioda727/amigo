@@ -17,7 +17,7 @@ export const useMediaQuery = (query: string): boolean => {
     if (typeof window === "undefined") return;
 
     const mediaQuery = window.matchMedia(query);
-    
+
     // Update state if initial value was different
     setMatches(mediaQuery.matches);
 

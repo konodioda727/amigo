@@ -336,6 +336,88 @@ ISC
 欢迎提交 Issue 和 Pull Request！
 
 
+## 📦 Frontend SDK
+
+Amigo Frontend 提供了一套完整的 React SDK，让你可以轻松地将 AI 智能体功能集成到自己的应用中。
+
+### 快速开始
+
+```bash
+pnpm add @amigo-llm/frontend
+```
+
+```tsx
+import {
+  WebSocketProvider,
+  ChatWindow,
+  MessageInput,
+} from '@amigo-llm/frontend';
+import '@amigo-llm/frontend/styles';
+
+function App() {
+  return (
+    <WebSocketProvider url="ws://localhost:10013" autoConnect={true}>
+      <div className="flex flex-col h-screen">
+        <ChatWindow className="flex-1" />
+        <MessageInput placeholder="Type a message..." />
+      </div>
+    </WebSocketProvider>
+  );
+}
+```
+
+### 核心功能
+
+- **WebSocketProvider** - 统一的连接和状态管理
+- **React Hooks** - 访问消息、任务和连接状态
+- **可定制渲染器** - 自定义消息显示方式
+- **预构建组件** - ChatWindow、MessageInput、ConversationHistory 等
+- **完整类型支持** - TypeScript 类型定义
+- **高性能** - 基于 Zustand 的高效状态管理
+
+### 自定义渲染器
+
+```tsx
+import type { CommonMessageRendererProps } from '@amigo-llm/frontend';
+
+function CustomMessageRenderer({ message, taskId, isLatest }: CommonMessageRendererProps) {
+  return (
+    <div className={`message ${isLatest ? 'latest' : ''}`}>
+      <div className="content">{message.data.content}</div>
+      <div className="meta">Task: {taskId}</div>
+    </div>
+  );
+}
+
+<WebSocketProvider
+  url="ws://localhost:10013"
+  renderers={{
+    message: CustomMessageRenderer,
+  }}
+>
+  {/* Your app */}
+</WebSocketProvider>
+```
+
+### 可用的 Hooks
+
+```tsx
+import {
+  useConnection,    // 连接状态
+  useMessages,      // 消息列表
+  useTasks,         // 任务层级
+  useMentions,      // 提及建议
+  useSendMessage,   // 发送消息
+  useWebSocket,     // WebSocket 控制
+} from '@amigo-llm/frontend';
+```
+
+### 详细文档
+
+完整的 API 文档和示例请参考：[Frontend SDK 文档](./packages/frontend/README.md)
+
+---
+
 ## 📦 Server SDK
 
 Amigo Server 提供了一套流式构建器 API，让你可以轻松配置和扩展服务器功能。

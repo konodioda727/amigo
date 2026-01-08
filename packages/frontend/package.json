@@ -2,12 +2,25 @@
   "name": "@amigo-llm/frontend",
   "version": "0.0.2",
   "type": "module",
+  "main": "./dist/sdk/index.js",
+  "types": "./dist/sdk/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/sdk/index.js",
+      "types": "./dist/sdk/index.d.ts"
+    },
+    "./styles": "./dist/index.css"
+  },
   "scripts": {
     "dev": "bun run src/index.ts --watch",
     "start": "bun run src/index.ts",
     "build": "bun run build.ts",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
   },
   "dependencies": {
     "@tiptap/extension-mention": "^2.27.1",
@@ -29,12 +42,16 @@
   },
   "devDependencies": {
     "@amigo-llm/types": "workspace:*",
+    "@testing-library/react": "^16.3.1",
+    "@testing-library/react-hooks": "^8.0.1",
     "@types/lodash": "^4.17.20",
     "@types/react": "^18.2.15",
     "@types/react-dom": "^18.2.7",
     "@types/uuid": "^9.0.4",
     "autoprefixer": "^10.4.15",
     "daisyui": "^5.1.25",
+    "fast-check": "^4.5.2",
+    "happy-dom": "^20.0.11",
     "tailwindcss": "^4.1.17",
     "typescript": "^5.0.2"
   }

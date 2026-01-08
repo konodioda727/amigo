@@ -9,7 +9,7 @@ const Sidebar: React.FC = () => {
       <div className="p-3 border-b border-neutral-200">
         <NewChatButton />
       </div>
-      
+
       {/* 历史记录列表 */}
       <div className="flex-1 overflow-y-auto p-3">
         <ConversationHistory />

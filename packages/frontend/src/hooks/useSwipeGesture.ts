@@ -32,7 +32,7 @@ export const useSwipeGesture = ({
     const handleTouchEnd = () => {
       if (touchStartX.current !== null && touchCurrentX.current !== null) {
         const diff = touchCurrentX.current - touchStartX.current;
-        
+
         // Right swipe from left edge
         if (touchStartX.current < edgeThreshold && diff > swipeThreshold) {
           onSwipeRight?.();
@@ -42,7 +42,7 @@ export const useSwipeGesture = ({
           onSwipeLeft?.();
         }
       }
-      
+
       touchStartX.current = null;
       touchCurrentX.current = null;
     };

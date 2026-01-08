@@ -1,9 +1,9 @@
 import type { FC, ReactNode } from "react";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { useSwipeGesture } from "../../hooks/useSwipeGesture";
 import Header from "../Header";
 import Sidebar from "../Sidebar";
-import { useSwipeGesture } from "../../hooks/useSwipeGesture";
-import { useMediaQuery } from "../../hooks/useMediaQuery";
 
 const TOUCH_EDGE_THRESHOLD = 30;
 const SWIPE_THRESHOLD = 50;
@@ -75,8 +75,8 @@ const Layout: FC<LayoutProps> = ({ children }) => {
             style={isOpen && isDesktop ? { width: `${SIDEBAR_WIDTH}px` } : undefined}
             aria-hidden={!isOpen}
           >
-            <div 
-              className="w-full h-full md:max-w-none" 
+            <div
+              className="w-full h-full md:max-w-none"
               style={isDesktop ? { maxWidth: `${SIDEBAR_WIDTH}px` } : undefined}
             >
               <Sidebar />

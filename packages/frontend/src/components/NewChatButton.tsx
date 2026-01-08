@@ -1,10 +1,11 @@
 import { Plus } from "lucide-react";
 import type React from "react";
+import { useWebSocketContext } from "@/sdk";
 import { useSidebar } from "./Layout/index";
-import { useWebSocketStore } from "@/store/websocket";
 
 const NewChatButton: React.FC = () => {
-  const createNewConversation = useWebSocketStore((state) => state.createNewConversation);
+  const { store } = useWebSocketContext();
+  const createNewConversation = store((state) => state.createNewConversation);
   const { isOpen, close } = useSidebar();
 
   const handleClick = () => {
@@ -19,11 +20,11 @@ const NewChatButton: React.FC = () => {
       type="button"
     >
       <Plus className="w-4 h-4 shrink-0" />
-      <span 
+      <span
         className={`text-sm font-medium whitespace-nowrap transition-opacity duration-150 ${
-          isOpen ? 'opacity-100' : 'opacity-0'
+          isOpen ? "opacity-100" : "opacity-0"
         }`}
-        style={{ display: isOpen ? 'inline' : 'none' }}
+        style={{ display: isOpen ? "inline" : "none" }}
       >
         新建对话
       </span>
