@@ -1,14 +1,59 @@
 import fs from "node:fs";
 import path from "node:path";
+
+import { logger } from "@/utils/logger";
 import type { ToolService } from "../tools";
 import { generateToolsPrompt } from "./tools";
-import { logger } from "@/utils/logger";
-const loadPropmpt = (fileName: string) => {
-  return fs.readFileSync(path.join(__dirname, fileName), "utf-8");
+
+/**
+ * Load a prompt file from the systemPrompt directory
+ * @throws Error if file does not exist
+ */
+const loadPrompt = (fileName: string): string => {
+  const filePath = path.join(__dirname, fileName);
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`System prompt file not found: ${filePath}`);
+  }
+  return fs.readFileSync(filePath, "utf-8");
 };
 
 /**
- * 获取系统提示词
+ * Load shared modules (critical-rules and tool-guide)
+ */
+const loadSharedModules = () => {
+  const criticalRules = loadPrompt("./shared/critical-rules.md");
+  const toolGuide = loadPrompt("./shared/tool-guide.md");
+  return { criticalRules, toolGuide };
+};
+
+/**
+ * Generate tool sections for the prompt
+ */
+const generateToolSections = (toolService: ToolService): string => {
+  const allToolNames = toolService.toolNames;
+
+  return [
+    `
+====
+
+TOOLS
+
+## Base Tools
+
+${generateToolsPrompt(toolService.baseTools, allToolNames)}
+`,
+    `
+## Custom Tools
+
+${generateToolsPrompt(toolService.customedTools, allToolNames)}
+
+====
+`,
+  ].join("\n");
+};
+
+/**
+ * Get system prompt for the specified conversation type
  */
 export function getSystemPrompt(
   toolService: ToolService,
@@ -21,72 +66,45 @@ export function getSystemPrompt(
   logger.debug("System Prompt:", systemPrompt);
   return systemPrompt;
 }
+
 /**
- * 主 Agent 使用的系统提示词
- * @param toolService
- * @returns
+ * Main Agent system prompt
+ * Assembly order:
+ * 1. shared/critical-rules.md (critical rules at top)
+ * 2. main/identity.md
+ * 3. main/rules.md
+ * 4. shared/tool-guide.md
+ * 5. [Dynamic tool list]
  */
-export const getMainSystemPrompt = (toolService: ToolService) => {
-  const rules = loadPropmpt("./main/rules.md");
-  const objective = loadPropmpt("./main/objective.md");
-  const toolsGuide = loadPropmpt("./tooluseGuide.md");
-  logger.debug("Loaded system prompts:", { rules, objective });
-  
-  // 获取所有可用工具名称
-  const allToolNames = toolService.toolNames;
-  
-  // 通过 toolService 获取所有工具类
-  return [
-    objective,
-    rules,
-    toolsGuide,
-    `
-    =====
-    # 基础工具
-    
-    ${generateToolsPrompt(toolService.baseTools, allToolNames)}
+export const getMainSystemPrompt = (toolService: ToolService): string => {
+  const { criticalRules, toolGuide } = loadSharedModules();
+  const identity = loadPrompt("./main/identity.md");
+  const rules = loadPrompt("./main/rules.md");
 
-    `,
-    `
-    =====
-    # 用户自定义工具
+  logger.debug("Loaded main agent prompts:", { identity, rules });
 
-    ${generateToolsPrompt(toolService.customedTools, allToolNames)}
-    
-    `,
-  ].join("\n\n");
+  return [criticalRules, identity, rules, toolGuide, generateToolSections(toolService)].join(
+    "\n\n",
+  );
 };
 
 /**
- * 子 Agent 使用的系统提示词
- * @param toolService
- * @returns
+ * Sub Agent system prompt
+ * Assembly order:
+ * 1. shared/critical-rules.md (critical rules at top)
+ * 2. sub/identity.md
+ * 3. sub/rules.md
+ * 4. shared/tool-guide.md
+ * 5. [Dynamic tool list]
  */
-export const getSubSystemPrompt = (toolService: ToolService) => {
-  const rules = loadPropmpt("./sub/rules.md");
-  const objective = loadPropmpt("./sub/objective.md");
-  const toolsGuide = loadPropmpt("./tooluseGuide.md");
-  
-  // 获取所有可用工具名称
-  const allToolNames = toolService.toolNames;
-  
-  return [
-    objective,
-    rules,
-    toolsGuide,
-    `
-    =====
-    # 基础工具
-    
-    ${generateToolsPrompt(toolService.baseTools, allToolNames)}
+export const getSubSystemPrompt = (toolService: ToolService): string => {
+  const { criticalRules, toolGuide } = loadSharedModules();
+  const identity = loadPrompt("./sub/identity.md");
+  const rules = loadPrompt("./sub/rules.md");
 
-    `,
-    `
-    =====
-    # 用户自定义工具
+  logger.debug("Loaded sub agent prompts:", { identity, rules });
 
-    ${generateToolsPrompt(toolService.customedTools, allToolNames)}
-    
-    `,
-  ].join("\n\n");
+  return [criticalRules, identity, rules, toolGuide, generateToolSections(toolService)].join(
+    "\n\n",
+  );
 };

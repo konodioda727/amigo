@@ -7,7 +7,7 @@ import type { ToolMessageRendererProps } from "../../../types/renderers";
  */
 export const DefaultUpdateTodolistRenderer: React.FC<
   ToolMessageRendererProps<"updateTodolist">
-> = ({ message, taskId: _taskId, isLatest: _isLatest }) => {
+> = ({ message }) => {
   const { params, updateTime } = message;
 
   // Parse markdown checklist with error handling

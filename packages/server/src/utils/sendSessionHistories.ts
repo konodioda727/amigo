@@ -1,14 +1,14 @@
+import fs from "node:fs";
+import path from "node:path";
 import { StorageType } from "@amigo-llm/types";
-import fs from "fs";
-import path from "path";
-import type { ConversationManager } from "@/core/conversationManager";
+import { broadcaster, type Conversation } from "@/core/conversation";
 import { getGlobalState } from "@/globalState";
 import { logger } from "./logger";
 
 /**
  * 发送会话历史列表给前端
  */
-export const sendSessionHistories = async (manager: ConversationManager) => {
+export const sendSessionHistories = async (conversation: Conversation) => {
   const globalStoragePath = getGlobalState("globalStoragePath");
 
   if (!globalStoragePath) {
@@ -49,15 +49,14 @@ export const sendSessionHistories = async (manager: ConversationManager) => {
 
           // 从第一条用户消息中提取标题
           const firstUserMessage = frontendData.messages?.find(
-            (msg: any) => msg.type === "userSendMessage",
+            (msg: { type: string }) => msg.type === "userSendMessage",
           );
           const title = firstUserMessage?.data?.message?.substring(0, 50) || "未命名对话";
           const updatedAt =
             frontendData.updatedAt || originalData.updatedAt || new Date().toISOString();
 
           return { taskId, title, updatedAt };
-        } catch (error) {
-          // 如果读取失败，返回 null
+        } catch {
           return null;
         }
       });
@@ -67,8 +66,7 @@ export const sendSessionHistories = async (manager: ConversationManager) => {
       .filter((item): item is { taskId: string; title: string; updatedAt: string } => item !== null)
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
-    // 发送会话历史列表
-    manager.emitMessage({
+    broadcaster.broadcast(conversation.id, {
       type: "sessionHistories",
       data: {
         sessionHistories,
@@ -76,7 +74,7 @@ export const sendSessionHistories = async (manager: ConversationManager) => {
     });
 
     logger.info(`[sendSessionHistories] Sent ${sessionHistories.length} session histories`);
-  } catch (error: any) {
+  } catch (error) {
     logger.error(`[sendSessionHistories] Error:`, error);
   }
 };

@@ -31,13 +31,13 @@
  */
 
 // Builder API
-export { AmigoServerBuilder } from "./builder";
+export { AmigoServerBuilder } from "../core/builder";
+export { ValidationError } from "../core/config";
 // Error types
-export { RegistrationError, ValidationError } from "./errors";
+// Registries (advanced usage)
+export { MessageRegistry, RegistrationError, ToolRegistry } from "../core/registry";
 // Helper functions
 export { defineMessage, defineTool } from "./helpers";
-// Registries (advanced usage)
-export { MessageRegistry, ToolRegistry } from "./registry";
 // Types (SDK-specific)
 // Re-export existing types from @amigo-llm/types for convenience
 export type {
@@ -47,6 +47,6 @@ export type {
   CustomToolParam,
   ServerConfig,
   ToolInterface,
-  ToolParam,
+  ToolParamDefinition,
 } from "./types";
 export { ServerConfigSchema } from "./types";

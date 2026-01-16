@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import type { ToolInterface, ToolNames, ToolParam } from "@amigo-llm/types";
+import type { ToolInterface, ToolNames, ToolParamDefinition } from "@amigo-llm/types";
 import { defineMessage } from "@amigo-llm/types/src/message";
 import * as fc from "fast-check";
 import { z } from "zod";
@@ -29,7 +29,7 @@ function createTestTool(
   requiredParams: string[],
   optionalParams: string[] = [],
 ): ToolInterface<ToolNames> {
-  const params: ToolParam<string>[] = [
+  const params: ToolParamDefinition<string>[] = [
     ...requiredParams.map((p) => ({
       name: p,
       optional: false,

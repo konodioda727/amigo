@@ -126,7 +126,6 @@ export const ChatWindow: FC<ChatWindowProps> = ({
    */
   const renderMessage = (message: DisplayMessageType, index: number) => {
     const isLatest = index === messages.length - 1;
-    const effectiveTaskId = taskId || "default";
 
     // Get custom renderer from context
     const customRenderer = context.renderers?.[message.type];
@@ -134,7 +133,7 @@ export const ChatWindow: FC<ChatWindowProps> = ({
     if (customRenderer) {
       return (
         <div key={`${message.type}-${message.updateTime}-${index}`}>
-          {(customRenderer as any)({ message, taskId: effectiveTaskId, isLatest })}
+          {(customRenderer as any)({ message, isLatest })}
         </div>
       );
     }
@@ -144,7 +143,7 @@ export const ChatWindow: FC<ChatWindowProps> = ({
     if (defaultRenderer) {
       return (
         <div key={`${message.type}-${message.updateTime}-${index}`}>
-          {defaultRenderer({ message, taskId: effectiveTaskId, isLatest })}
+          {defaultRenderer({ message, isLatest })}
         </div>
       );
     }

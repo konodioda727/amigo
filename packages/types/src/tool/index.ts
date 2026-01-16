@@ -1,9 +1,12 @@
 import { z } from "zod";
 import { AskFollowupQuestionSchema } from "./askFollowupQuestions";
-import { TodoListSchema } from "./updateTodolist";
 import { TaskListSchema } from "./assingTasks";
-import { CompletionResultSchema } from "./completionResult";
 import { BrowserSearchSchema } from "./browserSearch";
+import { CompletionResultSchema } from "./completionResult";
+import type { ToolExecutionContext } from "./context";
+import { TodoListSchema } from "./updateTodolist";
+
+export type { ToolExecutionContext } from "./context";
 
 export const toolSchemas = z.discriminatedUnion("name", [
   AskFollowupQuestionSchema,
@@ -27,33 +30,35 @@ export type ToolParams<T extends ToolNames> = Extract<ToolSchema, { name: T }>["
 export type ToolResult<T extends ToolNames> = Extract<ToolSchema, { name: T }>["result"];
 
 /**
- * 参数定义
+ * 工具参数定义（用于描述工具的参数结构）
  */
-export interface ToolParam<K> {
-  name: K extends ToolNames ? keyof ToolParams<K> : string;
+export interface ToolParamDefinition<K> {
+  name: K extends ToolNames
+    ? ToolParams<K> extends string
+      ? string
+      : keyof ToolParams<K>
+    : string;
   optional: boolean;
   description: string;
   type?: "string" | "array" | "object";
-  params?: ToolParam<string>[];
+  params?: ToolParamDefinition<string>[];
 }
-/**
- * 工具接口
- */
-export interface ToolInterface<K extends ToolNames> {
-  name: K;
+
+// biome-ignore lint/suspicious/noExplicitAny: 用于工具集合的宽松类型
+export interface ToolInterface<K extends ToolNames | any> {
+  name: K extends ToolNames ? K : string;
   description: string;
   whenToUse: string;
-  params: ToolParam<K>[];
+  params: K extends ToolNames ? ToolParamDefinition<K>[] : ToolParamDefinition<string>[];
   useExamples: string[];
 
-  // 调用函数：使用 Record<string, any> 作为参数类型
   invoke: (props: {
-    params: ToolParams<K>;
-    getCurrentTask: () => string;
-    getToolFromName: (name: string) => ToolInterface<any> | undefined;
-    signal?: AbortSignal;
-    postMessage?: (msg: string | object) => void;
-  }) => Promise<{ message: string; toolResult: ToolResult<K> }>;
+    params: K extends ToolNames ? ToolParams<K> : any;
+    context: ToolExecutionContext;
+  }) => Promise<{
+    message: string;
+    toolResult: K extends ToolNames ? ToolResult<K> : any;
+  }>;
 }
 
 /**
@@ -62,5 +67,5 @@ export interface ToolInterface<K extends ToolNames> {
 export interface TransportToolContent<T extends ToolNames> {
   toolName: ToolNames;
   result: ToolResult<T>;
-  params: ToolParam<T>;
+  params: ToolParams<T>;
 }

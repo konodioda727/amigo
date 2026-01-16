@@ -1,7 +1,7 @@
-import type { ToolInterface, ToolParam } from "@amigo-llm/types";
+import type { ToolInterface, ToolParamDefinition } from "@amigo-llm/types";
 
 // 辅助函数：根据参数结构智能推断类型
-function inferParameterType(param: ToolParam<string>): "string" | "array" | "object" {
+function inferParameterType(param: ToolParamDefinition<string>): "string" | "array" | "object" {
   if (param.type) {
     return param.type; // 优先使用明确指定的类型
   }
@@ -35,7 +35,7 @@ function mapTypeToDescription(type: "string" | "array" | "object"): string {
  * @returns 格式化后的参数字符串
  */
 function generateParamsDescription(
-  params: ToolParam<string>[],
+  params: ToolParamDefinition<string>[],
   indent: string = "  ",
   isArrayElement: boolean = false,
 ): string {

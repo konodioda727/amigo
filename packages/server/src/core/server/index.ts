@@ -1,7 +1,7 @@
 import type { USER_SEND_MESSAGE_NAME, WebSocketMessage } from "@amigo-llm/types";
 import Bun, { type ServerWebSocket } from "bun";
 import { v4 as uuidV4 } from "uuid";
-import { ConversationManager } from "@/core/conversationManager";
+import { broadcaster, conversationRepository, taskOrchestrator } from "@/core/conversation";
 import { getResolver } from "@/core/messageResolver";
 import { setGlobalState } from "@/globalState";
 import { getSessionHistories } from "@/utils/getSessions";
@@ -35,7 +35,7 @@ class AmigoServer {
     this._toolRegistry = options.toolRegistry;
     this._messageRegistry = options.messageRegistry;
 
-    // 将注册表中的工具和消息存储到全局状态，供 ConversationManager 使用
+    // 将注册表中的工具和消息存储到全局状态
     if (options.toolRegistry) {
       setGlobalState("registryTools", options.toolRegistry.getAll());
     }
@@ -44,23 +44,17 @@ class AmigoServer {
     }
   }
 
-  /**
-   * 获取工具注册表
-   */
   get toolRegistry(): ToolRegistry | undefined {
     return this._toolRegistry;
   }
 
-  /**
-   * 获取消息注册表
-   */
   get messageRegistry(): MessageRegistry | undefined {
     return this._messageRegistry;
   }
 
   init() {
     Bun.serve({
-      fetch: (req: any, server: any) => {
+      fetch: (req, server) => {
         if (server.upgrade(req)) {
           return;
         }
@@ -69,62 +63,63 @@ class AmigoServer {
       port: this.port,
       websocket: {
         message: async (ws: ServerWebSocket, message: string) => {
-          let parsedMessage: WebSocketMessage<USER_SEND_MESSAGE_NAME> | undefined;
           try {
-            parsedMessage = JSON.parse(message) as WebSocketMessage<USER_SEND_MESSAGE_NAME>;
+            const parsedMessage = JSON.parse(message) as WebSocketMessage<USER_SEND_MESSAGE_NAME>;
+            // 如果 taskId 为空或空字符串，生成新的 UUID
+            const taskId = parsedMessage.data.taskId?.trim() || uuidV4();
 
-            const taskId = parsedMessage.data.taskId || uuidV4();
-            let manager = ConversationManager.taskMapToConversationManager[taskId];
-            let isNewSession = false;
-            if (!manager) {
-              manager = new ConversationManager({
-                taskId,
-              });
-              ConversationManager.taskMapToConversationManager[taskId] = manager;
-              isNewSession = manager.isNewSession();
+            // 获取或创建会话
+            const conversation = conversationRepository.getOrLoad(taskId);
+            const isNewSession = conversation.isNew;
+
+            // 管理 WebSocket 连接
+            if (!broadcaster.hasConnection(taskId, ws)) {
+              broadcaster.addConnection(taskId, ws);
             }
-            if (!manager.connections.includes(ws)) {
-              manager.addConnection(ws);
-            }
-            manager.emitMessage({
+
+            // 发送 ack
+            broadcaster.broadcast(taskId, {
               type: "ack",
               data: {
                 taskId,
                 targetMessage: parsedMessage,
-                updateTime: Date.now().valueOf(),
-                status: manager.conversationStatus === "streaming" ? "failed" : "acked",
+                updateTime: Date.now(),
+                status: conversation.status === "streaming" ? "failed" : "acked",
               },
             });
 
-            // 创建对应的resolver
-            const resolver = getResolver(parsedMessage.type as USER_SEND_MESSAGE_NAME, manager);
+            // 处理消息
+            const resolver = getResolver(
+              parsedMessage.type as USER_SEND_MESSAGE_NAME,
+              conversation,
+            );
             await resolver.process(parsedMessage.data);
 
-            // 如果是新会话，在处理完消息后发送更新后的会话历史列表
+            // 新会话发送历史列表
             if (isNewSession) {
-              manager.emitMessage({
+              broadcaster.broadcast(taskId, {
                 type: "sessionHistories",
                 data: {
                   sessionHistories: await getSessionHistories(),
                 },
               });
             }
-          } catch (error: any) {
+          } catch (error) {
             logger.error("处理消息时出错:", error);
           }
         },
+
         open: async (ws: ServerWebSocket) => {
           ws.send(
             JSON.stringify({
               type: "connected",
               data: {
                 message: "连接建立",
-                updateTime: Date.now().valueOf(),
+                updateTime: Date.now(),
               },
             } as WebSocketMessage<"connected">),
           );
 
-          // 发送会话历史列表
           ws.send(
             JSON.stringify({
               type: "sessionHistories",
@@ -134,19 +129,24 @@ class AmigoServer {
             } as WebSocketMessage<"sessionHistories">),
           );
         },
-        close: (ws: ServerWebSocket) => {
-          const managers = Object.values(ConversationManager.taskMapToConversationManager);
-          for (const manager of managers) {
-            if (manager.connections.includes(ws)) {
-              manager.removeConnection(ws);
-              const isLastConnectionAndSreaming =
-                !manager.connections.length && manager.conversationStatus === "streaming";
 
-              if (isLastConnectionAndSreaming) manager.interrupt();
-              return;
+        close: (ws: ServerWebSocket) => {
+          const conversationId = broadcaster.findConversationIdByWs(ws);
+          if (conversationId) {
+            broadcaster.removeConnection(conversationId, ws);
+
+            const conversation = conversationRepository.get(conversationId);
+            const isLastConnection = broadcaster.getConnectionCount(conversationId) === 0;
+            const isActiveStatus =
+              conversation?.status !== "completed" && conversation?.status !== "idle";
+
+            // 所有连接断开且状态不是 completed/idle 时，中断会话
+            if (isLastConnection && isActiveStatus && conversation) {
+              taskOrchestrator.interrupt(conversation);
             }
           }
         },
+
         drain: () => {},
       },
     });

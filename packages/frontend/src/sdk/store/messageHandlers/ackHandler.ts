@@ -5,8 +5,8 @@ export const handleAck: MessageHandler = (message, store) => {
   const state = store;
   let taskId = messageData.taskId || state.mainTaskId;
 
-  // 设置主任务 ID
-  if (messageData.taskId && !state.mainTaskId) {
+  // 设置主任务 ID（当没有 mainTaskId 或为空字符串时）
+  if (messageData.taskId && (!state.mainTaskId || state.mainTaskId.trim() === "")) {
     store.setMainTaskId(messageData.taskId);
     taskId = messageData.taskId;
   }

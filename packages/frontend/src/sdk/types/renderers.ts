@@ -18,7 +18,6 @@ import type {
  */
 export interface MessageRendererProps<T extends DisplayMessageType> {
   message: T;
-  taskId: string;
   isLatest: boolean;
 }
 

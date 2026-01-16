@@ -80,6 +80,12 @@ export const parseStreamingXml = async ({
       const endTag = `</${currentTool}>`;
       const endLabelIndex = buffer.indexOf(endTag);
       const isEndTagFound = endLabelIndex !== -1;
+
+      // 检测自闭合标签 (例如: <tool attr="value"/>)
+      const selfClosingPattern = new RegExp(`<${currentTool}[^>]*\\/>`);
+      const selfClosingMatch = buffer.match(selfClosingPattern);
+      const isSelfClosing = selfClosingMatch !== null;
+
       const isSystemPreservedTag =
         currentTool && systemReservedTags.includes(currentTool as SYSTEM_RESERVED_TAGS);
       const currentType = (isSystemPreservedTag ? currentTool : "tool") as ChatMessage["type"];
@@ -88,6 +94,12 @@ export const parseStreamingXml = async ({
         const fullToolCall = buffer.slice(0, endLabelIndex + endTag.length);
         await onFullToolCallFound?.(fullToolCall, currentTool, currentType);
         buffer = buffer.slice(endLabelIndex + endTag.length);
+        isMatched = false;
+      } else if (isSelfClosing && selfClosingMatch) {
+        // 处理自闭合标签
+        const fullToolCall = selfClosingMatch[0];
+        await onFullToolCallFound?.(fullToolCall, currentTool, currentType);
+        buffer = buffer.slice(buffer.indexOf(fullToolCall) + fullToolCall.length);
         isMatched = false;
       } else {
         await onPartialToolCallFound?.(buffer, currentTool, currentType);

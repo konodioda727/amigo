@@ -1,6 +1,7 @@
-import { ConversationManager } from "../conversationManager";
-import { createTool } from "./base";
+import type { ToolInterface } from "@amigo-llm/types";
 import { logger } from "@/utils/logger";
+import { taskOrchestrator } from "../conversation";
+import { createTool } from "./base";
 
 export const AssignTasks = createTool({
   name: "assignTasks",
@@ -134,7 +135,6 @@ export const AssignTasks = createTool({
 5. 在分配前务必检查工具名称是否在可用列表中`,
   ],
 
-  // 定义模型需要输出的 XML 标签和结构
   params: [
     {
       name: "tasklist",
@@ -161,13 +161,15 @@ export const AssignTasks = createTool({
             {
               name: "tools",
               optional: false,
-              description: "A list of tool names available to the sub-agent for this step. **CRITICAL: Only use tool names that are explicitly defined in the current context. Do not invent or assume tool names. If unsure, leave empty.**",
+              description:
+                "A list of tool names available to the sub-agent for this step. **CRITICAL: Only use tool names that are explicitly defined in the current context. Do not invent or assume tool names. If unsure, leave empty.**",
               type: "array",
               params: [
                 {
                   name: "tool",
                   optional: false,
-                  description: "The exact name of a tool that exists in the current context. Must match exactly (case-sensitive). Use empty string if no tools are needed.",
+                  description:
+                    "The exact name of a tool that exists in the current context. Must match exactly (case-sensitive). Use empty string if no tools are needed.",
                 },
               ],
             },
@@ -177,53 +179,50 @@ export const AssignTasks = createTool({
     },
   ],
 
-  /**
-   * 工具的实际执行逻辑
-   * 在实际应用中，这里应该触发一个子任务流程，
-   * 根据 params 中的 todolist 逐一创建和启动子 ConversationManager。
-   */
-  async invoke({ params, getCurrentTask, getToolFromName }) {
-    // 限制并发数为 1，顺序执行所有子任务
+  async invoke({ params, context }) {
+    const { taskId, getToolByName } = context;
     const CONCURRENCY_LIMIT = 2;
     const results = [];
 
     for (let i = 0; i < params.tasklist.length; i += CONCURRENCY_LIMIT) {
       const batch = params.tasklist.slice(i, i + CONCURRENCY_LIMIT);
-      
+
       const batchResults = await Promise.all(
         batch.map(async (task, batchIndex) => {
           const index = i + batchIndex;
           const { target, tools, subAgentPrompt } = task;
-          const currentTask = getCurrentTask();
-          
+
           // 过滤并验证工具
-          const requestedTools = tools.filter(t => t && t.trim() !== '');
-          const availableTools = [];
-          const invalidTools = [];
-          
+          const requestedTools = tools.filter((t) => t && t.trim() !== "");
+          // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
+          const availableTools: ToolInterface<any>[] = [];
+          const invalidTools: string[] = [];
+
           for (const toolName of requestedTools) {
-            const tool = getToolFromName(toolName);
+            // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
+            const tool = getToolByName(toolName) as ToolInterface<any> | undefined;
             if (tool) {
               availableTools.push(tool);
             } else {
               invalidTools.push(toolName);
             }
           }
-          
-          // 如果有无效工具，记录警告
+
           if (invalidTools.length > 0) {
-            logger.warn(`[AssignTasks] 任务 "${target}" 请求了不存在的工具: ${invalidTools.join(', ')}`);
+            logger.warn(
+              `[AssignTasks] 任务 "${target}" 请求了不存在的工具: ${invalidTools.join(", ")}`,
+            );
           }
-          
-          // runSubConversation 返回总结
-          const summary = await ConversationManager.runSubConversation({
+
+          // 使用 TaskOrchestrator 运行子任务
+          const summary = await taskOrchestrator.runSubTask({
             subPrompt: subAgentPrompt,
-            parentTaskId: currentTask,
+            parentId: taskId,
             target,
             tools: availableTools,
-            index
+            index,
           });
-          
+
           return {
             target,
             summary,
@@ -231,23 +230,22 @@ export const AssignTasks = createTool({
             availableTools: availableTools.length,
             invalidTools: invalidTools.length > 0 ? invalidTools : undefined,
           };
-        })
+        }),
       );
 
       results.push(...batchResults);
     }
 
-    // 返回每个步骤的执行结果
-    const hasInvalidTools = results.some(r => r.invalidTools);
-    const warningMessage = hasInvalidTools 
-      ? '\n⚠️ 警告：部分任务请求了不存在的工具，这些工具已被忽略。' 
-      : '';
-    
+    const hasInvalidTools = results.some((r) => r.invalidTools);
+    const warningMessage = hasInvalidTools
+      ? "\n⚠️ 警告：部分任务请求了不存在的工具，这些工具已被忽略。"
+      : "";
+
     return {
       message: `所有子任务已执行完毕，结果如下：${warningMessage}\n${results
         .map(
           (r, i) =>
-            `步骤${i + 1}（目标：${r.target}）：${r.summary}${r.invalidTools ? ` [无效工具: ${r.invalidTools.join(', ')}]` : ''}`
+            `步骤${i + 1}（目标：${r.target}）：${r.summary}${r.invalidTools ? ` [无效工具: ${r.invalidTools.join(", ")}]` : ""}`,
         )
         .join("\n")}`,
       toolResult: {

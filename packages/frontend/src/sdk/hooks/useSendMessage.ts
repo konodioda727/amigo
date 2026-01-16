@@ -36,11 +36,12 @@ export function useSendMessage(): UseSendMessageReturn {
   const sendMessage = useCallback(
     (message: string, taskId?: string) => {
       const state = store.getState();
-      const effectiveTaskId = taskId || state.mainTaskId;
+      let effectiveTaskId = taskId || state.mainTaskId;
 
-      if (!effectiveTaskId) {
-        console.warn("[useSendMessage] Cannot send message: no task ID available");
-        return;
+      // If no task ID exists (new conversation), let server create one
+      // We'll use a temporary placeholder that server will replace
+      if (!effectiveTaskId || effectiveTaskId.trim() === "") {
+        effectiveTaskId = ""; // Server will handle empty taskId as new conversation
       }
 
       state.sendMessage(effectiveTaskId, {
@@ -63,7 +64,7 @@ export function useSendMessage(): UseSendMessageReturn {
       const state = store.getState();
       const effectiveTaskId = taskId || state.mainTaskId;
 
-      if (!effectiveTaskId) {
+      if (!effectiveTaskId || effectiveTaskId.trim() === "") {
         console.warn("[useSendMessage] Cannot send interrupt: no task ID available");
         return;
       }
@@ -88,7 +89,7 @@ export function useSendMessage(): UseSendMessageReturn {
       const state = store.getState();
       const effectiveTaskId = taskId || state.mainTaskId;
 
-      if (!effectiveTaskId) {
+      if (!effectiveTaskId || effectiveTaskId.trim() === "") {
         console.warn("[useSendMessage] Cannot send resume: no task ID available");
         return;
       }

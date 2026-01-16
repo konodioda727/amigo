@@ -8,7 +8,7 @@ function parseMarkdownChecklist(markdown: string): { target: string; completed: 
   return lines.map((line) => {
     const isCompleted = line.includes("[x]") || line.includes("[X]");
     // 移除 - [ ] 或 - [x] / * [ ] 或 * [x] 标记
-    const target = line.replace(/^[-\*]\s*\[[xX\s]\]\s*/, "").trim();
+    const target = line.replace(/^[-*]\s*\[[xX\s]\]\s*/, "").trim();
     return { target, completed: isCompleted };
   });
 }
@@ -77,7 +77,7 @@ export const UpdateTodolist = createTool({
    * 在实际应用中，这里应该触发一个子任务流程，
    * 根据 params 中的 todolist 逐一创建和启动子 ConversationManager。
    */
-  async invoke({params}) {
+  async invoke({ params }) {
     const markdownList = params.todolist;
     const checklist = parseMarkdownChecklist(markdownList);
 
@@ -104,7 +104,7 @@ export const UpdateTodolist = createTool({
     // 返回一个格式化的成功消息给 LLM
     return {
       message: resultMessage,
-      toolResult: resultMessage
+      toolResult: resultMessage,
     };
   },
 });

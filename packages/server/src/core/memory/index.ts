@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   type ChatMessage,
   type ConversationStatus,
+  type SERVER_SEND_MESSAGE_NAME,
   StorageType,
   type USER_SEND_MESSAGE_NAME,
   type WebSocketMessage,
@@ -170,7 +171,9 @@ export class FilePersistedMemory {
     this.saveOriginalToFile();
   }
 
-  public addWebsocketMessage<K extends USER_SEND_MESSAGE_NAME>(message: WebSocketMessage<K>) {
+  public addWebsocketMessage<K extends USER_SEND_MESSAGE_NAME | SERVER_SEND_MESSAGE_NAME>(
+    message: WebSocketMessage<K>,
+  ) {
     const lastWebsocketMessage = this._websocketMessages.at(-1);
     const isUpdatePrevWebsocketMessage =
       lastWebsocketMessage?.data.partial && message.type === lastWebsocketMessage?.type;

@@ -111,7 +111,7 @@ export const TaskRenderer: FC<TaskRendererProps> = ({
       if (customRenderer) {
         return (
           <div key={`${message.type}-${message.updateTime}-${index}`}>
-            {(customRenderer as any)({ message, taskId, isLatest })}
+            {(customRenderer as any)({ message, isLatest })}
           </div>
         );
       }
@@ -121,7 +121,7 @@ export const TaskRenderer: FC<TaskRendererProps> = ({
       if (defaultRenderer) {
         return (
           <div key={`${message.type}-${message.updateTime}-${index}`}>
-            {defaultRenderer({ message, taskId, isLatest })}
+            {defaultRenderer({ message, isLatest })}
           </div>
         );
       }

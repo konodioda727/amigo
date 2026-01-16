@@ -1,5 +1,6 @@
+import type { ToolInterface } from "@amigo-llm/types";
 import { systemReservedTags } from "@amigo-llm/types";
-import type { ToolInterface, ToolResult } from "@amigo-llm/types/src/tool";
+import type { ToolExecutionContext, ToolNames, ToolResult } from "@amigo-llm/types/src/tool";
 import { XMLParser } from "fast-xml-parser";
 import { ensureArray } from "@/utils/array";
 import { logger } from "@/utils/logger";
@@ -10,9 +11,12 @@ import { CompletionResult } from "./completionResult";
 import { UpdateTodolist } from "./todolist";
 
 export class ToolService {
+  // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
   private _availableTools: Record<string, ToolInterface<any>> = {};
   constructor(
+    // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
     private _baseTools: ToolInterface<any>[],
+    // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
     private userDefinedTools: ToolInterface<any>[],
   ) {
     this._baseTools.concat(this.userDefinedTools).forEach((tool) => {
@@ -42,6 +46,7 @@ export class ToolService {
   /**
    * 根据名称获取工具
    */
+  // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
   public getToolFromName(name: string): ToolInterface<any> | undefined {
     return this._availableTools[name];
   }
@@ -51,18 +56,14 @@ export class ToolService {
    */
   public async parseAndExecute({
     xmlParams,
-    getCurrentTask,
-    signal,
-    postMessage,
+    context,
   }: {
     xmlParams: string;
-    getCurrentTask: () => string;
-    signal?: AbortSignal;
-    postMessage?: (msg: string | object) => void;
+    context: ToolExecutionContext;
   }): Promise<{
     message: string;
-    params: Record<string, any> | string;
-    toolResult: ToolResult<any>;
+    params: Record<string, unknown> | string;
+    toolResult: ToolResult<ToolNames>;
     error?: string;
   }> {
     try {
@@ -91,11 +92,8 @@ export class ToolService {
       }
 
       const { toolResult, message } = await tool.invoke({
-        params: params as any,
-        getCurrentTask,
-        getToolFromName: (name: string) => this._availableTools[name],
-        ...(signal ? { signal } : {}),
-        ...(postMessage ? { postMessage } : {}),
+        params: params as never,
+        context,
       });
       logger.debug("[ToolService] 工具调用完成:", toolName, params, toolResult);
 
@@ -160,7 +158,7 @@ export class ToolService {
     buffer: string,
     partial = false,
   ): {
-    params: Record<string, any> | string;
+    params: Record<string, unknown> | string;
     toolName: string;
     error?: string;
   } {
@@ -202,7 +200,7 @@ export class ToolService {
 
       return { params: finalParams, toolName };
     } catch (err) {
-      const errorMsg = `XML 解析错误: ${err instanceof Error ? err.message : String(err)}`;
+      const errorMsg = `XML 解析错误: ${err instanceof Error ? err.message : String(err)}。\n\n⚠️ 请注意：必须使用子标签格式，不能使用属性格式。\n\n❌ 错误格式: <tool param1="value1" param2="value2"/>\n✅ 正确格式: <tool><param1>value1</param1><param2>value2</param2></tool>`;
       logger.error("[parseParams] 解析失败:", err);
       return {
         params: {},
@@ -389,6 +387,7 @@ export class ToolService {
   }
 }
 
+// biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
 export const BASIC_TOOLS: ToolInterface<any>[] = [
   AskFollowupQuestions,
   UpdateTodolist,
@@ -396,6 +395,7 @@ export const BASIC_TOOLS: ToolInterface<any>[] = [
   BrowserSearch,
 ];
 
+// biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
 export const CUSTOMED_TOOLS: ToolInterface<any>[] = [AssignTasks];
 
 export { AskFollowupQuestions, UpdateTodolist, CompletionResult, AssignTasks, BrowserSearch };

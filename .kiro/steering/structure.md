@@ -44,12 +44,13 @@ src/
 ```
 src/
 ├── core/
-│   ├── conversationManager/     # Manages conversation lifecycle
-│   │   ├── index.ts             # Main ConversationManager class
-│   │   ├── StreamHandler.ts     # LLM stream processing
-│   │   ├── ToolExecutor.ts      # Tool invocation logic
-│   │   ├── MessageEmitter.ts    # WebSocket message emission
-│   │   └── ErrorHandler.ts      # Error handling
+│   ├── conversation/            # Conversation management (refactored)
+│   │   ├── Conversation.ts      # Conversation entity (state container)
+│   │   ├── ConversationRepository.ts  # Conversation storage and retrieval
+│   │   ├── ConversationExecutor.ts    # LLM interaction and tool execution
+│   │   ├── WebSocketBroadcaster.ts    # WebSocket connection and messaging
+│   │   ├── TaskOrchestrator.ts        # Parent-child task management
+│   │   └── index.ts             # Public exports
 │   ├── memory/                  # Persistent storage layer
 │   ├── messageResolver/         # WebSocket message handlers
 │   │   ├── base.ts              # Base resolver interface
@@ -131,29 +132,41 @@ src/
 
 ## Key Architectural Patterns
 
+### Conversation Architecture (Single Responsibility)
+
+The conversation system is split into focused components:
+
+- **Conversation**: Pure entity holding state (id, memory, status, userInput)
+- **ConversationRepository**: Manages conversation lifecycle (create, get, load from disk)
+- **ConversationExecutor**: Handles LLM streaming and tool execution
+- **WebSocketBroadcaster**: Manages WebSocket connections and message broadcasting
+- **TaskOrchestrator**: Coordinates parent-child task relationships
+
 ### Path Aliases
 - Use `@/*` for imports relative to `src/` directory
 - Example: `import { logger } from "@/utils/logger"`
 
 ### Message Flow
 1. User sends message via WebSocket
-2. Server resolves message type and creates/retrieves ConversationManager
-3. ConversationManager streams LLM response
-4. XML parser extracts tool calls from stream
-5. Tools execute and emit results back to client
-6. All messages persisted to storage
+2. Server resolves message type via MessageResolver
+3. ConversationRepository retrieves or creates Conversation
+4. TaskOrchestrator sets user input
+5. ConversationExecutor streams LLM response
+6. XML parser extracts tool calls from stream
+7. Tools execute and WebSocketBroadcaster emits results
+8. All messages persisted to storage via Memory
 
 ### Tool System
 - Tools defined in `packages/server/src/core/tools/`
 - Tool schemas in `packages/types/src/tool/`
-- Tools can spawn sub-agents with custom prompts
+- Tools can spawn sub-agents via TaskOrchestrator
 - XML-based tool invocation format
 - Tool registration via ToolRegistry
 
 ### State Management
 - Server: FilePersistedMemory for conversation history
 - Frontend: Zustand slices for different state domains (connection, messages, tasks)
-- Task hierarchy tracked via parent-child relationships
+- Task hierarchy tracked via parent-child relationships in ConversationRepository
 
 ### Naming Conventions
 - Components: PascalCase (e.g., `ChatWindow.tsx`)

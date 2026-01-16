@@ -1,6 +1,6 @@
-import { createTool } from "./base";
-import { logger } from "@/utils/logger";
 import { browserManager } from "@/utils/browserManager";
+import { logger } from "@/utils/logger";
+import { createTool } from "./base";
 
 export const BrowserSearch = createTool({
   name: "browserSearch",
@@ -102,13 +102,13 @@ export const BrowserSearch = createTool({
     {
       name: "action",
       optional: true,
-      description:
-        "操作类型：search（搜索）、navigate（访问URL并提取内容），默认为search",
+      description: "操作类型：search（搜索）、navigate（访问URL并提取内容），默认为search",
     },
   ],
 
-  async invoke({ params, signal }) {
+  async invoke({ params, context }) {
     const { query, url, action = "search" } = params;
+    const { signal } = context;
     let page = null;
 
     try {
@@ -149,7 +149,7 @@ export const BrowserSearch = createTool({
             const searchResults = await page.evaluate(() => {
               const results: Array<{ title: string; snippet: string; url: string }> = [];
 
-              // @ts-ignore
+              // @ts-expect-error
               const resultElements = document.querySelectorAll(".b_algo");
 
               for (let i = 0; i < Math.min(resultElements.length, 8); i++) {
@@ -161,7 +161,7 @@ export const BrowserSearch = createTool({
                   results.push({
                     title: titleEl.textContent?.trim() || "",
                     snippet: snippetEl?.textContent?.trim() || "",
-                    //@ts-ignore
+                    //@ts-expect-error
                     url: (titleEl as HTMLAnchorElement).href || "",
                   });
                 }
@@ -211,51 +211,53 @@ export const BrowserSearch = createTool({
 
           // 提取页面标题、内容和可交互元素
           const pageData = await page.evaluate(() => {
-            // @ts-ignore
+            // @ts-expect-error
             const scripts = document.querySelectorAll("script, style, noscript");
-            // @ts-ignore
+            // @ts-expect-error
             scripts.forEach((el) => {
               el.remove();
             });
 
-            // @ts-ignore
+            // @ts-expect-error
             const pageTitle = document.title;
 
-            // @ts-ignore
+            // @ts-expect-error
             const mainContent =
-              // @ts-ignore
+              // @ts-expect-error
               document.querySelector("main")?.textContent ||
-              // @ts-ignore
+              // @ts-expect-error
               document.querySelector("article")?.textContent ||
-              // @ts-ignore
+              // @ts-expect-error
               document.body.textContent ||
               "";
 
             // 提取页面中的重要链接
             const links: Array<{ text: string; url: string; type: string }> = [];
-            
-            // @ts-ignore
-            const linkElements = document.querySelectorAll("a[href], button[onclick], [role='button']");
-            
+
+            // @ts-expect-error
+            const linkElements = document.querySelectorAll(
+              "a[href], button[onclick], [role='button']",
+            );
+
             for (let i = 0; i < Math.min(linkElements.length, 20); i++) {
               const el = linkElements[i];
               const text = el.textContent?.trim() || "";
-              
+
               // 过滤掉空文本和太短的链接
               if (text && text.length > 2 && text.length < 100) {
                 let linkUrl = "";
                 let linkType = "link";
-                
+
                 if (el.tagName === "A") {
-                  // @ts-ignore
+                  // @ts-expect-error
                   linkUrl = el.href || "";
                   linkType = "link";
                 } else if (el.tagName === "BUTTON" || el.getAttribute("role") === "button") {
                   linkType = "button";
-                  // @ts-ignore
+                  // @ts-expect-error
                   linkUrl = el.getAttribute("data-url") || el.getAttribute("onclick") || "";
                 }
-                
+
                 // 只保留有效的链接
                 if (linkType === "link" && linkUrl && !linkUrl.startsWith("javascript:")) {
                   links.push({ text, url: linkUrl, type: linkType });
@@ -272,12 +274,14 @@ export const BrowserSearch = createTool({
 
           // 格式化内容，包含链接信息
           content = pageData.content;
-          
+
           if (pageData.links && pageData.links.length > 0) {
             content += "\n\n---\n## 页面中的相关链接：\n\n";
-            pageData.links.forEach((link: { text: string; url: string; type: string }, index: number) => {
-              content += `${index + 1}. [${link.text}](${link.url})\n`;
-            });
+            pageData.links.forEach(
+              (link: { text: string; url: string; type: string }, index: number) => {
+                content += `${index + 1}. [${link.text}](${link.url})\n`;
+              },
+            );
             content += "\n💡 提示：如果需要更深入的信息，可以继续访问上述相关链接。";
           }
 
@@ -287,7 +291,9 @@ export const BrowserSearch = createTool({
         }
 
         default:
-          throw new Error(`不支持的操作类型: ${action}。支持的操作：search（搜索）、navigate（访问网页）`);
+          throw new Error(
+            `不支持的操作类型: ${action}。支持的操作：search（搜索）、navigate（访问网页）`,
+          );
       }
 
       return {

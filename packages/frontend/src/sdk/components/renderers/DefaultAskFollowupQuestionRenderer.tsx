@@ -6,10 +6,13 @@ import type { AskFollowupQuestionRendererProps } from "../../types/renderers";
 
 /**
  * Default renderer for ask followup question message type
+ *
+ * Note: This component sends messages to the current main task,
+ * not necessarily the task that the message belongs to.
+ * This is intentional for the main conversation flow.
  */
 export const DefaultAskFollowupQuestionRenderer: React.FC<AskFollowupQuestionRendererProps> = ({
   message,
-  taskId,
   isLatest,
 }) => {
   const { sendMessage } = useSendMessage();
@@ -25,7 +28,8 @@ export const DefaultAskFollowupQuestionRenderer: React.FC<AskFollowupQuestionRen
     if (isDisabled) return;
 
     setLocalSelectedOption(suggestion);
-    sendMessage(suggestion, taskId);
+    // sendMessage will use mainTaskId from store if no taskId is provided
+    sendMessage(suggestion);
   };
 
   return (

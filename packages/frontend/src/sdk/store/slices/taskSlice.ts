@@ -114,8 +114,13 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
   },
 
   createNewConversation: () => {
+    // Clear old messages if there was a previous task
     const { mainTaskId } = get();
-    get().clearMessages(mainTaskId);
+    if (mainTaskId) {
+      get().clearMessages(mainTaskId);
+    }
+
+    // Reset to empty state - server will create new task on first message
     set({ mainTaskId: "", activeTaskId: null });
   },
 
