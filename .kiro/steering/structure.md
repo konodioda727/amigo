@@ -13,30 +13,34 @@ packages/
 
 ```
 src/
-├── components/
-│   ├── ChatWindow/              # Main chat interface
-│   ├── MessageRenderers/        # Message type renderers
-│   │   └── toolRenderer/        # Tool-specific renderers
-│   ├── MessageInput/            # Input with mention support
-│   │   └── hooks/               # Input-related hooks
-│   ├── SubTaskRenderer/         # Subtask display
-│   │   └── hooks/               # Subtask status hooks
-│   ├── Layout/                  # Layout components
-│   ├── ConversationHistory.tsx
-│   ├── ErrorBoundary.tsx
-│   └── ...
-├── store/
-│   ├── slices/                  # Zustand state slices
-│   ├── messageHandlers/         # WebSocket message handlers
-│   └── websocket.ts             # WebSocket connection logic
-├── messages/
-│   ├── messageCombiner.ts       # Message aggregation logic
-│   └── types.ts
-├── hooks/                       # Shared React hooks
-├── utils/                       # Utility functions
-├── styles/                      # Global styles and tokens
-├── App.tsx
-└── main.tsx
+├── components/              # App-specific components
+│   ├── Layout/              # Layout with sidebar context
+│   ├── Sidebar.tsx          # Sidebar with conversation list
+│   ├── Header.tsx           # Header with connection status
+│   ├── ConversationHistory.tsx  # Wrapper with routing
+│   ├── NewChatButton.tsx    # New chat with routing
+│   └── ErrorBoundary.tsx
+├── pages/                   # Route pages
+│   ├── HomePage.tsx         # Default chat view (/)
+│   └── ChatPage.tsx         # Task-specific view (/:taskId)
+├── sdk/                     # Reusable SDK components
+│   ├── components/          # SDK UI components
+│   │   ├── ChatWindow.tsx   # Message display
+│   │   ├── MessageInput.tsx # Input with mentions
+│   │   ├── ConversationHistory.tsx  # History list
+│   │   ├── TaskRenderer.tsx
+│   │   └── renderers/       # Message renderers
+│   ├── hooks/               # SDK React hooks
+│   ├── store/               # Zustand store
+│   │   ├── messageHandlers/ # WebSocket handlers
+│   │   └── slices/          # State slices
+│   ├── context/             # React contexts
+│   ├── messages/            # Message utilities
+│   └── provider/            # WebSocket provider
+├── hooks/                   # App-specific hooks
+├── utils/                   # Utility functions
+├── App.tsx                  # Router setup
+└── main.tsx                 # Entry point
 ```
 
 ## Server (`packages/server/`)
@@ -141,6 +145,25 @@ The conversation system is split into focused components:
 - **ConversationExecutor**: Handles LLM streaming and tool execution
 - **WebSocketBroadcaster**: Manages WebSocket connections and message broadcasting
 - **TaskOrchestrator**: Coordinates parent-child task relationships
+
+### Routing Architecture
+
+The frontend uses React Router for navigation:
+
+- **Routes**:
+  - `/` - HomePage: Default chat view for new conversations
+  - `/:taskId` - ChatPage: Task-specific view that loads conversation history
+  
+- **Navigation Flow**:
+  1. User clicks conversation in sidebar → Navigate to `/:taskId`
+  2. ChatPage loads task history via WebSocket `loadTask` message
+  3. URL reflects current conversation for bookmarking/sharing
+  4. New chat button navigates to `/` and creates new conversation
+
+- **State Synchronization**:
+  - URL taskId syncs with Zustand store's mainTaskId
+  - ConversationHistory highlights active conversation based on URL
+  - Layout (Sidebar, Header) persists across route changes
 
 ### Path Aliases
 - Use `@/*` for imports relative to `src/` directory

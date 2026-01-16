@@ -4,7 +4,7 @@ import type { UseSendMessageReturn } from "../types/hooks";
 
 /**
  * Hook to send messages to the WebSocket server.
- * Provides functions to send user messages, interrupts, resume, and load task commands.
+ * Provides functions to send user messages, interrupts, resume, load task, and create task commands.
  *
  * @returns Message sending functions
  * @throws {Error} If used outside of WebSocketProvider
@@ -12,7 +12,7 @@ import type { UseSendMessageReturn } from "../types/hooks";
  * @example
  * ```tsx
  * function MessageControls() {
- *   const { sendMessage, sendInterrupt, sendResume, sendLoadTask } = useSendMessage();
+ *   const { sendMessage, sendInterrupt, sendResume, sendLoadTask, sendCreateTask } = useSendMessage();
  *
  *   return (
  *     <div>
@@ -20,6 +20,7 @@ import type { UseSendMessageReturn } from "../types/hooks";
  *       <button onClick={() => sendInterrupt()}>Interrupt</button>
  *       <button onClick={() => sendResume()}>Resume</button>
  *       <button onClick={() => sendLoadTask('task-123')}>Load Task</button>
+ *       <button onClick={() => sendCreateTask('New task')}>Create Task</button>
  *     </div>
  *   );
  * }
@@ -49,6 +50,25 @@ export function useSendMessage(): UseSendMessageReturn {
         data: {
           message,
           taskId: effectiveTaskId,
+        },
+      });
+    },
+    [store],
+  );
+
+  /**
+   * Send a create task command to create a new conversation.
+   */
+  const sendCreateTask = useCallback(
+    (message: string) => {
+      const state = store.getState();
+
+      // 发送 createTask 消息，不需要 taskId（后端会创建）
+      // 使用空字符串作为占位符
+      state.sendMessage("", {
+        type: "createTask",
+        data: {
+          message,
         },
       });
     },
@@ -123,6 +143,7 @@ export function useSendMessage(): UseSendMessageReturn {
 
   return {
     sendMessage,
+    sendCreateTask,
     sendInterrupt,
     sendResume,
     sendLoadTask,

@@ -1,5 +1,6 @@
 import { Plus } from "lucide-react";
 import type React from "react";
+import { useNavigate } from "react-router-dom";
 import { useWebSocketContext } from "@/sdk";
 import { useSidebar } from "./Layout/index";
 
@@ -7,9 +8,12 @@ const NewChatButton: React.FC = () => {
   const { store } = useWebSocketContext();
   const createNewConversation = store((state) => state.createNewConversation);
   const { isOpen, close } = useSidebar();
+  const navigate = useNavigate();
 
   const handleClick = () => {
     createNewConversation();
+    // Navigate to home page for new conversation
+    navigate("/");
     close();
   };
 

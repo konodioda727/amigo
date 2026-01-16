@@ -7,6 +7,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import { useConnection } from "../hooks/useConnection";
 import { useMentions } from "../hooks/useMentions";
 import { useSendMessage } from "../hooks/useSendMessage";
+import { useTasks } from "../hooks/useTasks";
 
 /**
  * Props for the MessageInput component
@@ -68,9 +69,10 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     },
     ref,
   ) => {
-    const { sendMessage, sendInterrupt, sendResume } = useSendMessage();
+    const { sendMessage, sendInterrupt, sendResume, sendCreateTask } = useSendMessage();
     const { getMentionSuggestions } = useMentions();
     const { isConnected } = useConnection();
+    const { mainTaskId } = useTasks();
     const [targetSessionId, setTargetSessionId] = useState<string | null>(null);
     const [buttonState, setButtonState] = useState<"send" | "stop" | "resume">("send");
     const isSuggestionActiveRef = useRef(false);
@@ -319,8 +321,16 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         return;
       }
 
-      // Send message using the hook
-      sendMessage(content, effectiveSessionId || taskId);
+      // 判断是否需要创建新任务
+      const currentMainTaskId = mainTaskId || taskId;
+
+      if (!currentMainTaskId || currentMainTaskId.trim() === "") {
+        // 没有 mainTaskId，发送 createTask 消息
+        sendCreateTask(content);
+      } else {
+        // 有 mainTaskId，发送普通消息
+        sendMessage(content, effectiveSessionId || currentMainTaskId);
+      }
 
       // Call onSend callback if provided
       onSend?.(content);

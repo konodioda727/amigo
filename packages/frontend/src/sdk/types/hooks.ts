@@ -96,6 +96,7 @@ export interface UseMentionsReturn {
  */
 export interface UseSendMessageReturn {
   sendMessage: (message: string, taskId?: string) => void;
+  sendCreateTask: (message: string) => void;
   sendInterrupt: (taskId?: string) => void;
   sendResume: (taskId?: string) => void;
   sendLoadTask: (taskId: string) => void;

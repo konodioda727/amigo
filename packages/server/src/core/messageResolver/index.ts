@@ -2,6 +2,7 @@ import type { USER_SEND_MESSAGE_NAME } from "@amigo-llm/types";
 import type { Conversation } from "@/core/conversation";
 import type BaseMessageResolver from "./base";
 import { CommonMessageResolver } from "./commonMessageResolver";
+import { CreateTaskMessageResolver } from "./createTaskMessageResolver";
 import { InterruptMessageResolver } from "./interruptMessageResolver";
 import { LoadTaskMessageResolver } from "./loadTaskMessageResolver";
 import { ResumeMessageResolver } from "./resumeMessageResolver";
@@ -14,6 +15,7 @@ const resolvers = [
   InterruptMessageResolver,
   LoadTaskMessageResolver,
   ResumeMessageResolver,
+  CreateTaskMessageResolver,
 ];
 
 const defaultResolver = CommonMessageResolver;

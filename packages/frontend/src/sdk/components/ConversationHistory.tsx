@@ -10,6 +10,8 @@ export interface ConversationHistoryProps {
   className?: string;
   /** Callback when a conversation is selected */
   onSelectConversation?: (taskId: string) => void;
+  /** Current active task ID (for highlighting) */
+  activeTaskId?: string;
 }
 
 /**
@@ -28,6 +30,9 @@ export interface ConversationHistoryProps {
  *   onSelectConversation={(taskId) => console.log('Selected:', taskId)}
  * />
  *
+ * // With active task highlighting
+ * <ConversationHistory activeTaskId="task-123" />
+ *
  * // With custom styling
  * <ConversationHistory className="my-custom-class" />
  * ```
@@ -35,6 +40,7 @@ export interface ConversationHistoryProps {
 export const ConversationHistory: FC<ConversationHistoryProps> = ({
   className = "",
   onSelectConversation,
+  activeTaskId,
 }) => {
   const { mainTaskId } = useTasks();
   const context = useWebSocketContext();
@@ -42,6 +48,9 @@ export const ConversationHistory: FC<ConversationHistoryProps> = ({
 
   // Get task histories from store
   const taskHistories = store((state) => state.taskHistories);
+
+  // Use activeTaskId if provided, otherwise fall back to mainTaskId
+  const currentTaskId = activeTaskId ?? mainTaskId;
 
   /**
    * Format time display for conversation timestamps
@@ -95,7 +104,7 @@ export const ConversationHistory: FC<ConversationHistoryProps> = ({
     <div className={`conversation-history ${className}`}>
       <ul className="space-y-1">
         {taskHistories.map((history) => {
-          const isActive = history.taskId === mainTaskId;
+          const isActive = history.taskId === currentTaskId;
 
           return (
             <li key={history.taskId}>

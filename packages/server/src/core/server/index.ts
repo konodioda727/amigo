@@ -65,8 +65,16 @@ class AmigoServer {
         message: async (ws: ServerWebSocket, message: string) => {
           try {
             const parsedMessage = JSON.parse(message) as WebSocketMessage<USER_SEND_MESSAGE_NAME>;
-            // 如果 taskId 为空或空字符串，生成新的 UUID
-            const taskId = parsedMessage.data.taskId?.trim() || uuidV4();
+
+            // 根据消息类型获取或生成 taskId
+            let taskId: string;
+            if (parsedMessage.type === "createTask") {
+              // createTask 消息不包含 taskId，生成新的 UUID
+              taskId = uuidV4();
+            } else {
+              // 其他消息从 data 中获取 taskId
+              taskId = (parsedMessage.data as any).taskId?.trim() || uuidV4();
+            }
 
             // 获取或创建会话
             const conversation = conversationRepository.getOrLoad(taskId);
@@ -83,7 +91,6 @@ class AmigoServer {
               data: {
                 taskId,
                 targetMessage: parsedMessage,
-                updateTime: Date.now(),
                 status: conversation.status === "streaming" ? "failed" : "acked",
               },
             });
