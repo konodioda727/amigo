@@ -221,7 +221,6 @@ export const BrowserSearch = createTool({
             // @ts-expect-error
             const pageTitle = document.title;
 
-            // @ts-expect-error
             const mainContent =
               // @ts-expect-error
               document.querySelector("main")?.textContent ||
@@ -249,12 +248,10 @@ export const BrowserSearch = createTool({
                 let linkType = "link";
 
                 if (el.tagName === "A") {
-                  // @ts-expect-error
                   linkUrl = el.href || "";
                   linkType = "link";
                 } else if (el.tagName === "BUTTON" || el.getAttribute("role") === "button") {
                   linkType = "button";
-                  // @ts-expect-error
                   linkUrl = el.getAttribute("data-url") || el.getAttribute("onclick") || "";
                 }
 
