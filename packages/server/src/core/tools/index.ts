@@ -6,8 +6,12 @@ import { ensureArray } from "@/utils/array";
 import { logger } from "@/utils/logger";
 import { AskFollowupQuestions } from "./askFollowupQuestions";
 import { AssignTasks } from "./assignTasks";
+import { Bash } from "./bash";
 import { BrowserSearch } from "./browserSearch";
 import { CompletionResult } from "./completionResult";
+import { EditFile } from "./editFile";
+import { ReadFile } from "./readFile";
+import { CreateTaskDocs, GetTaskListProgress, ReadTaskDocs, UpdateTaskList } from "./taskDocs";
 import { UpdateTodolist } from "./todolist";
 
 export class ToolService {
@@ -393,9 +397,29 @@ export const BASIC_TOOLS: ToolInterface<any>[] = [
   UpdateTodolist,
   CompletionResult,
   BrowserSearch,
+  EditFile,
+  ReadFile,
+  Bash,
+  CreateTaskDocs,
+  ReadTaskDocs,
+  UpdateTaskList,
+  GetTaskListProgress,
 ];
 
 // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
 export const CUSTOMED_TOOLS: ToolInterface<any>[] = [AssignTasks];
 
-export { AskFollowupQuestions, UpdateTodolist, CompletionResult, AssignTasks, BrowserSearch };
+export {
+  AskFollowupQuestions,
+  UpdateTodolist,
+  CompletionResult,
+  AssignTasks,
+  BrowserSearch,
+  EditFile,
+  ReadFile,
+  Bash,
+  CreateTaskDocs,
+  ReadTaskDocs,
+  UpdateTaskList,
+  GetTaskListProgress,
+};

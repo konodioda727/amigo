@@ -1,7 +1,14 @@
+import { PassThrough } from "node:stream";
 import Docker from "dockerode";
 import { logger } from "@/utils/logger";
 
-const docker = new Docker();
+let docker: Docker | null;
+try {
+  docker = new Docker();
+} catch (error) {
+  logger.warn("[Sandbox] Docker 初始化失败，沙箱功能将不可用:", error);
+  docker = null;
+}
 
 const isLocal = process.platform === "darwin";
 
@@ -11,7 +18,7 @@ const isLocal = process.platform === "darwin";
 export class Sandbox {
   private container: Docker.Container | null = null;
 
-  constructor(private imageName: string = "") {}
+  constructor(private imageName: string = "ai_sandbox") {}
 
   /**
    * 在容器中执行命令
@@ -19,47 +26,87 @@ export class Sandbox {
    */
   async runCommand(cmd: string): Promise<string | undefined> {
     if (!this.container) {
+      logger.error("[Sandbox] runCommand: container is null");
       return;
     }
-    const exec = await this.container.exec({
-      Cmd: ["sh", "-c", cmd],
-      AttachStdout: true,
-      AttachStderr: true,
-      WorkingDir: "/sandbox",
-    });
 
-    const stream = await exec.start({ hijack: true, stdin: false });
-
-    return new Promise((resolve, reject) => {
-      let output = "";
-      stream.on("data", (chunk: Buffer) => {
-        let offset = 0;
-        while (offset < chunk.length) {
-          // 跳过 8 字节头：[1, 0, 0, 0, size_4_bytes]
-          const size = chunk.readUInt32BE(offset + 4);
-          output += chunk.toString("utf8", offset + 8, offset + 8 + size);
-          offset += 8 + size;
-        }
+    try {
+      const exec = await this.container.exec({
+        Cmd: ["sh", "-c", cmd],
+        AttachStdout: true,
+        AttachStderr: true,
+        WorkingDir: "/sandbox",
       });
-      stream.on("end", () => resolve(output));
-      stream.on("error", reject);
-    });
+
+      const stream = await exec.start({ Tty: false });
+
+      return new Promise((resolve, reject) => {
+        const stdout = new PassThrough();
+        const stderr = new PassThrough();
+
+        let output = "";
+        let errorOutput = "";
+
+        stdout.on("data", (chunk: Buffer) => {
+          output += chunk.toString("utf8");
+        });
+
+        stderr.on("data", (chunk: Buffer) => {
+          errorOutput += chunk.toString("utf8");
+        });
+
+        // 使用 dockerode 的 demuxStream 来分离 stdout 和 stderr
+        docker!.modem.demuxStream(stream, stdout, stderr);
+
+        stream.on("end", () => {
+          const result = output + errorOutput;
+          logger.debug(`[Sandbox] Command completed, output: ${result.substring(0, 200)}`);
+          resolve(result);
+        });
+
+        stream.on("error", (err: Error) => {
+          logger.error(`[Sandbox] Stream error: ${err.message}`);
+          reject(err);
+        });
+      });
+    } catch (error) {
+      logger.error(
+        `[Sandbox] runCommand error: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw error;
+    }
   }
 
   /**
    * 容器初始化
    */
   async init(): Promise<void> {
-    this.container = await docker.createContainer({
-      Image: this.imageName,
-      HostConfig: {
-        Runtime: isLocal ? "runc" : "runsc",
-        AutoRemove: true,
-        Memory: 512 * 1024 * 1024, // 512MB
-      },
-    });
+    if (!docker) {
+      throw new Error("Docker 未初始化，请确保 Docker daemon 正在运行");
+    }
 
-    await this.container.start();
+    try {
+      logger.info(`[Sandbox] Creating container with image: ${this.imageName}`);
+      this.container = await docker.createContainer({
+        Image: this.imageName,
+        Tty: false,
+        HostConfig: {
+          Runtime: isLocal ? "runc" : "runsc",
+          AutoRemove: true,
+          Memory: 512 * 1024 * 1024, // 512MB
+        },
+        WorkingDir: "/sandbox",
+      });
+
+      await this.container.start();
+      logger.info("[Sandbox] 容器已启动");
+    } catch (error) {
+      logger.error(
+        `[Sandbox] init() error: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      this.container = null;
+      throw error;
+    }
   }
 
   /**

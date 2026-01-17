@@ -4,6 +4,13 @@ export const TaskCreatedMessageSchema = z.object({
   type: z.literal("taskCreated"),
   data: z.object({
     taskId: z.string(),
+    sessionHistories: z.array(
+      z.object({
+        taskId: z.string(),
+        title: z.string(),
+        updatedAt: z.string(),
+      }),
+    ),
   }),
 });
 

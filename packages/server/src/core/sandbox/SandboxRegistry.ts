@@ -15,18 +15,26 @@ export class SandboxRegistry {
    * @param imageName Docker 镜像名称
    */
   async getOrCreate(parentId: string, imageName?: string): Promise<Sandbox> {
+    logger.info(
+      `[SandboxRegistry] getOrCreate called, parentId: ${parentId}, imageName: ${imageName}`,
+    );
+
     let sandbox = this.sandboxes.get(parentId);
 
     if (!sandbox) {
+      logger.info(`[SandboxRegistry] No existing sandbox, creating new one for: ${parentId}`);
       sandbox = new Sandbox(imageName);
       await sandbox.init();
       this.sandboxes.set(parentId, sandbox);
       this.refCounts.set(parentId, 0);
       logger.info(`[SandboxRegistry] 创建 sandbox: ${parentId}`);
+    } else {
+      logger.info(`[SandboxRegistry] Reusing existing sandbox for: ${parentId}`);
     }
 
     // 增加引用计数
     this.refCounts.set(parentId, (this.refCounts.get(parentId) || 0) + 1);
+    logger.info(`[SandboxRegistry] refCount for ${parentId}: ${this.refCounts.get(parentId)}`);
 
     return sandbox;
   }

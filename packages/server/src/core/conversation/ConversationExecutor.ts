@@ -99,7 +99,7 @@ export class ConversationExecutor {
       );
       if (shouldContinue && !conversation.isAborted) {
         logger.info(`[ConversationExecutor] 继续执行 handleStream loop`);
-        this.handleStream(conversation);
+        return this.handleStream(conversation);
       } else {
         logger.info(`[ConversationExecutor] 停止 handleStream loop`);
       }
@@ -110,12 +110,11 @@ export class ConversationExecutor {
       if (err.name === "AbortError" || conversation.isAborted) {
         logger.info("流式响应被用户中断");
         await pWaitFor(() => !!conversation.userInput);
-        this.handleStream(conversation);
-        return;
+        return this.handleStream(conversation);
       }
 
       await this.handleError(conversation, err);
-      this.handleStream(conversation);
+      return this.handleStream(conversation);
     } finally {
       if (this.currentAbortController) {
         this.currentAbortController = null;

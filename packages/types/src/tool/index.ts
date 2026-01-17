@@ -1,9 +1,18 @@
 import { z } from "zod";
 import { AskFollowupQuestionSchema } from "./askFollowupQuestions";
 import { TaskListSchema } from "./assingTasks";
+import { BashSchema } from "./bash";
 import { BrowserSearchSchema } from "./browserSearch";
 import { CompletionResultSchema } from "./completionResult";
 import type { ToolExecutionContext } from "./context";
+import { EditFileSchema } from "./editFile";
+import { ReadFileSchema } from "./readFile";
+import {
+  CreateTaskDocsSchema,
+  GetTaskListProgressSchema,
+  ReadTaskDocsSchema,
+  UpdateTaskListSchema,
+} from "./taskDocs";
 import { TodoListSchema } from "./updateTodolist";
 
 export type { ToolExecutionContext } from "./context";
@@ -14,6 +23,13 @@ export const toolSchemas = z.discriminatedUnion("name", [
   TodoListSchema,
   CompletionResultSchema,
   BrowserSearchSchema,
+  CreateTaskDocsSchema,
+  ReadTaskDocsSchema,
+  UpdateTaskListSchema,
+  GetTaskListProgressSchema,
+  EditFileSchema,
+  ReadFileSchema,
+  BashSchema,
 ]);
 
 export type ToolNames = z.infer<typeof toolSchemas>["name"];

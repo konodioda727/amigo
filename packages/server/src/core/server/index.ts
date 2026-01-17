@@ -78,7 +78,6 @@ class AmigoServer {
 
             // 获取或创建会话
             const conversation = conversationRepository.getOrLoad(taskId);
-            const isNewSession = conversation.isNew;
 
             // 管理 WebSocket 连接
             if (!broadcaster.hasConnection(taskId, ws)) {
@@ -101,16 +100,6 @@ class AmigoServer {
               conversation,
             );
             await resolver.process(parsedMessage.data);
-
-            // 新会话发送历史列表
-            if (isNewSession) {
-              broadcaster.broadcast(taskId, {
-                type: "sessionHistories",
-                data: {
-                  sessionHistories: await getSessionHistories(),
-                },
-              });
-            }
           } catch (error) {
             logger.error("处理消息时出错:", error);
           }

@@ -73,19 +73,26 @@ export function getSystemPrompt(
  * 1. shared/critical-rules.md (critical rules at top)
  * 2. main/identity.md
  * 3. main/rules.md
- * 4. shared/tool-guide.md
- * 5. [Dynamic tool list]
+ * 4. main/workflow.md (structured workflow guidance)
+ * 5. shared/tool-guide.md
+ * 6. [Dynamic tool list]
  */
 export const getMainSystemPrompt = (toolService: ToolService): string => {
   const { criticalRules, toolGuide } = loadSharedModules();
   const identity = loadPrompt("./main/identity.md");
   const rules = loadPrompt("./main/rules.md");
+  const workflow = loadPrompt("./main/workflow.md");
 
-  logger.debug("Loaded main agent prompts:", { identity, rules });
+  logger.debug("Loaded main agent prompts:", { identity, rules, workflow });
 
-  return [criticalRules, identity, rules, toolGuide, generateToolSections(toolService)].join(
-    "\n\n",
-  );
+  return [
+    criticalRules,
+    identity,
+    rules,
+    workflow,
+    toolGuide,
+    generateToolSections(toolService),
+  ].join("\n\n");
 };
 
 /**
