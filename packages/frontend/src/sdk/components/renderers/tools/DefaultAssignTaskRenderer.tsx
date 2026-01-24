@@ -38,7 +38,7 @@ export const DefaultAssignTaskRenderer: React.FC<ToolMessageRendererProps<"assig
   const isCompleted = !!toolOutput;
 
   return (
-    <div className="my-3 border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm max-w-full">
+    <div className="my-3 border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm max-w-3xl">
       {/* Title row - collapsible */}
       <button
         type="button"

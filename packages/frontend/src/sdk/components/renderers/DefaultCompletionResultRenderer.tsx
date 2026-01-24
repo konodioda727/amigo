@@ -13,8 +13,8 @@ export const DefaultCompletionResultRenderer: React.FC<CompletionResultRendererP
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
-    <div className="flex justify-center w-full mb-4">
-      <div className="border border-green-200 rounded-xl overflow-hidden bg-white shadow-sm w-[85%]">
+    <div className="my-2">
+      <div className="border border-green-200 rounded-xl overflow-hidden bg-white shadow-sm max-w-3xl">
         <button
           type="button"
           onClick={() => setIsExpanded(!isExpanded)}

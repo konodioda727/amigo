@@ -16,28 +16,26 @@ const Header: React.FC = () => {
   const config = statusConfig[connectionStatus];
 
   return (
-    <header className="h-16 border-b border-gray-200 bg-white flex items-center justify-between px-6 shadow-sm z-20">
-      <div className="flex items-center gap-3">
+    <header className="h-12 border-b border-gray-100 bg-white flex items-center justify-between px-4 z-20">
+      <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={toggle}
-          className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-all"
+          className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-50 hover:text-gray-900 transition-all"
           aria-label={isOpen ? "收起侧边栏" : "展开侧边栏"}
         >
-          {isOpen ? <ChevronLeft className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          {isOpen ? <ChevronLeft className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
         </button>
-        <div className="text-xl font-bold text-gray-900 tracking-tight">Amigo</div>
+        <div className="text-sm font-semibold text-gray-800 tracking-tight">Amigo</div>
       </div>
-      <div className="flex items-center gap-2 border border-gray-200 rounded-full px-3 py-1 bg-white shadow-sm">
+      <div className="flex items-center gap-1.5 px-2 py-0.5">
         <span
           className={`
-            w-2 h-2 rounded-full ${config.color}
+            w-1.5 h-1.5 rounded-full ${config.color}
             ${config.pulse ? "animate-pulse" : ""}
           `}
         />
-        <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
-          {config.label}
-        </span>
+        <span className="text-[11px] font-medium text-gray-500">{config.label}</span>
       </div>
     </header>
   );

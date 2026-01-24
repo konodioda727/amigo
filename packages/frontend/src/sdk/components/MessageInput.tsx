@@ -412,9 +412,8 @@ const editorStyles = `
     bottom: 0;
     left: 0;
     right: 0;
-    padding: 24px;
-    background: #ffffff;
-    border-top: 1px solid #f3f4f6;
+    padding: 16px 24px 32px;
+    background: transparent;
     z-index: 10;
   }
 
@@ -425,31 +424,31 @@ const editorStyles = `
   }
   
   .tiptap-editor-wrapper .ProseMirror {
-    min-height: 56px;
-    max-height: 240px;
+    min-height: 80px;
+    max-height: 320px;
     overflow-y: auto;
-    padding: 12px 60px 12px 16px;
-    border-radius: 16px;
-    border: 1px solid #e5e7eb;
+    padding: 16px 60px 16px 20px;
+    border-radius: 24px;
+    border: 1px solid #f3f4f6;
     background-color: #ffffff;
-    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    box-shadow: 0 4px 20px -5px rgba(0, 0, 0, 0.05);
     font-size: 15px;
     font-weight: 400;
-    line-height: 1.5;
-    transition: all 200ms ease-in-out;
+    line-height: 1.6;
+    transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
     outline: none;
   }
 
   .tiptap-editor-wrapper .ProseMirror:focus {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+    border-color: #bfdbfe;
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.08), 0 10px 30px -10px rgba(59, 130, 246, 0.15);
     outline: none;
   }
 
   .send-button-wrapper {
     position: absolute;
-    right: 8px;
-    bottom: 8px;
+    right: 12px;
+    bottom: 12px;
     z-index: 10;
   }
 

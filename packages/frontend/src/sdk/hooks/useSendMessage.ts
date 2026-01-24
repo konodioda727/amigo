@@ -152,7 +152,8 @@ export function useSendMessage(): UseSendMessageReturn {
         },
       });
 
-      state.setTaskStatus(taskId, "tool_executing");
+      // 设置为 streaming 状态，使其可以被打断
+      state.setTaskStatus(taskId, "streaming");
       state.setPendingToolCall(taskId, undefined);
     },
     [store],

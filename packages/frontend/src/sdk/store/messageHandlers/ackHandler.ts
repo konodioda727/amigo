@@ -11,8 +11,10 @@ export const handleAck: MessageHandler = (message, store) => {
     taskId = messageData.taskId;
   }
 
+  const streamingType = ["userSendMessage", "createTask"];
+
   // 处理用户消息确认 - 进入 streaming 状态
-  if (messageData.targetMessage?.type === "userSendMessage") {
+  if (streamingType.includes(messageData.targetMessage?.type)) {
     store.setTaskStatus(taskId, "streaming");
     store.updateUserMessageStatus(taskId, messageData.targetMessage.data.message, "acked");
   }

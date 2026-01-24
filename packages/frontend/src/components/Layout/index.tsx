@@ -8,7 +8,7 @@ import Sidebar from "../Sidebar";
 
 const TOUCH_EDGE_THRESHOLD = 30;
 const SWIPE_THRESHOLD = 50;
-const SIDEBAR_WIDTH = 260; // px
+const SIDEBAR_WIDTH = 240; // px
 const DESKTOP_BREAKPOINT = 768; // md breakpoint in Tailwind
 
 interface SidebarContextType {

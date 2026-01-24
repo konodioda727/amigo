@@ -7,7 +7,7 @@ export const DefaultBashRenderer: React.FC<ToolMessageRendererProps<"bash">> = (
   const { command, workingDir } = params;
 
   return (
-    <div className="my-2 border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm max-w-full">
+    <div className="my-2 border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm max-w-3xl">
       {/* Header */}
       <div className="bg-gray-50/50 px-3 py-2 flex items-center justify-between gap-2 border-b border-gray-200">
         <div className="flex items-center gap-2 overflow-hidden">

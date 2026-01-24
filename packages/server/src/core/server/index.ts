@@ -1,4 +1,8 @@
-import type { USER_SEND_MESSAGE_NAME, WebSocketMessage } from "@amigo-llm/types";
+import type {
+  ConversationStatus,
+  USER_SEND_MESSAGE_NAME,
+  WebSocketMessage,
+} from "@amigo-llm/types";
 import Bun, { type ServerWebSocket } from "bun";
 import { v4 as uuidV4 } from "uuid";
 import { broadcaster, conversationRepository, taskOrchestrator } from "@/core/conversation";
@@ -175,8 +179,16 @@ class AmigoServer {
 
             const conversation = conversationRepository.get(conversationId);
             const isLastConnection = broadcaster.getConnectionCount(conversationId) === 0;
-            const isActiveStatus =
-              conversation?.status !== "completed" && conversation?.status !== "idle";
+            const NotInterruptableStatusList: ConversationStatus[] = [
+              "completed",
+              "waiting_tool_confirmation",
+              "idle",
+              "error",
+              "aborted",
+            ];
+            const isActiveStatus = !NotInterruptableStatusList.includes(
+              conversation?.status as ConversationStatus,
+            );
 
             // 所有连接断开且状态不是 completed/idle 时，中断会话
             if (isLastConnection && isActiveStatus && conversation) {
