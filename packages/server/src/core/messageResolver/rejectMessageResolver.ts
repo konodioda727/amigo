@@ -1,5 +1,6 @@
 import type { USER_SEND_MESSAGE_NAME } from "@amigo-llm/types";
 import { taskOrchestrator } from "@/core/conversation";
+import { logger } from "@/utils/logger";
 import BaseMessageResolver from "./base";
 
 export class RejectMessageResolver extends BaseMessageResolver<"reject"> {
@@ -12,8 +13,21 @@ export class RejectMessageResolver extends BaseMessageResolver<"reject"> {
     this.conversation.isAborted = false;
 
     if (this.conversation.status === "waiting_tool_confirmation") {
-      const executor = taskOrchestrator.getExecutor(this.conversation.id);
-      executor.execute(this.conversation);
+      if (this.conversation.pendingToolCall) {
+        logger.info(
+          `[RejectMessageResolver] 拒绝执行待确认工具: ${this.conversation.pendingToolCall.toolName}`,
+        );
+        const executor = taskOrchestrator.getExecutor(this.conversation.id);
+        await executor.execute(this.conversation);
+      } else {
+        logger.warn(
+          "[RejectMessageResolver] 会话状态为 waiting_tool_confirmation 但 pendingToolCall 为空",
+        );
+      }
+    } else {
+      logger.warn(
+        `[RejectMessageResolver] 会话状态不是 waiting_tool_confirmation，当前状态: ${this.conversation.status}`,
+      );
     }
   }
 }

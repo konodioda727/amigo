@@ -1,4 +1,4 @@
-import type { ChatMessage, ConversationStatus, ToolInterface } from "@amigo-llm/types";
+import type { ConversationStatus, PendingToolCall, ToolInterface } from "@amigo-llm/types";
 import type { ChatOpenAI } from "@langchain/openai";
 import { v4 as uuidV4 } from "uuid";
 import { FilePersistedMemory } from "../memory";
@@ -7,13 +7,6 @@ import { getSystemPrompt } from "../systemPrompt";
 import { MAIN_BASIC_TOOLS, SUB_BASIC_TOOLS, ToolService } from "../tools";
 
 export type ConversationType = "main" | "sub";
-
-export interface PendingToolCall {
-  toolName: string;
-  params: unknown;
-  fullToolCall: string;
-  type: ChatMessage["type"];
-}
 
 /**
  * 会话
@@ -76,6 +69,7 @@ export class Conversation {
 
   set pendingToolCall(value: PendingToolCall | null) {
     this._pendingToolCall = value;
+    this.memory.setPendingToolCall(value);
   }
 
   get isNew(): boolean {
@@ -162,6 +156,11 @@ export class Conversation {
       type,
       parentId: memory.getFatherTaskId,
     });
+
+    // 恢复 pendingToolCall
+    if (memory.pendingToolCall) {
+      conversation._pendingToolCall = memory.pendingToolCall;
+    }
 
     // 如果是新会话（文件不存在或为空），注入 systemPrompt
     if (memory.isNewSession()) {
