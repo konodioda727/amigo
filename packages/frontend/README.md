@@ -193,20 +193,28 @@ function TaskList() {
 
 #### useSendMessage
 
-Send different types of messages:
+Send different types of messages and commands:
 
 ```tsx
 import { useSendMessage } from '@amigo-llm/frontend';
 
 function Controls() {
-  const { sendMessage, sendInterrupt, sendResume, sendLoadTask } = useSendMessage();
+  const { 
+    sendMessage,      // 发送普通消息
+    sendCreateTask,   // 创建新任务/对话
+    sendInterrupt,    // 中断当前执行
+    sendResume,       // 恢复被中断的任务
+    sendLoadTask,     // 加载特定任务历史
+    sendConfirm,      // 确认工具执行
+    sendReject,       // 拒绝工具执行
+    sendDeleteTask    // 删除任务
+  } = useSendMessage();
   
   return (
     <div>
-      <button onClick={() => sendMessage('Hello')}>Send Message</button>
-      <button onClick={() => sendInterrupt()}>Interrupt</button>
-      <button onClick={() => sendResume()}>Resume</button>
-      <button onClick={() => sendLoadTask('task-123')}>Load Task</button>
+      <button onClick={() => sendMessage('Hello')}>发送</button>
+      <button onClick={() => sendInterrupt()}>停止</button>
+      <button onClick={() => sendConfirm('task-id')}>确认工具调用</button>
     </div>
   );
 }
