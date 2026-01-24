@@ -33,7 +33,6 @@ const NewChatButton: React.FC = () => {
           新对话
         </span>
       </div>
-      <span className="ml-auto text-[10px] text-blue-300 font-medium">⌘ K</span>
     </button>
   );
 };
