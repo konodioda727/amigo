@@ -6,6 +6,7 @@ import { DefaultBashRenderer } from "./tools/DefaultBashRenderer";
 import { DefaultBrowserSearchRenderer } from "./tools/DefaultBrowserSearchRenderer";
 import { DefaultCreateTaskDocsRenderer } from "./tools/DefaultCreateTaskDocsRenderer";
 import { DefaultEditFileRenderer } from "./tools/DefaultEditFileRenderer";
+import { DefaultExecuteTaskListRenderer } from "./tools/DefaultExecuteTaskListRenderer";
 import { DefaultReadFileRenderer } from "./tools/DefaultReadFileRenderer";
 import { DefaultReadTaskDocsRenderer } from "./tools/DefaultReadTaskDocsRenderer";
 
@@ -23,6 +24,9 @@ const toolRendererMap: {
     ToolMessageRendererProps<"createTaskDocs">
   >,
   readTaskDocs: DefaultReadTaskDocsRenderer as React.FC<ToolMessageRendererProps<"readTaskDocs">>,
+  executeTaskList: DefaultExecuteTaskListRenderer as React.FC<
+    ToolMessageRendererProps<"executeTaskList">
+  >,
 };
 
 /**

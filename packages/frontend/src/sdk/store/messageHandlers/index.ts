@@ -7,6 +7,7 @@ import { handleStateChange } from "./stateChangeHandler";
 import { handleTaskCreated } from "./taskCreatedHandler";
 import { handleTaskDeleted } from "./taskDeletedHandler";
 import { handleTaskHistory } from "./taskHistoryHandler";
+import { handleTaskStatusMapUpdated } from "./taskStatusMapUpdatedHandler";
 import { handleWaitingToolCall } from "./waitingToolCallHandler";
 
 export type MessageHandler = (message: WebSocketMessage<any>, store: WebSocketStore) => boolean; // 返回 true 表示已处理，不需要继续

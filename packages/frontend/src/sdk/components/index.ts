@@ -8,8 +8,6 @@
 export type { ChatWindowProps } from "./ChatWindow";
 // Main UI components
 export { ChatWindow } from "./ChatWindow";
-export type { ConversationHistoryProps } from "./ConversationHistory";
-export { ConversationHistory } from "./ConversationHistory";
 export type { MessageInputProps, MessageInputRef } from "./MessageInput";
 export { MessageInput } from "./MessageInput";
 // Re-export renderers

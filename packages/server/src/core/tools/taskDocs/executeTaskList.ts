@@ -1,14 +1,16 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { ToolInterface } from "@amigo-llm/types";
+import pWaitFor from "p-wait-for";
 import { taskOrchestrator } from "@/core/conversation";
-import { SubTaskManager } from "@/core/conversation/SubTaskManager";
+import { conversationRepository } from "@/core/conversation/ConversationRepository";
 import {
   getTaskId,
   parseChecklist,
+  sortTasksTopologically,
   updateChecklistItemContent,
   updateProgressSection,
-} from "@/core/templates/checklistParser";
+} from "@/core/templates/checklistParser"; // 导入拓扑排序函数
 import { logger } from "@/utils/logger";
 import { createTool } from "../base";
 import { getTaskDocsPath, parseToolsFromDescription } from "./utils";
@@ -30,6 +32,7 @@ export const ExecuteTaskList = createTool({
     "**执行逻辑：**\n" +
     "- 读取 taskList.md 获取未完成任务\n" +
     "- 自动识别并优先处理 'In Progress' 状态的任务\n" +
+    "- 使用拓扑排序确保任务按依赖顺序执行（先执行入度为 0 的任务）\n" +
     "- 将任务标记为 '(In Progress)' 并记录子任务 ID\n" +
     "- 并发调度子 Agent 执行任务（默认并发数: 2）\n" +
     "- 任务完成后移除 '(In Progress)' 标记并设为已完成\n" +
@@ -105,6 +108,12 @@ export const ExecuteTaskList = createTool({
       const completedTaskIds = new Set<string>();
       const runningTaskIds = new Set<string>();
 
+      // 获取父会话
+      const parentConv = conversationRepository.load(taskId as string);
+      if (!parentConv) {
+        throw new Error(`未找到父会话，任务ID：${taskId}`);
+      }
+
       // 初始化已完成的任务 ID
       for (const item of parseResult.items) {
         if (item.completed) {
@@ -114,7 +123,98 @@ export const ExecuteTaskList = createTool({
       }
 
       // 获取所有任务项（包括已完成的），用于依赖查找
-      const allTasks = parseResult.items;
+      // 使用拓扑排序确保任务按依赖顺序执行
+      const allTasks = sortTasksTopologically(parseResult.items);
+
+      // --- 恢复逻辑 ---
+      const subTasks = parentConv.memory.subTasks;
+      const inProgressTasksFromStatus = Object.entries(subTasks)
+        .filter(([_, status]) => status.status === "running" && status.subTaskId)
+        .map(([description, status]) => ({
+          description,
+          subTaskId: status.subTaskId as string,
+        }));
+
+      for (const { description: taskDesc, subTaskId } of inProgressTasksFromStatus) {
+        // 在 checklist 中查找对应项（匹配描述开头，因为可能带有 (In Progress) 标记）
+        const taskItem = allTasks.find(
+          (item) => item.description.startsWith(taskDesc) && !item.completed,
+        );
+        if (!taskItem) continue;
+
+        const id = getTaskId(taskItem.description);
+        if (!id) continue;
+
+        // 尝试加载会话
+        const subConversation = conversationRepository.load(subTaskId);
+        if (subConversation && subConversation.status !== "completed") {
+          logger.info(
+            `[ExecuteTaskList] 发现中断的任务: ${taskDesc} (${subTaskId}), 正在恢复监控...`,
+          );
+          runningTaskIds.add(id);
+
+          const { description, lineNumber } = taskItem;
+          const cleanDescriptionForAgent = description.replace(/\(In Progress\)$/, "").trim();
+
+          // 异步监控恢复的任务
+          (async () => {
+            let summary: string;
+            try {
+              // 获取执行器并确保在运行
+              const executor = taskOrchestrator.getExecutor(subTaskId);
+              if (["idle", "aborted"].includes(subConversation.status)) {
+                // 如果是空闲或被中断，尝试重新触发
+                executor.execute(subConversation);
+              }
+
+              // 等待完成
+              await pWaitFor(() => subConversation.status === "completed", {
+                timeout: 30 * 60 * 1000,
+              });
+
+              // 获取结果
+              const messages = subConversation.memory.messages;
+              const lastMessage = messages[messages.length - 1];
+              summary = lastMessage?.content || "任务已恢复并完成";
+              parentConv.updateSubTaskStatus(cleanDescriptionForAgent, {
+                status: "completed",
+                completedAt: new Date().toISOString(),
+              });
+            } catch (error) {
+              const errorMsg = error instanceof Error ? error.message : String(error);
+              summary = `恢复的任务执行失败: ${errorMsg}`;
+              parentConv.updateSubTaskStatus(cleanDescriptionForAgent, {
+                status: "failed",
+                error: errorMsg,
+                completedAt: new Date().toISOString(),
+              });
+            }
+
+            // 更新 Markdown 状态
+            try {
+              const currentContent = readFileSync(filePath, "utf-8");
+              const updated = updateChecklistItemContent(
+                currentContent,
+                lineNumber,
+                cleanDescriptionForAgent,
+                true,
+              );
+              const final = updateProgressSection(updated);
+              writeFileSync(filePath, final, "utf-8");
+            } catch (e) {
+              logger.error(`[ExecuteTaskList] 更新恢复任务的完成状态失败: ${e}`);
+            }
+
+            results.push({
+              target: taskDesc,
+              summary,
+            });
+
+            completedTaskIds.add(id);
+            runningTaskIds.delete(id);
+          })();
+        }
+      }
 
       while (true) {
         // 1. 查找就绪的任务
@@ -217,10 +317,11 @@ export const ExecuteTaskList = createTool({
               } catch (error) {
                 const errorMsg = error instanceof Error ? error.message : String(error);
                 summary = `任务执行失败: ${errorMsg}`;
-                new SubTaskManager(taskId as string).markTaskFailed(
-                  cleanDescriptionForAgent,
-                  errorMsg,
-                );
+                parentConv.updateSubTaskStatus(cleanDescriptionForAgent, {
+                  status: "failed",
+                  error: errorMsg,
+                  completedAt: new Date().toISOString(),
+                });
               }
 
               // 任务完成，更新状态

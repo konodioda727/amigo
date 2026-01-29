@@ -6,6 +6,7 @@ import {
   type PendingToolCall,
   type SERVER_SEND_MESSAGE_NAME,
   StorageType,
+  type SubTaskStatus,
   type TaskStatusMetadata,
   type USER_SEND_MESSAGE_NAME,
   type WebSocketMessage,
@@ -23,6 +24,7 @@ export class FilePersistedMemory {
   private _conversationStatus: ConversationStatus = "idle";
   private _toolNames: string[] = [];
   private _pendingToolCall: PendingToolCall | null = null;
+  private _subTasks: Record<string, SubTaskStatus> = {};
   private _createdAt: string;
 
   constructor(
@@ -116,6 +118,7 @@ export class FilePersistedMemory {
         this._conversationStatus = data.conversationStatus || "idle";
         this._toolNames = data.toolNames || [];
         this._pendingToolCall = data.pendingToolCall || null;
+        this._subTasks = data.subTasks || {};
         this._createdAt = data.createdAt || new Date().toISOString();
         if (data.fatherTaskId) {
           this.fatherTaskId = data.fatherTaskId;
@@ -138,6 +141,7 @@ export class FilePersistedMemory {
         conversationStatus: this._conversationStatus,
         toolNames: this._toolNames,
         pendingToolCall: this._pendingToolCall || undefined,
+        subTasks: this._subTasks,
         createdAt: this._createdAt,
         updatedAt: new Date().toISOString(),
       };
@@ -289,6 +293,44 @@ export class FilePersistedMemory {
    */
   public get toolNames(): string[] {
     return this._toolNames;
+  }
+
+  /**
+   * 获取子任务状态列表
+   */
+  public get subTasks(): Record<string, SubTaskStatus> {
+    return this._subTasks;
+  }
+
+  /**
+   * 更新子任务状态
+   */
+  public updateSubTask(description: string, status: SubTaskStatus): void {
+    this._subTasks[description] = status;
+    this.saveTaskStatus();
+  }
+
+  /**
+   * 获取子任务状态
+   */
+  public getSubTask(description: string): SubTaskStatus | undefined {
+    return this._subTasks[description];
+  }
+
+  /**
+   * 清理子任务状态
+   */
+  public clearSubTask(description: string): void {
+    delete this._subTasks[description];
+    this.saveTaskStatus();
+  }
+
+  /**
+   * 清理所有子任务状态
+   */
+  public clearAllSubTasks(): void {
+    this._subTasks = {};
+    this.saveTaskStatus();
   }
 
   /**

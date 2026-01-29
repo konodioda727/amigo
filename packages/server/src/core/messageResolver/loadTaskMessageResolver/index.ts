@@ -13,6 +13,18 @@ export class LoadTaskMessageResolver extends BaseMessageResolver<"loadTask"> {
     // 发送历史消息给前端
     await changeCurrentTaskId(taskId, this.conversation, broadcaster);
 
+    // 主动推送当前 subTasks 快照，解决重连后前端拿不到 taskStatus 的问题
+    const subTasks = this.conversation.memory.subTasks;
+    if (subTasks && Object.keys(subTasks).length > 0) {
+      broadcaster.broadcast(taskId, {
+        type: "taskStatusMapUpdated",
+        data: {
+          taskId,
+          subTasks,
+        },
+      });
+    }
+
     // 如果会话正在等待工具确认，重新发送 waiting_tool_call 消息
     if (
       this.conversation.status === "waiting_tool_confirmation" &&

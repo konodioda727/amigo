@@ -119,7 +119,6 @@ src/
     ├── serverSend/              # Server → Client messages
     │   ├── ack.ts
     │   ├── alert.ts
-    │   ├── assignTaskUpdated.ts
     │   ├── completionResult.ts
     │   ├── connected.ts
     │   ├── conversationOver.ts

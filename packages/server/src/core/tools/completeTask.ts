@@ -214,17 +214,14 @@ my-project/
         };
       }
 
-      // 从父任务的 websocket 消息中找到对应的 assignTaskUpdated 消息
-      const websocketMessages = parentConversation.memory.getWebsocketMessages();
+      // 从父任务的子任务状态中找到对应的任务索引
+      const subTasks = parentConversation.memory.subTasks;
       let taskIndex = -1;
 
-      for (const msg of websocketMessages) {
-        if (msg.type === "assignTaskUpdated") {
-          const data = msg.data as any;
-          if (data.taskId === subTaskId) {
-            taskIndex = data.index;
-            break;
-          }
+      for (const status of Object.values(subTasks)) {
+        if (status.subTaskId === subTaskId && status.index !== undefined) {
+          taskIndex = status.index;
+          break;
         }
       }
 

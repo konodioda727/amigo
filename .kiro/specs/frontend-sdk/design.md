@@ -254,7 +254,6 @@ export interface MessageRendererMap {
   interrupt: MessageRenderer<InterruptDisplayType>;
   error: MessageRenderer<ErrorDisplayType>;
   alert: MessageRenderer<AlertDisplayType>;
-  assignTaskUpdated: MessageRenderer<AssignTaskUpdatedDisplayType>;
 }
 ```
 
@@ -270,7 +269,6 @@ export const defaultRenderers: MessageRendererMap = {
   interrupt: (props) => <DefaultInterruptRenderer {...props} />,
   error: (props) => <DefaultErrorRenderer {...props} />,
   alert: (props) => <DefaultAlertRenderer {...props} />,
-  assignTaskUpdated: (props) => <DefaultAssignTaskUpdatedRenderer {...props} />,
 };
 ```
 

@@ -39,6 +39,7 @@ export function useTasks(): UseTasksReturn {
   const tasks = store((state) => state.tasks);
   const currentTaskId = store((state) => state.activeTaskId);
   const mainTaskId = store((state) => state.mainTaskId);
+  const taskStatusMaps = store((state) => (state as any).taskStatusMaps);
 
   // Task operations
   const switchTask = useCallback(
@@ -79,6 +80,7 @@ export function useTasks(): UseTasksReturn {
     tasks,
     currentTaskId,
     mainTaskId,
+    taskStatusMaps,
     switchTask,
     getTaskHierarchy,
     getTaskStatus,

@@ -69,6 +69,7 @@ export interface UseTasksReturn {
   tasks: Record<string, TaskState>;
   currentTaskId: string | null;
   mainTaskId: string | null;
+  taskStatusMaps: Record<string, Record<string, any>>;
 
   // Task operations
   switchTask: (taskId: string) => void;

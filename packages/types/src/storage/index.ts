@@ -30,6 +30,18 @@ export interface PendingToolCall {
 }
 
 /**
+ * 子任务状态
+ */
+export interface SubTaskStatus {
+  subTaskId?: string;
+  status: "idle" | "running" | "completed" | "failed";
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
+  index?: number;
+}
+
+/**
  * 任务状态元数据接口
  */
 export interface TaskStatusMetadata {
@@ -38,6 +50,7 @@ export interface TaskStatusMetadata {
   conversationStatus: ConversationStatus;
   toolNames: string[];
   pendingToolCall?: PendingToolCall;
+  subTasks?: Record<string, SubTaskStatus>;
   createdAt: string;
   updatedAt: string;
 }

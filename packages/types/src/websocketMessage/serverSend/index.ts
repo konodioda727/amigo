@@ -2,7 +2,6 @@ import { z } from "zod";
 import { AckMessageSchema } from "./ack";
 import { AlertMessageSchema } from "./alert";
 import { AskFollowupQuestionSchema } from "./askFollowupQuestion";
-import { AssignTaskUpdatedMessageSchema } from "./assignTaskUpdated";
 import { CommonMessageSchema } from "./common";
 import { CompletionResultMessageSchema } from "./completionResult";
 import { ConnectedSchema } from "./connected";
@@ -12,6 +11,7 @@ import { SessionHistoriesMessageSchema } from "./sessionHistories";
 import { TaskCreatedMessageSchema } from "./taskCreated";
 import { TaskDeletedSchema } from "./taskDeleted";
 import { TaskHistoryMessageSchema } from "./taskHistory";
+import { TaskStatusMapUpdatedMessageSchema } from "./taskStatusMapUpdated";
 import { ThinkMessageSchema } from "./think";
 import { ToolMessageSchema } from "./tool";
 import { WaitingToolCallMessageSchema } from "./waitingToolCall";
@@ -37,7 +37,6 @@ export const BASE_SERVER_MESSAGE_SCHEMAS = [
   TaskHistoryMessageSchema,
   SessionHistoriesMessageSchema,
   AskFollowupQuestionSchema,
-  AssignTaskUpdatedMessageSchema,
   InterruptMessageSchema,
   ConversationOverSchema,
   ErrorMessageSchema,
@@ -45,6 +44,7 @@ export const BASE_SERVER_MESSAGE_SCHEMAS = [
   TaskCreatedMessageSchema,
   TaskDeletedSchema,
   WaitingToolCallMessageSchema,
+  TaskStatusMapUpdatedMessageSchema,
 ] as const;
 
 export const ServerSendMessageSchema = z.discriminatedUnion("type", BASE_SERVER_MESSAGE_SCHEMAS);

@@ -1,5 +1,5 @@
-import { ChevronLeft, Menu } from "lucide-react";
-import { useConnection } from "@/sdk";
+import { Activity, ChevronLeft, Layout, Menu } from "lucide-react";
+import { useConnection, useTasks } from "@/sdk";
 import type { ConnectionStatus } from "@/sdk/types/store";
 import { useSidebar } from "./Layout";
 
@@ -12,21 +12,67 @@ const statusConfig: Record<ConnectionStatus, { label: string; color: string; pul
 
 const Header: React.FC = () => {
   const { status: connectionStatus } = useConnection();
+  const { tasks, currentTaskId, mainTaskId, switchTask, taskStatusMaps } = useTasks();
   const { isOpen, toggle } = useSidebar();
   const config = statusConfig[connectionStatus];
 
+  const currentTaskStatusMap = mainTaskId ? (taskStatusMaps as any)[mainTaskId] : undefined;
+  const currentSubTaskDescription =
+    currentTaskId && currentTaskId !== mainTaskId && currentTaskStatusMap
+      ? Object.entries(currentTaskStatusMap).find(
+          ([_, status]) => (status as any).subTaskId === currentTaskId,
+        )?.[0]
+      : undefined;
+
   return (
     <header className="h-12 border-b border-gray-100 bg-white flex items-center justify-between px-4 z-20">
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={toggle}
-          className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-50 hover:text-gray-900 transition-all"
-          aria-label={isOpen ? "收起侧边栏" : "展开侧边栏"}
-        >
-          {isOpen ? <ChevronLeft className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
-        </button>
-        <div className="text-sm font-semibold text-gray-800 tracking-tight">Amigo</div>
+      <div className="flex items-center gap-4 flex-1">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={toggle}
+            className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-50 hover:text-gray-900 transition-all"
+            aria-label={isOpen ? "收起侧边栏" : "展开侧边栏"}
+          >
+            {isOpen ? <ChevronLeft className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+          </button>
+          <div className="text-sm font-semibold text-gray-800 tracking-tight">Amigo</div>
+        </div>
+
+        {/* 任务 Tabs */}
+        {mainTaskId && (
+          <nav className="flex items-center gap-1 ml-4 overflow-x-auto no-scrollbar py-1">
+            <button
+              onClick={() => switchTask(mainTaskId)}
+              className={`
+                flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all shrink-0
+                ${
+                  currentTaskId === mainTaskId
+                    ? "bg-blue-50 text-blue-600 shadow-sm border border-blue-100"
+                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                }
+              `}
+            >
+              <Layout className="w-3 h-3" />
+              <span>主任务</span>
+            </button>
+
+            {currentSubTaskDescription && (
+              <>
+                <div className="w-px h-3 bg-gray-200 mx-1" />
+                <button
+                  className={`
+                    flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all shrink-0
+                    bg-blue-50 text-blue-600 shadow-sm border border-blue-100
+                  `}
+                >
+                  <Activity className="w-3 h-3" />
+                  <span className="max-w-[150px] truncate">{currentSubTaskDescription}</span>
+                </button>
+              </>
+            )}
+          </nav>
+        )}
       </div>
       <div className="flex items-center gap-1.5 px-2 py-0.5">
         <span

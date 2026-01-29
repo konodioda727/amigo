@@ -444,7 +444,6 @@ You can customize renderers for these message types:
 - `interrupt` - Interrupt notifications
 - `error` - Error messages
 - `alert` - Alert notifications
-- `assignTaskUpdated` - Task assignment updates
 
 ### Using Default Renderers
 

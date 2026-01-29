@@ -76,6 +76,8 @@ export type Unsubscribe = () => void;
  * WebSocket store interface
  */
 export interface WebSocketStore {
+  taskStatusMaps: Record<string, Record<string, any>>;
+  setTaskStatusMap: (taskId: string, subTasks: Record<string, any>) => void;
   // Connection state
   socket: WebSocket | null;
   connectionStatus: ConnectionStatus;
@@ -106,6 +108,7 @@ export interface WebSocketStore {
   subscribe: <T extends SERVER_SEND_MESSAGE_NAME>(type: T, listener: Listener<T>) => Unsubscribe;
 
   // Task methods
+  taskStatusMapUpdated: (taskId: string, subTasks: Record<string, any>) => void;
   registerTask: (taskId: string) => void;
   unregisterTask: (taskId: string) => void;
   setActiveTask: (taskId: string | null) => void;

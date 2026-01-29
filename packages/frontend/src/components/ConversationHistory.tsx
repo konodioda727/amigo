@@ -1,6 +1,7 @@
-import { MessageCircle } from "lucide-react";
+import { Loader2, MessageCircle, Trash2 } from "lucide-react";
+import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useTasks, useWebSocketContext } from "@/sdk";
+import { useSendMessage, useTasks, useWebSocketContext } from "@/sdk";
 import { useSidebar } from "./Layout/index";
 
 const ConversationHistory = () => {
@@ -10,6 +11,8 @@ const ConversationHistory = () => {
   const { store } = useWebSocketContext();
   const taskHistories = store((state) => state.taskHistories);
   const { mainTaskId } = useTasks();
+  const { sendDeleteTask } = useSendMessage();
+  const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
 
   const currentTaskId = activeTaskId ?? mainTaskId;
 
@@ -21,6 +24,20 @@ const ConversationHistory = () => {
     }
   };
 
+  const handleDelete = (taskId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    if (window.confirm("确定要删除这个对话吗？")) {
+      setDeletingTaskId(taskId);
+
+      if (currentTaskId === taskId) {
+        navigate("/");
+      }
+
+      sendDeleteTask(taskId);
+    }
+  };
+
   if (!taskHistories || taskHistories.length === 0) {
     return null;
   }
@@ -29,28 +46,48 @@ const ConversationHistory = () => {
     <div className="space-y-0.5">
       {taskHistories.map((history) => {
         const isActive = history.taskId === currentTaskId;
+        const isDeleting = deletingTaskId === history.taskId;
         return (
-          <button
+          <div
             key={history.taskId}
-            type="button"
-            onClick={() => handleSelectConversation(history.taskId)}
-            className={`w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl transition-all text-left group ${
+            className={`relative group flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl transition-all ${
               isActive
                 ? "bg-white shadow-sm text-gray-900"
                 : "text-gray-600 hover:bg-gray-200/30 hover:text-gray-900"
-            }`}
+            } ${isDeleting ? "opacity-50" : ""}`}
           >
-            <div
-              className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-colors ${
-                isActive ? "bg-blue-50" : "bg-gray-100 group-hover:bg-gray-200"
-              }`}
+            <button
+              type="button"
+              onClick={() => handleSelectConversation(history.taskId)}
+              className="flex items-center gap-2.5 flex-1 text-left min-w-0"
+              disabled={isDeleting}
             >
-              <MessageCircle size={14} className={isActive ? "text-blue-500" : "text-gray-400"} />
-            </div>
-            <span className="text-[13px] font-medium truncate flex-1">
-              {history.title || "新对话"}
-            </span>
-          </button>
+              <div
+                className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-colors ${
+                  isActive ? "bg-blue-50" : "bg-gray-100 group-hover:bg-gray-200"
+                }`}
+              >
+                <MessageCircle size={14} className={isActive ? "text-blue-500" : "text-gray-400"} />
+              </div>
+              <span className="text-[13px] font-medium truncate flex-1 pr-2">
+                {history.title || "新对话"}
+              </span>
+            </button>
+
+            {/* Delete button - shows on hover */}
+            <button
+              type="button"
+              onClick={(e) => handleDelete(history.taskId, e)}
+              className={`p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all shrink-0 ${
+                isDeleting ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+              }`}
+              aria-label={`删除对话: ${history.title}`}
+              title="删除对话"
+              disabled={isDeleting}
+            >
+              {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+            </button>
+          </div>
         );
       })}
     </div>

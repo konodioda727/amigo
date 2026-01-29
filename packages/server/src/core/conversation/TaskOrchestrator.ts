@@ -5,7 +5,6 @@ import { getLlm } from "../model";
 import type { Conversation } from "./Conversation";
 import { ConversationExecutor } from "./ConversationExecutor";
 import { conversationRepository } from "./ConversationRepository";
-import { SubTaskManager } from "./SubTaskManager";
 import { broadcaster } from "./WebSocketBroadcaster";
 
 export interface SubTaskParams {
@@ -64,28 +63,19 @@ export class TaskOrchestrator {
       llm: getLlm(),
     });
 
-    // 如果提供了 taskDescription，记录到 SubTaskManager
+    // 如果提供了 taskDescription，记录到 subTasks
     if (taskDescription) {
-      const subTaskManager = new SubTaskManager(parentId);
-      subTaskManager.markTaskInProgress(taskDescription, subConversation.id);
+      parentConversation.updateSubTaskStatus(taskDescription, {
+        subTaskId: subConversation.id,
+        status: "running",
+        startedAt: new Date().toISOString(),
+        index,
+      });
     }
 
     // 保存工具名称用于恢复
     const toolNames = tools.map((t) => t.name);
     subConversation.memory.setToolNames(toolNames);
-
-    // 发送子任务创建消息
-    const createdMessage = {
-      type: "assignTaskUpdated" as SERVER_SEND_MESSAGE_NAME,
-      data: {
-        index,
-        taskId: subConversation.id,
-        parentTaskId: parentId,
-        taskStatus: "running" as const,
-      },
-    };
-    parentConversation.memory.addWebsocketMessage(createdMessage);
-    broadcaster.broadcast(parentId, createdMessage);
 
     // 设置用户输入并启动执行
     this.setUserInput(subConversation, target);
@@ -102,23 +92,12 @@ export class TaskOrchestrator {
 
     // 如果提供了 taskDescription，更新状态为完成
     if (taskDescription) {
-      const { SubTaskManager } = await import("./SubTaskManager");
-      const subTaskManager = new SubTaskManager(parentId);
-      subTaskManager.markTaskCompleted(taskDescription);
-    }
-
-    // 发送子任务完成消息
-    const completedMessage = {
-      type: "assignTaskUpdated" as SERVER_SEND_MESSAGE_NAME,
-      data: {
+      parentConversation.updateSubTaskStatus(taskDescription, {
+        status: "completed",
+        completedAt: new Date().toISOString(),
         index,
-        taskId: subConversation.id,
-        parentTaskId: parentId,
-        taskStatus: "completed" as const,
-      },
-    };
-    parentConversation.memory.addWebsocketMessage(completedMessage);
-    broadcaster.broadcast(parentId, completedMessage);
+      });
+    }
 
     // 清理执行器
     this.removeExecutor(subConversation.id);

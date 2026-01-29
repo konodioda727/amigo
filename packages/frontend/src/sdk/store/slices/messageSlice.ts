@@ -20,7 +20,7 @@ const checkAndExtractDoc = (
 
   if (message.type === "tool") {
     try {
-      const parsed = JSON.parse(message.data.message);
+      const parsed = JSON.parse((message.data as any).message || "{}");
       if (parsed.toolName === "createTaskDocs") {
         const params = parsed.params;
         if (params && params.content) {
@@ -64,7 +64,7 @@ const findLatestDocs = (messages: WebSocketMessage<any>[]): DocsResult => {
       }
     } else if (msg.type === "tool") {
       try {
-        const parsed = JSON.parse(msg.data.message);
+        const parsed = JSON.parse((msg.data as any).message || "{}");
         if (parsed.toolName === "createTaskDocs") {
           const params = parsed.params;
           if (params && params.content) {
@@ -205,10 +205,7 @@ export const createMessageSlice: StateCreator<WebSocketStore, [], [], MessageSli
     const state = get();
     const messageData = message.data as any;
 
-    let taskId = messageData.taskId || state.mainTaskId;
-    if (message.type === "assignTaskUpdated" && messageData.parentTaskId) {
-      taskId = messageData.parentTaskId;
-    }
+    const taskId = messageData.taskId || state.mainTaskId;
 
     const handler = getMessageHandler(message.type as SERVER_SEND_MESSAGE_NAME);
     const handled = handler(message, get());

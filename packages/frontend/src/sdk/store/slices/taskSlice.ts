@@ -27,6 +27,7 @@ export interface TaskSlice {
   activeTaskId: string | null;
   mainTaskId: string;
   taskHistories: Array<{ taskId: string; title: string; updatedAt: string }>;
+  taskStatusMaps: Record<string, Record<string, any>>;
 
   registerTask: (taskId: string) => void;
   unregisterTask: (taskId: string) => void;
@@ -38,6 +39,8 @@ export interface TaskSlice {
   ) => void;
   clearMessages: (taskId: string) => void;
   setMainTaskId: (taskId: string) => void;
+  setTaskStatusMap: (taskId: string, subTasks: Record<string, any>) => void;
+  taskStatusMapUpdated: (taskId: string, subTasks: Record<string, any>) => void;
   createNewConversation: () => void;
   handleSessionHistories: (
     histories: Array<{ taskId: string; title: string; updatedAt: string }>,
@@ -49,6 +52,11 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
   activeTaskId: null,
   mainTaskId: "",
   taskHistories: [],
+  taskStatusMaps: {},
+
+  taskStatusMapUpdated: (taskId: string, subTasks: Record<string, any>) => {
+    get().setTaskStatusMap(taskId, subTasks);
+  },
 
   registerTask: (taskId: string) => {
     const { tasks } = get();
@@ -63,7 +71,7 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
             lastUpdateTime: Date.now(),
           },
         },
-      });
+      } as any);
     }
   },
 
@@ -71,11 +79,11 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
     const { tasks } = get();
     const newTasks = { ...tasks };
     delete newTasks[taskId];
-    set({ tasks: newTasks });
+    set({ tasks: newTasks } as any);
   },
 
   setActiveTask: (taskId) => {
-    set({ activeTaskId: taskId });
+    set({ activeTaskId: taskId } as any);
   },
 
   setTaskStatus: (taskId, status) => {
@@ -91,7 +99,7 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
           status,
         },
       },
-    });
+    } as any);
   },
 
   setPendingToolCall: (taskId, toolCall) => {
@@ -107,7 +115,7 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
           pendingToolCall: toolCall,
         },
       },
-    });
+    } as any);
   },
 
   clearMessages: (taskId) => {
@@ -124,7 +132,7 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
           displayMessages: [],
         },
       },
-    });
+    } as any);
   },
 
   setMainTaskId: (taskId) => {
@@ -132,7 +140,7 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
 
     if (taskId === currentTaskId) return;
 
-    set({ mainTaskId: taskId });
+    set({ mainTaskId: taskId } as any);
     get().registerTask(taskId);
 
     // Close doc sidebar immediately when switching tasks
@@ -149,6 +157,16 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
     }
   },
 
+  setTaskStatusMap: (taskId: string, subTasks: Record<string, any>) => {
+    const { taskStatusMaps } = get();
+    set({
+      taskStatusMaps: {
+        ...taskStatusMaps,
+        [taskId]: subTasks,
+      },
+    } as any);
+  },
+
   createNewConversation: () => {
     // Clear old messages if there was a previous task
     const { mainTaskId } = get();
@@ -160,10 +178,10 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
     get().closeDoc();
 
     // Reset to empty state - server will create new task on first message
-    set({ mainTaskId: "", activeTaskId: null });
+    set({ mainTaskId: "", activeTaskId: null } as any);
   },
 
   handleSessionHistories: (histories) => {
-    set({ taskHistories: histories });
+    set({ taskHistories: histories } as any);
   },
 });

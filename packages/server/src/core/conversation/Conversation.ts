@@ -1,10 +1,17 @@
-import type { ConversationStatus, PendingToolCall, ToolInterface } from "@amigo-llm/types";
+import type {
+  ConversationStatus,
+  PendingToolCall,
+  SERVER_SEND_MESSAGE_NAME,
+  SubTaskStatus,
+  ToolInterface,
+} from "@amigo-llm/types";
 import type { ChatOpenAI } from "@langchain/openai";
 import { v4 as uuidV4 } from "uuid";
 import { FilePersistedMemory } from "../memory";
 import { getLlm } from "../model";
 import { getSystemPrompt } from "../systemPrompt";
 import { MAIN_BASIC_TOOLS, SUB_BASIC_TOOLS, ToolService } from "../tools";
+import { broadcaster } from "./WebSocketBroadcaster";
 
 export type ConversationType = "main" | "sub";
 
@@ -118,6 +125,52 @@ export class Conversation {
     }
 
     return conversation;
+  }
+
+  /**
+   * 更新子任务状态并广播
+   */
+  public updateSubTaskStatus(description: string, status: SubTaskStatus): void {
+    this.memory.updateSubTask(description, status);
+
+    // 广播状态更新
+    broadcaster.broadcast(this.id, {
+      type: "taskStatusMapUpdated" as SERVER_SEND_MESSAGE_NAME,
+      data: {
+        taskId: this.id,
+        subTasks: this.memory.subTasks,
+      },
+    } as any);
+  }
+
+  /**
+   * 清理子任务状态
+   */
+  public clearSubTask(description: string): void {
+    this.memory.clearSubTask(description);
+
+    broadcaster.broadcast(this.id, {
+      type: "taskStatusMapUpdated" as SERVER_SEND_MESSAGE_NAME,
+      data: {
+        taskId: this.id,
+        subTasks: this.memory.subTasks,
+      },
+    } as any);
+  }
+
+  /**
+   * 清理所有子任务状态
+   */
+  public clearAllSubTasks(): void {
+    this.memory.clearAllSubTasks();
+
+    broadcaster.broadcast(this.id, {
+      type: "taskStatusMapUpdated" as SERVER_SEND_MESSAGE_NAME,
+      data: {
+        taskId: this.id,
+        subTasks: this.memory.subTasks,
+      },
+    } as any);
   }
 
   /**

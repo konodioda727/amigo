@@ -1,12 +1,26 @@
-import { CheckSquare, Edit2, Eye, FileText, LayoutTemplate, X } from "lucide-react";
+import {
+  CheckCircle2,
+  CheckSquare,
+  ChevronRight,
+  Circle,
+  Edit2,
+  Eye,
+  FileText,
+  LayoutTemplate,
+  PlayCircle,
+  X,
+  XCircle,
+} from "lucide-react";
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Streamdown } from "streamdown";
 import { useWebSocketContext } from "../sdk/context/WebSocketContext";
+import { useTasks } from "../sdk/hooks";
 import type { DocType } from "../sdk/store/slices/docSlice";
 
 const DocSidebar: React.FC = () => {
   const { store } = useWebSocketContext();
+  const { mainTaskId, currentTaskId, switchTask, taskStatusMaps } = useTasks();
   const docState = store((state) => state.docState);
   const closeDoc = store((state) => state.closeDoc);
   const setActiveDoc = store((state) => state.setActiveDoc);
@@ -57,9 +71,9 @@ const DocSidebar: React.FC = () => {
   };
 
   const tabs: { type: DocType; label: string; icon: React.ReactNode }[] = [
-    { type: "requirements", label: "Requirements", icon: <FileText className="w-4 h-4" /> },
-    { type: "design", label: "Design", icon: <LayoutTemplate className="w-4 h-4" /> },
-    { type: "taskList", label: "Tasks", icon: <CheckSquare className="w-4 h-4" /> },
+    { type: "requirements", label: "需求", icon: <FileText className="w-4 h-4" /> },
+    { type: "design", label: "设计", icon: <LayoutTemplate className="w-4 h-4" /> },
+    { type: "taskList", label: "任务", icon: <CheckSquare className="w-4 h-4" /> },
   ];
 
   return (
@@ -137,8 +151,17 @@ const DocSidebar: React.FC = () => {
               className="w-full h-full p-4 resize-none focus:outline-none text-sm font-mono text-neutral-800 leading-relaxed"
               value={editContent}
               onChange={(e) => setEditContent(e.target.value)}
-              placeholder={`Enter ${tabs.find((t) => t.type === activeDoc)?.label.toLowerCase()} here...`}
+              placeholder={`在这里输入 ${tabs.find((t) => t.type === activeDoc)?.label.toLowerCase()}...`}
             />
+          ) : activeDoc === "taskList" ? (
+            <div className="p-4">
+              <TaskListContent
+                content={currentDoc.content || ""}
+                statusMap={mainTaskId ? taskStatusMaps[mainTaskId] : {}}
+                currentTaskId={currentTaskId}
+                onTaskClick={(taskId) => taskId && switchTask(taskId)}
+              />
+            </div>
           ) : (
             <div className="p-4 prose prose-sm max-w-none prose-neutral">
               {currentDoc.content ? (
@@ -146,12 +169,12 @@ const DocSidebar: React.FC = () => {
               ) : (
                 <div className="flex flex-col items-center justify-center h-64 text-neutral-400 space-y-2">
                   <FileText className="w-8 h-8 opacity-20" />
-                  <span className="text-sm">No content yet</span>
+                  <span className="text-sm">暂无内容</span>
                   <button
                     onClick={() => setIsEditing(true)}
                     className="text-blue-500 hover:underline text-xs"
                   >
-                    Start writing
+                    开始编写
                   </button>
                 </div>
               )}
@@ -159,6 +182,97 @@ const DocSidebar: React.FC = () => {
           )}
         </div>
       </div>
+    </div>
+  );
+};
+
+const TaskListContent: React.FC<{
+  content: string;
+  statusMap: Record<string, any>;
+  currentTaskId: string | null;
+  onTaskClick: (taskId: string | undefined) => void;
+}> = ({ content, statusMap, currentTaskId, onTaskClick }) => {
+  const items = useMemo(() => {
+    if (!content) return [];
+    // 简单的 Markdown Checklist 解析
+    const lines = content.split("\n");
+    const taskLines = lines.filter((line) => line.trim().startsWith("- ["));
+    return taskLines.map((line) => {
+      const isCompleted = line.includes("[x]") || line.includes("[X]");
+      const description = line
+        .replace(/- \[[x ]\]/i, "")
+        .replace(/\(In Progress\)$/, "")
+        .trim();
+      return { description, isCompleted };
+    });
+  }, [content]);
+
+  const getStatusIcon = (description: string, isCompleted: boolean) => {
+    const status = statusMap?.[description]?.status;
+    if (status === "running") return <PlayCircle className="w-4 h-4 text-blue-500 animate-pulse" />;
+    if (status === "completed" || isCompleted)
+      return <CheckCircle2 className="w-4 h-4 text-green-500" />;
+    if (status === "failed") return <XCircle className="w-4 h-4 text-red-500" />;
+    return <Circle className="w-4 h-4 text-gray-300" />;
+  };
+
+  const getStatusText = (description: string, isCompleted: boolean) => {
+    const status = statusMap?.[description]?.status;
+    if (status === "running") return "进行中";
+    if (status === "completed" || isCompleted) return "已完成";
+    if (status === "failed") return "已失败";
+    return "空闲";
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 px-1">
+        任务列表
+      </div>
+      {items.length === 0 ? (
+        <div className="text-center py-8 text-gray-400 text-sm">暂无任务项</div>
+      ) : (
+        <div className="space-y-1">
+          {items.map((item) => {
+            const subTaskId = statusMap?.[item.description]?.subTaskId;
+            const isActive = subTaskId === currentTaskId;
+            return (
+              <button
+                key={item.description}
+                onClick={() => onTaskClick(subTaskId)}
+                disabled={!subTaskId}
+                className={`
+                  w-full flex items-center gap-3 p-2.5 rounded-xl text-left transition-all group
+                  ${
+                    isActive
+                      ? "bg-blue-50 border border-blue-100"
+                      : subTaskId
+                        ? "hover:bg-gray-50 border border-transparent"
+                        : "opacity-80 cursor-default border border-transparent"
+                  }
+                `}
+              >
+                <div className="shrink-0">{getStatusIcon(item.description, item.isCompleted)}</div>
+                <div className="flex-1 min-w-0">
+                  <div
+                    className={`text-sm font-medium truncate ${isActive ? "text-blue-700" : "text-gray-700"}`}
+                  >
+                    {item.description}
+                  </div>
+                  <div className="text-[10px] text-gray-400 font-medium">
+                    {getStatusText(item.description, item.isCompleted)}
+                  </div>
+                </div>
+                {subTaskId && (
+                  <ChevronRight
+                    className={`w-3.5 h-3.5 transition-transform ${isActive ? "text-blue-400 translate-x-0.5" : "text-gray-300 group-hover:translate-x-0.5"}`}
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
