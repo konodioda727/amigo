@@ -3,12 +3,13 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import Mention from "@tiptap/extension-mention";
-import { ArrowUp, Play, Square } from "lucide-react";
+import { ArrowUp, Play, Square, Mic, Square as StopSquare, Loader2 } from "lucide-react";
 import { useWebSocketStore } from "@/store/websocket";
 import { toast } from "@/utils/toast";
 import { useActiveSessions } from "./hooks/useActiveSessions";
 import { useMentionSuggestion } from "./hooks/useMentionSuggestion";
 import { useButtonState } from "./hooks/useButtonState";
+import { useVoiceRecorder } from "./hooks/useVoiceRecorder";
 import { editorStyles } from "./styles";
 import { v4 as uuidv4 } from "uuid";
 
@@ -76,6 +77,13 @@ const MessageInput = forwardRef<MessageInputRef>((_, ref) => {
   });
 
   const buttonState = useButtonState(editor);
+  const {
+    status: voiceStatus,
+    formattedDuration,
+    startRecording,
+    stopRecording,
+    cancelRecording,
+  } = useVoiceRecorder();
 
   // 插入 mention 到编辑器
   const insertMention = useCallback((sessionId: string, sessionTitle: string) => {
@@ -247,18 +255,92 @@ const MessageInput = forwardRef<MessageInputRef>((_, ref) => {
     }
   };
 
+  // 麦克风按钮点击处理
+  const handleMicClick = async () => {
+    if (voiceStatus === "idle") {
+      await startRecording();
+    } else if (voiceStatus === "recording") {
+      try {
+        const text = await stopRecording();
+        if (text && editor) {
+          // 将转录文字追加到编辑器现有内容后面
+          const currentText = editor.getText().trim();
+          if (currentText) {
+            editor.commands.insertContent(text);
+          } else {
+            editor.commands.setContent(`<p>${text}</p>`);
+          }
+          editor.commands.focus("end");
+        }
+      } catch {
+        // 错误已在 hook 中处理
+      }
+    }
+    // transcribing 状态下不响应点击
+  };
+
   return (
     <>
       <style>{editorStyles}</style>
       <div className="message-input-container">
         <div className="tiptap-editor-wrapper">
+          {/* 录音中提示条 */}
+          {voiceStatus === "recording" && (
+            <div className="voice-recording-bar">
+              <span className="voice-recording-dot" />
+              <span className="voice-recording-text">正在录音...</span>
+              <span className="voice-recording-duration">{formattedDuration}</span>
+              <button
+                type="button"
+                className="voice-cancel-btn"
+                onClick={cancelRecording}
+              >
+                取消
+              </button>
+            </div>
+          )}
+          {voiceStatus === "transcribing" && (
+            <div className="voice-transcribing-bar">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span className="voice-transcribing-text">正在转录...</span>
+            </div>
+          )}
           <EditorContent editor={editor} />
           <div className="send-button-wrapper">
+            {/* 麦克风按钮 */}
+            <button
+              onClick={handleMicClick}
+              className={`btn btn-circle w-10 h-10 transition-all duration-200 border-0 mr-1 ${
+                voiceStatus === "recording"
+                  ? "voice-mic-recording bg-red-500 hover:bg-red-600 text-white"
+                  : voiceStatus === "transcribing"
+                  ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+              }`}
+              type="button"
+              disabled={voiceStatus === "transcribing"}
+              title={
+                voiceStatus === "idle"
+                  ? "点击开始录音"
+                  : voiceStatus === "recording"
+                  ? "点击停止录音"
+                  : "正在转录..."
+              }
+            >
+              {voiceStatus === "recording" ? (
+                <StopSquare className="w-4 h-4" fill="currentColor" />
+              ) : voiceStatus === "transcribing" ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Mic className="w-5 h-5" />
+              )}
+            </button>
+            {/* 发送/停止/恢复按钮 */}
             <button
               onClick={handleClick}
               className={`btn btn-circle w-10 h-10 transition-all duration-200 border-0 ${
-                buttonState === "stop" 
-                  ? "bg-red-500 hover:bg-red-600 text-white" 
+                buttonState === "stop"
+                  ? "bg-red-500 hover:bg-red-600 text-white"
                   : buttonState === "resume"
                   ? "bg-green-500 hover:bg-green-600 text-white"
                   : buttonState === "send" && !editor?.getText().trim()

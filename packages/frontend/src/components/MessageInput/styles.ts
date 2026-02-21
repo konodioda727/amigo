@@ -22,8 +22,8 @@ export const editorStyles = `
     max-height: 240px;
     overflow-y: auto;
     
-    /* 内边距 - 右侧留出按钮空间 */
-    padding: 16px 60px 16px 20px;
+    /* 内边距 - 右侧留出按钮空间（麦克风+发送） */
+    padding: 16px 110px 16px 20px;
     
     /* 圆角 16px (Requirements 3.1) */
     border-radius: 16px;
@@ -78,6 +78,91 @@ export const editorStyles = `
     right: 10px;
     bottom: 10px;
     z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  /* 录音中提示条 */
+  .voice-recording-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: #fef2f2;
+    border-radius: 12px 12px 0 0;
+    border: 1px solid #fecaca;
+    border-bottom: none;
+    font-size: 13px;
+    color: #dc2626;
+  }
+
+  .voice-recording-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #dc2626;
+    animation: voice-pulse 1s ease-in-out infinite;
+  }
+
+  @keyframes voice-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+
+  .voice-recording-text {
+    font-weight: 500;
+  }
+
+  .voice-recording-duration {
+    font-variant-numeric: tabular-nums;
+    color: #991b1b;
+    font-weight: 600;
+  }
+
+  .voice-cancel-btn {
+    margin-left: auto;
+    padding: 2px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    color: #6b7280;
+    background: transparent;
+    border: 1px solid #d1d5db;
+    cursor: pointer;
+    transition: all 150ms ease;
+  }
+
+  .voice-cancel-btn:hover {
+    background: #f3f4f6;
+    color: #374151;
+  }
+
+  /* 转录中提示条 */
+  .voice-transcribing-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: #eff6ff;
+    border-radius: 12px 12px 0 0;
+    border: 1px solid #bfdbfe;
+    border-bottom: none;
+    font-size: 13px;
+    color: #2563eb;
+  }
+
+  .voice-transcribing-text {
+    font-weight: 500;
+  }
+
+  /* 麦克风按钮录音中脉冲动画 */
+  .voice-mic-recording {
+    animation: mic-pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes mic-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+    50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
   }
   
   .tiptap-editor-wrapper .ProseMirror p.is-editor-empty:first-child::before {

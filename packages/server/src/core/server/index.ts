@@ -2,6 +2,7 @@ import type { USER_SEND_MESSAGE_NAME, WebSocketMessage } from "@amigo/types";
 import Bun, { type ServerWebSocket } from "bun";
 import { ConversationManager } from "@/core/conversationManager";
 import { getResolver } from "@/core/messageResolver";
+import { transcribeAudio } from "@/core/transcribe";
 import { setGlobalState } from "@/globalState";
 import { getSessionHistories } from "@/utils/getSessions";
 import { logger } from "@/utils/logger";
@@ -19,11 +20,66 @@ class AmigoServer {
 
   init() {
     Bun.serve({
-      fetch: (req: any, server: any) => {
+      fetch: async (req: any, server: any) => {
+        const url = new URL(req.url);
+
+        // CORS 预检请求
+        if (req.method === "OPTIONS") {
+          return new Response(null, {
+            headers: {
+              "Access-Control-Allow-Origin": "*",
+              "Access-Control-Allow-Methods": "POST, OPTIONS",
+              "Access-Control-Allow-Headers": "Content-Type",
+            },
+          });
+        }
+
+        // 语音转录 API
+        if (url.pathname === "/api/transcribe" && req.method === "POST") {
+          try {
+            const body = (await req.json()) as { audio: string; format: string };
+            const { audio, format } = body;
+
+            if (!audio || !format) {
+              return new Response(
+                JSON.stringify({ error: "Missing required fields: audio, format" }),
+                {
+                  status: 400,
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                  },
+                },
+              );
+            }
+
+            const text = await transcribeAudio(audio, format);
+            return new Response(JSON.stringify({ text }), {
+              headers: {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+              },
+            });
+          } catch (error: any) {
+            logger.error("[Server] 转录请求处理失败:", error);
+            return new Response(
+              JSON.stringify({ error: error.message || "Transcription failed" }),
+              {
+                status: 500,
+                headers: {
+                  "Content-Type": "application/json",
+                  "Access-Control-Allow-Origin": "*",
+                },
+              },
+            );
+          }
+        }
+
+        // WebSocket 升级
         if (server.upgrade(req)) {
           return;
         }
-        return new Response("Upgrade failed", { status: 500 });
+        return new Response("Not found", { status: 404 });
       },
       port: this.port,
       websocket: {
