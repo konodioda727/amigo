@@ -1,12 +1,12 @@
 /* Import Design Tokens */
-@import './styles/tokens.css';
+@import "./styles/tokens.css";
 
 /* Import Tailwind CSS */
-@import 'tailwindcss';
+@import "tailwindcss";
 
 /* Configure DaisyUI Plugin */
 @plugin "daisyui" {
-    themes: amigo --default;
+  themes: amigo --default;
 }
 
 /* Import Streamdown Styles */
@@ -20,8 +20,8 @@
 body {
   margin: 0;
   padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 
-               'Helvetica Neue', Arial, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif;
   font-size: var(--font-size-base);
   color: var(--color-neutral-900);
   background-color: var(--color-neutral-50);

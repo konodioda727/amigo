@@ -1,7 +1,7 @@
 // 文件名: tools/completeTask.ts
 
-import { createTool } from "./base"; // 假设 createTool 的路径
 import { logger } from "@/utils/logger";
+import { createTool } from "./base";
 
 /**
  * 任务完成工具
@@ -10,7 +10,8 @@ import { logger } from "@/utils/logger";
  */
 export const CompletionResult = createTool({
   name: "completionResult",
-  description: "🎯 【必须使用】在任务完成后，使用此工具标记任务结束并返回最终结论。这是结束任务的唯一正确方式。**内容必须使用 Markdown 格式输出。**",
+  description:
+    "🎯 【必须使用】在任务完成后，使用此工具标记任务结束并返回最终结论。这是结束任务的唯一正确方式。**内容必须使用 Markdown 格式输出。**",
   whenToUse:
     "**关键规则：任何任务完成后，你必须使用此工具来结束任务。**\n\n" +
     "**🚨 重要前置条件：**\n" +
@@ -102,7 +103,7 @@ config.json 的内容如下：
 为什么正确：查询任务完成后，立即使用 completionResult 返回结果，没有多余的确认步骤。`,
   ],
   params: [],
-  async invoke({params: final_answer}) {
+  async invoke({ params: final_answer }) {
     logger.info("任务完成，最终结论：", final_answer);
 
     return {

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { StorageType } from "@amigo/types";
+import { StorageType } from "@amigo-llm/types";
 import { getGlobalState } from "@/globalState";
 import { logger } from "./logger";
 
@@ -24,18 +24,20 @@ export const getSessionHistories = async () => {
         const originalJsonPath = path.join(
           globalStoragePath,
           taskId,
+          "messages",
           `${StorageType.ORIGINAL}.json`,
         );
         const frontendJsonPath = path.join(
           globalStoragePath,
           taskId,
+          "messages",
           `${StorageType.FRONT_END}.json`,
         );
         try {
           // 读取 original.json 检查是否是 subTask
           const originalContent = await fs.promises.readFile(originalJsonPath, "utf-8");
           const originalData = JSON.parse(originalContent);
-          
+
           // 跳过 subTask（有 fatherTaskId 的会话）
           if (originalData.fatherTaskId) {
             continue;
@@ -51,7 +53,8 @@ export const getSessionHistories = async () => {
             sessionHistories.push({
               taskId,
               title: firstUserMessage.data.message,
-              updatedAt: frontendData.updatedAt || originalData.updatedAt || new Date().toISOString(),
+              updatedAt:
+                frontendData.updatedAt || originalData.updatedAt || new Date().toISOString(),
             });
           }
         } catch (error) {
@@ -62,9 +65,11 @@ export const getSessionHistories = async () => {
   } catch (error) {
     logger.error("Error reading globalStoragePath:", error);
   }
-  
+
   // 按时间倒序排列（最新的在前面）
-  sessionHistories.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-  
+  sessionHistories.sort(
+    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+  );
+
   return sessionHistories;
 };

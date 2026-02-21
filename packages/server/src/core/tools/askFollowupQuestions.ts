@@ -1,4 +1,4 @@
-import { createTool } from './base';
+import { createTool } from "./base";
 
 export const AskFollowupQuestions = createTool({
   name: "askFollowupQuestion",
@@ -83,26 +83,28 @@ export const AskFollowupQuestions = createTool({
     {
       name: "question",
       optional: false,
-      description: "要向用户提出的问题。必须清晰、具体，避免开放式问题。\n✅ 好的问题：「您希望使用哪种数据库？」\n❌ 不好的问题：「您还需要什么？」",
+      description:
+        "要向用户提出的问题。必须清晰、具体，避免开放式问题。\n✅ 好的问题：「您希望使用哪种数据库？」\n❌ 不好的问题：「您还需要什么？」",
     },
     {
       name: "suggestOptions",
       optional: false,
-      description: "为用户提供的建议选项列表。必须提供 2-4 个具体、可操作的选项。选项应该是互斥的（不重叠）、完整的（覆盖主要情况），每个选项都应该是明确的行动方案。\n✅ 好的选项：[\"PostgreSQL\", \"MySQL\", \"MongoDB\", \"SQLite\"]\n❌ 不好的选项：[\"是\", \"否\", \"可能\"]",
-      type: 'array',
+      description:
+        '为用户提供的建议选项列表。必须提供 2-4 个具体、可操作的选项。选项应该是互斥的（不重叠）、完整的（覆盖主要情况），每个选项都应该是明确的行动方案。\n✅ 好的选项：["PostgreSQL", "MySQL", "MongoDB", "SQLite"]\n❌ 不好的选项：["是", "否", "可能"]',
+      type: "array",
       params: [
         {
           name: "option",
           optional: false,
           description: "一个具体的建议选项",
-        }
-      ]
+        },
+      ],
     },
   ],
-  async invoke({params}) {
+  async invoke({ params }) {
     return {
       message: `已向用户提出后续问题: ${params.question}`,
-      toolResult: ''
+      toolResult: "",
     };
   },
 });

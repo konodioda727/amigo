@@ -1,20 +1,20 @@
 // Global type declarations for CSS modules and other non-TypeScript files
-declare module '*.css' {
+declare module "*.css" {
   const content: Record<string, string>;
   export default content;
 }
 
-declare module '*.scss' {
+declare module "*.scss" {
   const content: Record<string, string>;
   export default content;
 }
 
-declare module '*.sass' {
+declare module "*.sass" {
   const content: Record<string, string>;
   export default content;
 }
 
-declare module '*.less' {
+declare module "*.less" {
   const content: Record<string, string>;
   export default content;
 }

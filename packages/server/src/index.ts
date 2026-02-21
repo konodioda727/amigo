@@ -1,18 +1,19 @@
 import path from "node:path";
 import dotenv from "dotenv";
-import AmigoServer from "./core/server";
+import { AmigoServerBuilder } from "./core";
+import { logger } from "./utils/logger";
 
 dotenv.config();
 
-// 加载 server
-const SERVER_PORT = process.env.SERVER_PORT || "10013";
+// 加载配置
+const SERVER_PORT = Number(process.env.SERVER_PORT) || 10013;
 const STORAGE_PATH = process.env.STORAGE_PATH || path.resolve(process.cwd(), "storage");
 
-const server = new AmigoServer({
-  port: SERVER_PORT,
-  globalStoragePath: STORAGE_PATH,
-});
-import { logger } from "./utils/logger";
+// 使用 builder 创建服务器
+const server = new AmigoServerBuilder()
+  .port(SERVER_PORT)
+  .storagePath(STORAGE_PATH)
+  .build();
 
 server.init();
 

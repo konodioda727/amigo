@@ -1,13 +1,14 @@
 import type { FC, ReactNode } from "react";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { useSwipeGesture } from "../../hooks/useSwipeGesture";
+import DocSidebar from "../DocSidebar";
 import Header from "../Header";
 import Sidebar from "../Sidebar";
-import { useSwipeGesture } from "../../hooks/useSwipeGesture";
-import { useMediaQuery } from "../../hooks/useMediaQuery";
 
 const TOUCH_EDGE_THRESHOLD = 30;
 const SWIPE_THRESHOLD = 50;
-const SIDEBAR_WIDTH = 260; // px
+const SIDEBAR_WIDTH = 240; // px
 const DESKTOP_BREAKPOINT = 768; // md breakpoint in Tailwind
 
 interface SidebarContextType {
@@ -75,8 +76,8 @@ const Layout: FC<LayoutProps> = ({ children }) => {
             style={isOpen && isDesktop ? { width: `${SIDEBAR_WIDTH}px` } : undefined}
             aria-hidden={!isOpen}
           >
-            <div 
-              className="w-full h-full md:max-w-none" 
+            <div
+              className="w-full h-full md:max-w-none"
               style={isDesktop ? { maxWidth: `${SIDEBAR_WIDTH}px` } : undefined}
             >
               <Sidebar />
@@ -86,6 +87,8 @@ const Layout: FC<LayoutProps> = ({ children }) => {
           <main className="flex-1 flex flex-col items-center overflow-hidden min-w-0">
             {children}
           </main>
+
+          <DocSidebar />
         </div>
       </div>
     </SidebarContext.Provider>

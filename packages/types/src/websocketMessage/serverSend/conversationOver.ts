@@ -3,6 +3,17 @@ import { z } from "zod";
 export const ConversationOverSchema = z.object({
   type: z.literal("conversationOver"),
   data: z.object({
-    reason: z.enum(["askFollowupQuestion", "completionResult", "interrupt", "error"]).optional(),
+    taskId: z.string().optional(),
+    reason: z
+      .enum([
+        "askFollowupQuestion",
+        "createTaskDocs",
+        "completionResult",
+        "completeTask",
+        "interrupt",
+        "error",
+        "message",
+      ])
+      .optional(),
   }),
 });

@@ -1,27 +1,23 @@
 import { z } from "zod";
 
-export const AssignTasksSchema = z.object({
-  tools: z
-    .array(z.string())
-    .describe("对应子代理可使用的工具名称列表，例如: ['FlightSearchTool', 'HotelBookingTool']"),
-});
-
-export const TaskItemSchema = z.object({
-  target: z.string().describe("Task 的目标描述，例如: '查询北京到上海的往返机票'"),
-  subAgentPrompt: z.string().describe("对应子代理的系统提示词（System Prompt）"),
-  tools: z.array(z.string()).describe("对应子代理可使用的工具名称列表"),
-});
-
 export const TaskListSchema = z.object({
   name: z.literal("assignTasks"),
   params: z
     .object({
-      tasklist: z.array(TaskItemSchema).describe("分解后的多步骤待办事项列表。"),
+      taskName: z
+        .string()
+        .describe(
+          "任务名称，必须与之前使用 createTaskDocs 创建的任务名称一致。系统会自动转换为 kebab-case 格式并读取对应的 taskList.md 文档。",
+        ),
     })
-    .describe("包含用户输入和可用工具的参数对象"),
+    .describe("包含任务名称的参数对象"),
   result: z
     .object({
-      tasklist: z.array(TaskItemSchema),
+      success: z.boolean().describe("任务分配是否成功"),
+      taskName: z.string().optional().describe("任务名称"),
+      totalTasks: z.number().optional().describe("总任务数"),
+      executedTasks: z.number().optional().describe("已执行任务数"),
+      message: z.string().optional().describe("执行结果消息"),
     })
-    .describe("已成功创建任务列表"),
+    .describe("任务分配执行结果"),
 });

@@ -1,0 +1,79 @@
+name: Deploy Amigo
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build types package
+        working-directory: packages/types
+        run: bun run build
+
+      - name: Build frontend
+        working-directory: packages/frontend
+        run: bun run build
+
+      - name: Upload frontend dist
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          source: "packages/frontend/dist/*"
+          target: "~/amigo/packages/frontend"
+          strip_components: 3
+
+      - name: Upload server source
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          source: "packages/server/src/*,packages/server/package.json,packages/server/tsconfig.json"
+          target: "~/amigo/packages/server"
+          strip_components: 2
+
+      - name: Upload types
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          source: "packages/types/dist/*,packages/types/package.json"
+          target: "~/amigo/packages/types"
+          strip_components: 2
+
+      - name: Restart server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            export PATH="$HOME/.bun/bin:$PATH"
+            
+            # Install bun if not exists
+            command -v bun || curl -fsSL https://bun.sh/install | bash
+            
+            cd ~/amigo/packages/server
+            bun install
+            
+            # Restart server with pm2
+            pm2 describe amigo-server > /dev/null 2>&1 && pm2 restart amigo-server || pm2 start "bun run src/index.ts" --name amigo-server
+            
+            echo "Deployment completed!"

@@ -36,3 +36,5 @@ storage/
 /src/generated/prisma
 
 /src/generated/prisma
+
+/storage

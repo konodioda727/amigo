@@ -3,6 +3,11 @@
   "files": {
     "includes": ["src/**/*", "!src/**/dist", "!src/**/node_modules"]
   },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
   "linter": {
     "rules": {
       "correctness": {
@@ -10,7 +15,8 @@
         "noUnknownProperty": "off"
       },
       "suspicious": {
-        "noUnknownAtRules": "off"
+        "noUnknownAtRules": "off",
+        "noAssignInExpressions": "off"
       }
     }
   },

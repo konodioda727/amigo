@@ -4,14 +4,13 @@ import NewChatButton from "./NewChatButton";
 
 const Sidebar: React.FC = () => {
   return (
-    <aside className="w-full h-full border-r border-neutral-200 bg-neutral-50 flex flex-col shrink-0">
-      {/* 顶部操作栏 */}
-      <div className="p-3 border-b border-neutral-200">
+    <aside className="w-[240px] h-full border-r border-gray-100 bg-[#f8f9fb] flex flex-col shrink-0">
+      <div className="p-4">
         <NewChatButton />
       </div>
-      
-      {/* 历史记录列表 */}
-      <div className="flex-1 overflow-y-auto p-3">
+
+      <div className="flex-1 overflow-y-auto px-3 pb-4">
+        <div className="text-[12px] font-medium text-gray-400 px-2.5 mb-2">历史对话</div>
         <ConversationHistory />
       </div>
     </aside>

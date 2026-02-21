@@ -1,26 +1,38 @@
-import type { USER_SEND_MESSAGE_NAME } from "@amigo/types";
-import type { ConversationManager } from "@/core/conversationManager";
+import type { USER_SEND_MESSAGE_NAME } from "@amigo-llm/types";
+import type { Conversation } from "@/core/conversation";
 import type BaseMessageResolver from "./base";
 import { CommonMessageResolver } from "./commonMessageResolver";
+import { ConfirmMessageResolver } from "./confirmMessageResolver";
+import { CreateTaskMessageResolver } from "./createTaskMessageResolver";
+import { DeleteTaskMessageResolver } from "./deleteTaskMessageResolver";
 import { InterruptMessageResolver } from "./interruptMessageResolver";
 import { LoadTaskMessageResolver } from "./loadTaskMessageResolver";
+import { RejectMessageResolver } from "./rejectMessageResolver";
 import { ResumeMessageResolver } from "./resumeMessageResolver";
 
 /**
  * 不同 message 处理器
  */
-const resolvers = [CommonMessageResolver, InterruptMessageResolver, LoadTaskMessageResolver, ResumeMessageResolver];
+const resolvers = [
+  CommonMessageResolver,
+  InterruptMessageResolver,
+  LoadTaskMessageResolver,
+  ResumeMessageResolver,
+  CreateTaskMessageResolver,
+  ConfirmMessageResolver,
+  RejectMessageResolver,
+  DeleteTaskMessageResolver,
+];
 
 const defaultResolver = CommonMessageResolver;
 
 /**
  * 获取对应 message 处理器
- * @param type 消息类型
  */
 export const getResolver = <K extends USER_SEND_MESSAGE_NAME>(
   type: K,
-  manager: ConversationManager,
+  conversation: Conversation,
 ): BaseMessageResolver<K> => {
   const resolver = resolvers.find((res) => res.resolverName === type) || defaultResolver;
-  return new resolver(manager);
+  return new resolver(conversation);
 };

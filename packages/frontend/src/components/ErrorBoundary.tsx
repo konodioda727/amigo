@@ -1,5 +1,5 @@
-import  { Component, ErrorInfo, ReactNode } from "react";
 import { AlertCircle } from "lucide-react";
+import { Component, type ErrorInfo, type ReactNode } from "react";
 
 interface Props {
   children: ReactNode;
@@ -33,9 +33,7 @@ class ErrorBoundary extends Component<Props, State> {
               <AlertCircle className="w-6 h-6 text-error" />
               <h1 className="text-xl font-semibold text-neutral-900">出错了</h1>
             </div>
-            <p className="text-neutral-600 mb-4">
-              应用遇到了一个错误。请刷新页面重试。
-            </p>
+            <p className="text-neutral-600 mb-4">应用遇到了一个错误。请刷新页面重试。</p>
             {this.state.error && (
               <details className="text-sm text-neutral-500">
                 <summary className="cursor-pointer mb-2">错误详情</summary>
