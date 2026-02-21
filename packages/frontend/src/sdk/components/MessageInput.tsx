@@ -2,8 +2,10 @@ import Mention from "@tiptap/extension-mention";
 import Placeholder from "@tiptap/extension-placeholder";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { ArrowUp, Play, Square } from "lucide-react";
+import { ArrowUp, Loader2, Mic, Play, Square } from "lucide-react";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { useVoiceRecorder } from "../../components/MessageInput/hooks/useVoiceRecorder";
+import { useWebSocketContext } from "../context/WebSocketContext";
 import { useConnection } from "../hooks/useConnection";
 import { useMentions } from "../hooks/useMentions";
 import { useSendMessage } from "../hooks/useSendMessage";
@@ -38,10 +40,10 @@ export interface MessageInputRef {
 }
 
 /**
- * MessageInput component with TipTap editor and mention support
+ * MessageInput component with TipTap editor, mention support, and voice-to-text
  *
  * Provides a rich text input with mention support, send/interrupt/resume functionality,
- * and integration with the SDK's message sending system.
+ * voice recording with transcription, and integration with the SDK's message sending system.
  *
  * @example
  * ```tsx
@@ -74,9 +76,19 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const { getMentionSuggestions } = useMentions();
     const { isConnected } = useConnection();
     const { mainTaskId, tasks } = useTasks();
+    const { config } = useWebSocketContext();
     const [targetSessionId, setTargetSessionId] = useState<string | null>(null);
     const [buttonState, setButtonState] = useState<"send" | "stop" | "resume">("send");
     const isSuggestionActiveRef = useRef(false);
+
+    // Voice recorder hook with dynamic URL from WebSocket config
+    const {
+      status: voiceStatus,
+      formattedDuration,
+      startRecording,
+      stopRecording,
+      cancelRecording,
+    } = useVoiceRecorder({ wsUrl: config.url });
 
     // Get current task's status
     const currentTaskId = taskId || mainTaskId;
@@ -368,15 +380,90 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       }
     };
 
+    // Handle voice recording toggle
+    const handleVoiceClick = async () => {
+      if (disabled) return;
+
+      if (voiceStatus === "idle") {
+        await startRecording();
+      } else if (voiceStatus === "recording") {
+        try {
+          const text = await stopRecording();
+          if (text && editor) {
+            // 将转录文字插入编辑器（追加到现有内容后面）
+            const currentContent = editor.getText().trim();
+            if (currentContent) {
+              editor.commands.insertContent(text);
+            } else {
+              editor.commands.setContent(`<p>${text}</p>`);
+            }
+            editor.commands.focus("end");
+          }
+        } catch {
+          // 错误已在 hook 中通过 toast 处理
+        }
+      }
+      // transcribing 状态下不做任何操作
+    };
+
     const isButtonDisabled = disabled || (buttonState === "send" && !editor?.getText().trim());
+    const isRecording = voiceStatus === "recording";
+    const isTranscribing = voiceStatus === "transcribing";
 
     return (
       <div className={`message-input-container ${className}`}>
         <style>{editorStyles}</style>
         <div className="tiptap-editor-wrapper">
           <ToolConfirmationRequest taskId={currentTaskId || ""} className="mb-4" />
+
+          {/* 录音状态指示器 */}
+          {isRecording && (
+            <div className="voice-recording-indicator">
+              <span className="voice-recording-dot" />
+              <span className="voice-recording-text">正在录音... {formattedDuration}</span>
+              <button
+                type="button"
+                className="voice-cancel-btn"
+                onClick={cancelRecording}
+                title="取消录音"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {/* 转录中状态指示器 */}
+          {isTranscribing && (
+            <div className="voice-transcribing-indicator">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span className="voice-transcribing-text">正在转录...</span>
+            </div>
+          )}
+
           <EditorContent editor={editor} />
           <div className="send-button-wrapper">
+            {/* 麦克风按钮 */}
+            <button
+              onClick={handleVoiceClick}
+              className={`btn btn-circle w-10 h-10 transition-all duration-200 border-none shadow-md hover:shadow-lg mr-2 ${
+                isRecording
+                  ? "bg-red-500 hover:bg-red-600 text-white voice-pulse"
+                  : isTranscribing
+                    ? "bg-yellow-500 text-white cursor-wait"
+                    : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+              }`}
+              type="button"
+              disabled={disabled || isTranscribing}
+              title={isRecording ? "停止录音" : isTranscribing ? "正在转录..." : "语音输入"}
+            >
+              {isTranscribing ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Mic className="w-4 h-4" />
+              )}
+            </button>
+
+            {/* 发送/停止/恢复按钮 */}
             <button
               onClick={handleClick}
               className={`btn btn-circle w-10 h-10 transition-all duration-200 border-none shadow-md hover:shadow-lg ${
@@ -427,7 +514,7 @@ const editorStyles = `
     min-height: 80px;
     max-height: 320px;
     overflow-y: auto;
-    padding: 16px 60px 16px 20px;
+    padding: 16px 110px 16px 20px;
     border-radius: 24px;
     border: 1px solid #f3f4f6;
     background-color: #ffffff;
@@ -450,6 +537,8 @@ const editorStyles = `
     right: 12px;
     bottom: 12px;
     z-index: 10;
+    display: flex;
+    align-items: center;
   }
 
   .tiptap-editor-wrapper .ProseMirror p.is-editor-empty:first-child::before {
@@ -466,6 +555,84 @@ const editorStyles = `
   
   .mention-suggestions {
     min-width: 200px;
+  }
+
+  /* 录音状态指示器 */
+  .voice-recording-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    margin-bottom: 8px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 12px;
+    font-size: 13px;
+    color: #dc2626;
+  }
+
+  .voice-recording-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #dc2626;
+    animation: voice-dot-pulse 1s ease-in-out infinite;
+  }
+
+  .voice-recording-text {
+    flex: 1;
+    font-weight: 500;
+  }
+
+  .voice-cancel-btn {
+    background: none;
+    border: none;
+    color: #dc2626;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+  }
+
+  .voice-cancel-btn:hover {
+    opacity: 1;
+    background: rgba(220, 38, 38, 0.1);
+  }
+
+  /* 转录中指示器 */
+  .voice-transcribing-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    margin-bottom: 8px;
+    background: #fefce8;
+    border: 1px solid #fde68a;
+    border-radius: 12px;
+    font-size: 13px;
+    color: #ca8a04;
+  }
+
+  .voice-transcribing-text {
+    font-weight: 500;
+  }
+
+  /* 脉冲动画 */
+  @keyframes voice-dot-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.2); }
+  }
+
+  @keyframes voice-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+    70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+  }
+
+  .voice-pulse {
+    animation: voice-pulse 1.5s ease-in-out infinite;
   }
 `;
 

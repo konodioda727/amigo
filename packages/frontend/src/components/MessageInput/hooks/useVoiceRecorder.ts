@@ -1,12 +1,28 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "@/utils/toast";
 
 export type VoiceRecorderStatus = "idle" | "recording" | "transcribing";
 
-const TRANSCRIBE_API_URL = "http://localhost:10013/api/transcribe";
 const MAX_RECORDING_SECONDS = 60;
 
-export function useVoiceRecorder() {
+/**
+ * 从 WebSocket URL 推导出 HTTP 转录 API URL
+ * ws://localhost:10013 -> http://localhost:10013/api/transcribe
+ * wss://example.com -> https://example.com/api/transcribe
+ */
+function deriveTranscribeUrl(wsUrl: string): string {
+  const httpUrl = wsUrl.replace(/^ws(s?):\/\//, "http$1://");
+  return `${httpUrl}/api/transcribe`;
+}
+
+export interface UseVoiceRecorderOptions {
+  /** WebSocket URL，用于推导转录 API 地址 */
+  wsUrl?: string;
+}
+
+export function useVoiceRecorder(options?: UseVoiceRecorderOptions) {
+  const { wsUrl = "ws://localhost:10013" } = options || {};
+
   const [status, setStatus] = useState<VoiceRecorderStatus>("idle");
   const [recordingDuration, setRecordingDuration] = useState(0);
 
@@ -15,6 +31,8 @@ export function useVoiceRecorder() {
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const maxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const transcribeUrl = deriveTranscribeUrl(wsUrl);
 
   // 清理定时器
   const clearTimers = useCallback(() => {
@@ -66,7 +84,7 @@ export function useVoiceRecorder() {
       else if (mimeType.includes("wav")) format = "wav";
       else if (mimeType.includes("webm")) format = "webm";
 
-      const response = await fetch(TRANSCRIBE_API_URL, {
+      const response = await fetch(transcribeUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -82,7 +100,7 @@ export function useVoiceRecorder() {
       const data = (await response.json()) as { text: string };
       return data.text;
     },
-    [blobToBase64],
+    [blobToBase64, transcribeUrl],
   );
 
   // 开始录音
