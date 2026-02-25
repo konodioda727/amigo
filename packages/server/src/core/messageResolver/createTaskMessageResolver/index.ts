@@ -1,4 +1,8 @@
-import type { ConversationStatus, USER_SEND_MESSAGE_NAME } from "@amigo-llm/types";
+import type {
+  ConversationStatus,
+  USER_SEND_MESSAGE_NAME,
+  UserSendMessageData,
+} from "@amigo-llm/types";
 import { broadcaster, taskOrchestrator } from "@/core/conversation";
 import { getSessionHistories } from "@/utils/getSessions";
 import BaseMessageResolver from "../base";
@@ -6,9 +10,9 @@ import BaseMessageResolver from "../base";
 export class CreateTaskMessageResolver extends BaseMessageResolver<"createTask"> {
   static override resolverName: USER_SEND_MESSAGE_NAME = "createTask";
 
-  override async process(message: { message: string }): Promise<void> {
+  override async process(message: UserSendMessageData<"createTask">): Promise<void> {
     // 设置用户输入
-    taskOrchestrator.setUserInput(this.conversation, message.message);
+    taskOrchestrator.setUserInput(this.conversation, message.message, message.attachments);
 
     // 发送 taskCreated 消息给前端，同时带上最新的 sessionHistories
     broadcaster.broadcast(this.conversation.id, {

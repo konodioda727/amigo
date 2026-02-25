@@ -26,8 +26,10 @@ export interface TaskSlice {
   tasks: Record<string, TaskState>;
   activeTaskId: string | null;
   mainTaskId: string;
+  isCreatingConversation: boolean;
   taskHistories: Array<{ taskId: string; title: string; updatedAt: string }>;
   taskStatusMaps: Record<string, Record<string, any>>;
+  taskAutoApproveToolNameMaps: Record<string, string[]>;
 
   registerTask: (taskId: string) => void;
   unregisterTask: (taskId: string) => void;
@@ -39,7 +41,10 @@ export interface TaskSlice {
   ) => void;
   clearMessages: (taskId: string) => void;
   setMainTaskId: (taskId: string) => void;
+  setCurrentTaskIdsForNewConversation: (taskId: string) => void;
   setTaskStatusMap: (taskId: string, subTasks: Record<string, any>) => void;
+  setTaskAutoApproveToolNames: (taskId: string, toolNames: string[]) => void;
+  setCreatingConversation: (isCreating: boolean) => void;
   taskStatusMapUpdated: (taskId: string, subTasks: Record<string, any>) => void;
   createNewConversation: () => void;
   handleSessionHistories: (
@@ -51,8 +56,10 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
   tasks: {},
   activeTaskId: null,
   mainTaskId: "",
+  isCreatingConversation: false,
   taskHistories: [],
   taskStatusMaps: {},
+  taskAutoApproveToolNameMaps: {},
 
   taskStatusMapUpdated: (taskId: string, subTasks: Record<string, any>) => {
     get().setTaskStatusMap(taskId, subTasks);
@@ -83,7 +90,23 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
   },
 
   setActiveTask: (taskId) => {
+    const { socket, activeTaskId } = get();
+    if (taskId === activeTaskId) return;
+
     set({ activeTaskId: taskId } as any);
+
+    if (taskId) {
+      get().registerTask(taskId);
+    }
+
+    if (socket && socket.readyState === WebSocket.OPEN && taskId) {
+      socket.send(
+        JSON.stringify({
+          type: "loadTask",
+          data: { taskId },
+        }),
+      );
+    }
   },
 
   setTaskStatus: (taskId, status) => {
@@ -140,7 +163,7 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
 
     if (taskId === currentTaskId) return;
 
-    set({ mainTaskId: taskId } as any);
+    set({ mainTaskId: taskId, activeTaskId: taskId } as any);
     get().registerTask(taskId);
 
     // Close doc sidebar immediately when switching tasks
@@ -157,6 +180,19 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
     }
   },
 
+  setCurrentTaskIdsForNewConversation: (taskId) => {
+    if (!taskId || taskId.trim() === "") return;
+
+    const { mainTaskId, activeTaskId } = get();
+    const shouldUpdateIds = mainTaskId !== taskId || activeTaskId !== taskId;
+
+    if (shouldUpdateIds) {
+      set({ mainTaskId: taskId, activeTaskId: taskId } as any);
+    }
+
+    get().registerTask(taskId);
+  },
+
   setTaskStatusMap: (taskId: string, subTasks: Record<string, any>) => {
     const { taskStatusMaps } = get();
     set({
@@ -165,6 +201,20 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
         [taskId]: subTasks,
       },
     } as any);
+  },
+
+  setTaskAutoApproveToolNames: (taskId: string, toolNames: string[]) => {
+    const { taskAutoApproveToolNameMaps } = get();
+    set({
+      taskAutoApproveToolNameMaps: {
+        ...taskAutoApproveToolNameMaps,
+        [taskId]: [...toolNames],
+      },
+    } as any);
+  },
+
+  setCreatingConversation: (isCreatingConversation) => {
+    set({ isCreatingConversation } as any);
   },
 
   createNewConversation: () => {
@@ -178,7 +228,7 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
     get().closeDoc();
 
     // Reset to empty state - server will create new task on first message
-    set({ mainTaskId: "", activeTaskId: null } as any);
+    set({ mainTaskId: "", activeTaskId: null, isCreatingConversation: false } as any);
   },
 
   handleSessionHistories: (histories) => {

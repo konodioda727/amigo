@@ -1,3 +1,4 @@
+import type { UserMessageAttachment } from "@amigo-llm/types";
 import { useCallback } from "react";
 import { useWebSocketContext } from "../context/WebSocketContext";
 import type { UseSendMessageReturn } from "../types/hooks";
@@ -29,15 +30,19 @@ import type { UseSendMessageReturn } from "../types/hooks";
 export function useSendMessage(): UseSendMessageReturn {
   const context = useWebSocketContext();
   const { store } = context;
+  const resolveTaskId = (taskId?: string) => {
+    const state = store.getState();
+    return taskId || state.activeTaskId || state.mainTaskId;
+  };
 
   /**
    * Send a user message to the specified task.
    * If no taskId is provided, uses the current main task.
    */
   const sendMessage = useCallback(
-    (message: string, taskId?: string) => {
+    (message: string, taskId?: string, attachments?: UserMessageAttachment[]) => {
       const state = store.getState();
-      let effectiveTaskId = taskId || state.mainTaskId;
+      let effectiveTaskId = resolveTaskId(taskId);
 
       // If no task ID exists (new conversation), let server create one
       // We'll use a temporary placeholder that server will replace
@@ -50,6 +55,7 @@ export function useSendMessage(): UseSendMessageReturn {
         data: {
           message,
           taskId: effectiveTaskId,
+          attachments,
         },
       });
     },
@@ -60,7 +66,7 @@ export function useSendMessage(): UseSendMessageReturn {
    * Send a create task command to create a new conversation.
    */
   const sendCreateTask = useCallback(
-    (message: string) => {
+    (message: string, attachments?: UserMessageAttachment[]) => {
       const state = store.getState();
 
       // 发送 createTask 消息，不需要 taskId（后端会创建）
@@ -69,6 +75,7 @@ export function useSendMessage(): UseSendMessageReturn {
         type: "createTask",
         data: {
           message,
+          attachments,
         },
       });
     },
@@ -82,7 +89,7 @@ export function useSendMessage(): UseSendMessageReturn {
   const sendInterrupt = useCallback(
     (taskId?: string) => {
       const state = store.getState();
-      const effectiveTaskId = taskId || state.mainTaskId;
+      const effectiveTaskId = resolveTaskId(taskId);
 
       if (!effectiveTaskId || effectiveTaskId.trim() === "") {
         console.warn("[useSendMessage] Cannot send interrupt: no task ID available");
@@ -107,7 +114,7 @@ export function useSendMessage(): UseSendMessageReturn {
   const sendResume = useCallback(
     (taskId?: string) => {
       const state = store.getState();
-      const effectiveTaskId = taskId || state.mainTaskId;
+      const effectiveTaskId = resolveTaskId(taskId);
 
       if (!effectiveTaskId || effectiveTaskId.trim() === "") {
         console.warn("[useSendMessage] Cannot send resume: no task ID available");
@@ -198,6 +205,27 @@ export function useSendMessage(): UseSendMessageReturn {
     [store],
   );
 
+  const sendUpdateAutoApproveTools = useCallback(
+    (toolNames: string[], taskId?: string) => {
+      const state = store.getState();
+      const effectiveTaskId = resolveTaskId(taskId);
+
+      if (!effectiveTaskId || effectiveTaskId.trim() === "") {
+        console.warn("[useSendMessage] Cannot send updateAutoApproveTools: no task ID available");
+        return;
+      }
+
+      state.sendMessage(effectiveTaskId, {
+        type: "updateAutoApproveTools",
+        data: {
+          taskId: effectiveTaskId,
+          toolNames,
+        },
+      });
+    },
+    [store],
+  );
+
   return {
     sendMessage,
     sendCreateTask,
@@ -207,5 +235,6 @@ export function useSendMessage(): UseSendMessageReturn {
     sendConfirm,
     sendReject,
     sendDeleteTask,
+    sendUpdateAutoApproveTools,
   };
 }

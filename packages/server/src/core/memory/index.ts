@@ -13,6 +13,7 @@ import {
 } from "@amigo-llm/types";
 import { getGlobalState } from "@/globalState";
 import { logger } from "@/utils/logger";
+import { getTaskId } from "../templates/checklistParser";
 
 /**
  * 文件持久化内存管理类
@@ -23,6 +24,7 @@ export class FilePersistedMemory {
   private _websocketMessages: WebSocketMessage<any>[] = [];
   private _conversationStatus: ConversationStatus = "idle";
   private _toolNames: string[] = [];
+  private _autoApproveToolNames: string[] = [];
   private _pendingToolCall: PendingToolCall | null = null;
   private _subTasks: Record<string, SubTaskStatus> = {};
   private _createdAt: string;
@@ -117,8 +119,28 @@ export class FilePersistedMemory {
         const data: TaskStatusMetadata = JSON.parse(readFileSync(this.taskStatusPath, "utf-8"));
         this._conversationStatus = data.conversationStatus || "idle";
         this._toolNames = data.toolNames || [];
+        this._autoApproveToolNames = data.autoApproveToolNames || [];
         this._pendingToolCall = data.pendingToolCall || null;
-        this._subTasks = data.subTasks || {};
+        const rawSubTasks = data.subTasks || {};
+        const normalizedSubTasks: Record<string, SubTaskStatus> = {};
+        for (const [key, status] of Object.entries(rawSubTasks)) {
+          const taskKey = getTaskId(key) || key;
+          const nextStatus: SubTaskStatus = {
+            ...status,
+            description: status.description || key,
+          };
+          const existing = normalizedSubTasks[taskKey];
+          if (!existing || (!existing.subTaskId && nextStatus.subTaskId)) {
+            normalizedSubTasks[taskKey] = nextStatus;
+          } else if (existing) {
+            normalizedSubTasks[taskKey] = {
+              ...existing,
+              ...nextStatus,
+              description: existing.description || nextStatus.description,
+            };
+          }
+        }
+        this._subTasks = normalizedSubTasks;
         this._createdAt = data.createdAt || new Date().toISOString();
         if (data.fatherTaskId) {
           this.fatherTaskId = data.fatherTaskId;
@@ -140,6 +162,7 @@ export class FilePersistedMemory {
         fatherTaskId: this.fatherTaskId,
         conversationStatus: this._conversationStatus,
         toolNames: this._toolNames,
+        autoApproveToolNames: this._autoApproveToolNames,
         pendingToolCall: this._pendingToolCall || undefined,
         subTasks: this._subTasks,
         createdAt: this._createdAt,
@@ -296,6 +319,23 @@ export class FilePersistedMemory {
   }
 
   /**
+   * 设置自动批准工具名称列表
+   */
+  public setAutoApproveToolNames(toolNames: string[]) {
+    this._autoApproveToolNames = Array.from(
+      new Set(toolNames.map((name) => name.trim()).filter(Boolean)),
+    );
+    this.saveTaskStatus();
+  }
+
+  /**
+   * 获取自动批准工具名称列表
+   */
+  public get autoApproveToolNames(): string[] {
+    return this._autoApproveToolNames;
+  }
+
+  /**
    * 获取子任务状态列表
    */
   public get subTasks(): Record<string, SubTaskStatus> {
@@ -306,7 +346,8 @@ export class FilePersistedMemory {
    * 更新子任务状态
    */
   public updateSubTask(description: string, status: SubTaskStatus): void {
-    this._subTasks[description] = status;
+    const prev = this._subTasks[description] || {};
+    this._subTasks[description] = { ...prev, ...status };
     this.saveTaskStatus();
   }
 

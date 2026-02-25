@@ -5,12 +5,17 @@ import type {
   SubTaskStatus,
   ToolInterface,
 } from "@amigo-llm/types";
-import type { ChatOpenAI } from "@langchain/openai";
 import { v4 as uuidV4 } from "uuid";
+import { getGlobalState } from "@/globalState";
 import { FilePersistedMemory } from "../memory";
-import { getLlm } from "../model";
+import { type AmigoLlm, getLlm } from "../model";
 import { getSystemPrompt } from "../systemPrompt";
+import { getTaskId } from "../templates/checklistParser";
 import { MAIN_BASIC_TOOLS, SUB_BASIC_TOOLS, ToolService } from "../tools";
+import {
+  getConfiguredAutoApproveToolNames,
+  normalizeAutoApproveToolNames,
+} from "./autoApproveTools";
 import { broadcaster } from "./WebSocketBroadcaster";
 
 export type ConversationType = "main" | "sub";
@@ -22,7 +27,7 @@ export class Conversation {
   readonly id: string;
   readonly memory: FilePersistedMemory;
   readonly toolService: ToolService;
-  readonly llm: ChatOpenAI;
+  readonly llm: AmigoLlm;
   readonly type: ConversationType;
   readonly parentId?: string;
 
@@ -34,7 +39,7 @@ export class Conversation {
     id: string;
     memory: FilePersistedMemory;
     toolService: ToolService;
-    llm: ChatOpenAI;
+    llm: AmigoLlm;
     type: ConversationType;
     parentId?: string;
   }) {
@@ -44,6 +49,29 @@ export class Conversation {
     this.llm = params.llm;
     this.type = params.type;
     this.parentId = params.parentId;
+  }
+
+  private syncAutoApproveToolNamesToTaskStatus(): void {
+    if (this.memory.autoApproveToolNames.length > 0) {
+      return;
+    }
+    this.memory.setAutoApproveToolNames(getConfiguredAutoApproveToolNames());
+  }
+
+  private broadcastTaskStatusMapUpdated(): void {
+    broadcaster.broadcast(this.id, {
+      type: "taskStatusMapUpdated" as SERVER_SEND_MESSAGE_NAME,
+      data: {
+        taskId: this.id,
+        subTasks: this.memory.subTasks,
+        autoApproveToolNames: this.memory.autoApproveToolNames,
+      },
+    } as any);
+  }
+
+  public setAutoApproveToolNames(toolNames: string[]): void {
+    this.memory.setAutoApproveToolNames(normalizeAutoApproveToolNames(toolNames));
+    this.broadcastTaskStatusMapUpdated();
   }
 
   get status(): ConversationStatus {
@@ -83,12 +111,28 @@ export class Conversation {
     return this.memory.isNewSession();
   }
 
+  private static buildInitialSystemPrompt(
+    toolService: ToolService,
+    type: ConversationType,
+    customPrompt?: string,
+  ): string {
+    let systemPrompt = getSystemPrompt(toolService, type);
+    const extraSystemPrompt = (getGlobalState("extraSystemPrompt") || "").trim();
+    if (extraSystemPrompt) {
+      systemPrompt += `\n\n=====应用追加系统提示词:\n${extraSystemPrompt}`;
+    }
+    if (customPrompt?.trim()) {
+      systemPrompt += `\n\n=====用户自定义提示词:\n${customPrompt.trim()}`;
+    }
+    return systemPrompt;
+  }
+
   /**
    * 创建新会话
    */
   static create(params: {
     toolService: ToolService;
-    llm: ChatOpenAI;
+    llm: AmigoLlm;
     type?: ConversationType;
     parentId?: string;
     customPrompt?: string;
@@ -105,12 +149,14 @@ export class Conversation {
       type,
       parentId: params.parentId,
     });
+    conversation.syncAutoApproveToolNamesToTaskStatus();
 
     // 初始化系统提示词
-    let systemPrompt = getSystemPrompt(params.toolService, type);
-    if (params.customPrompt) {
-      systemPrompt += `\n\n=====用户自定义提示词:\n${params.customPrompt}`;
-    }
+    const systemPrompt = Conversation.buildInitialSystemPrompt(
+      params.toolService,
+      type,
+      params.customPrompt,
+    );
 
     memory.addMessage({
       role: "system",
@@ -131,31 +177,29 @@ export class Conversation {
    * 更新子任务状态并广播
    */
   public updateSubTaskStatus(description: string, status: SubTaskStatus): void {
-    this.memory.updateSubTask(description, status);
+    const taskKey = getTaskId(description) || description;
+    if (taskKey !== description && this.memory.subTasks[description]) {
+      this.memory.clearSubTask(description);
+    }
+    this.memory.updateSubTask(taskKey, {
+      ...status,
+      description: status.description ?? description,
+    });
 
-    // 广播状态更新
-    broadcaster.broadcast(this.id, {
-      type: "taskStatusMapUpdated" as SERVER_SEND_MESSAGE_NAME,
-      data: {
-        taskId: this.id,
-        subTasks: this.memory.subTasks,
-      },
-    } as any);
+    this.broadcastTaskStatusMapUpdated();
   }
 
   /**
    * 清理子任务状态
    */
   public clearSubTask(description: string): void {
-    this.memory.clearSubTask(description);
+    const taskKey = getTaskId(description) || description;
+    this.memory.clearSubTask(taskKey);
+    if (taskKey !== description) {
+      this.memory.clearSubTask(description);
+    }
 
-    broadcaster.broadcast(this.id, {
-      type: "taskStatusMapUpdated" as SERVER_SEND_MESSAGE_NAME,
-      data: {
-        taskId: this.id,
-        subTasks: this.memory.subTasks,
-      },
-    } as any);
+    this.broadcastTaskStatusMapUpdated();
   }
 
   /**
@@ -164,13 +208,7 @@ export class Conversation {
   public clearAllSubTasks(): void {
     this.memory.clearAllSubTasks();
 
-    broadcaster.broadcast(this.id, {
-      type: "taskStatusMapUpdated" as SERVER_SEND_MESSAGE_NAME,
-      data: {
-        taskId: this.id,
-        subTasks: this.memory.subTasks,
-      },
-    } as any);
+    this.broadcastTaskStatusMapUpdated();
   }
 
   /**
@@ -209,6 +247,7 @@ export class Conversation {
       type,
       parentId: memory.getFatherTaskId,
     });
+    conversation.syncAutoApproveToolNamesToTaskStatus();
 
     // 恢复 pendingToolCall
     if (memory.pendingToolCall) {
@@ -217,7 +256,7 @@ export class Conversation {
 
     // 如果是新会话（文件不存在或为空），注入 systemPrompt
     if (memory.isNewSession()) {
-      const systemPrompt = getSystemPrompt(toolService, type);
+      const systemPrompt = Conversation.buildInitialSystemPrompt(toolService, type);
       memory.addMessage({
         role: "system",
         type: "system",

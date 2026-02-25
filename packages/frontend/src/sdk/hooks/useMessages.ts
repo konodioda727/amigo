@@ -33,8 +33,9 @@ export function useMessages(taskId?: string): UseMessagesReturn {
   const { store } = context;
 
   // Get the effective task ID (provided or current)
-  const currentTaskId = store((state) => state.mainTaskId);
-  const effectiveTaskId = taskId || currentTaskId;
+  const activeTaskId = store((state) => state.activeTaskId);
+  const mainTaskId = store((state) => state.mainTaskId);
+  const effectiveTaskId = taskId || activeTaskId || mainTaskId;
 
   // Get task state using Zustand selector
   const taskState = store((state) => state.tasks[effectiveTaskId]);

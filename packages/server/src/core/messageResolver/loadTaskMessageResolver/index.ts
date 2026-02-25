@@ -15,12 +15,17 @@ export class LoadTaskMessageResolver extends BaseMessageResolver<"loadTask"> {
 
     // 主动推送当前 subTasks 快照，解决重连后前端拿不到 taskStatus 的问题
     const subTasks = this.conversation.memory.subTasks;
-    if (subTasks && Object.keys(subTasks).length > 0) {
+    const autoApproveToolNames = this.conversation.memory.autoApproveToolNames;
+    if (
+      (subTasks && Object.keys(subTasks).length > 0) ||
+      (autoApproveToolNames && autoApproveToolNames.length > 0)
+    ) {
       broadcaster.broadcast(taskId, {
         type: "taskStatusMapUpdated",
         data: {
           taskId,
           subTasks,
+          autoApproveToolNames,
         },
       });
     }

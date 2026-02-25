@@ -1,4 +1,8 @@
-import type { SERVER_SEND_MESSAGE_NAME, ToolInterface } from "@amigo-llm/types";
+import type {
+  SERVER_SEND_MESSAGE_NAME,
+  ToolInterface,
+  UserMessageAttachment,
+} from "@amigo-llm/types";
 import pWaitFor from "p-wait-for";
 import { logger } from "@/utils/logger";
 import { getLlm } from "../model";
@@ -13,8 +17,8 @@ export interface SubTaskParams {
   parentId: string;
   // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
   tools: ToolInterface<any>[];
-  index?: number;
   taskDescription?: string; // 可选：用于 SubTaskManager 记录状态
+  subTaskId?: string; // 可选：复用已有子任务会话
 }
 
 /**
@@ -46,7 +50,7 @@ export class TaskOrchestrator {
    * 创建并运行子任务
    */
   async runSubTask(params: SubTaskParams): Promise<{ subTaskId: string; result: string }> {
-    const { subPrompt, parentId, tools, target, index = 0, taskDescription } = params;
+    const { subPrompt, parentId, tools, target, taskDescription, subTaskId } = params;
 
     // 获取父会话
     const parentConversation = conversationRepository.get(parentId);
@@ -54,14 +58,23 @@ export class TaskOrchestrator {
       throw new Error(`未找到父会话，父任务ID：${parentId}`);
     }
 
-    // 创建子会话
-    const subConversation = conversationRepository.create({
-      type: "sub",
-      parentId,
-      customPrompt: subPrompt,
-      tools,
-      llm: getLlm(),
-    });
+    // 复用已有子会话（如果提供了 subTaskId）
+    let subConversation = subTaskId ? conversationRepository.load(subTaskId) : null;
+    let isNewConversation = false;
+
+    // 如果没有可复用会话，则创建新的子会话
+    if (!subConversation) {
+      subConversation = conversationRepository.create({
+        type: "sub",
+        parentId,
+        customPrompt: subPrompt,
+        tools,
+        llm: getLlm(),
+      });
+      isNewConversation = true;
+    } else {
+      logger.info(`[TaskOrchestrator] 复用子会话: ${subConversation.id}`);
+    }
 
     // 如果提供了 taskDescription，记录到 subTasks
     if (taskDescription) {
@@ -69,24 +82,78 @@ export class TaskOrchestrator {
         subTaskId: subConversation.id,
         status: "running",
         startedAt: new Date().toISOString(),
-        index,
       });
     }
 
-    // 保存工具名称用于恢复
-    const toolNames = tools.map((t) => t.name);
-    subConversation.memory.setToolNames(toolNames);
+    // 保存工具名称用于恢复（仅新建会话时需要覆盖）
+    if (isNewConversation) {
+      const toolNames = tools.map((t) => t.name);
+      subConversation.memory.setToolNames(toolNames);
+    }
 
-    // 设置用户输入并启动执行
-    this.setUserInput(subConversation, target);
+    // 设置用户输入并启动执行（复用会话时发送 resume）
+    let shouldExecute = false;
+    if (isNewConversation) {
+      this.setUserInput(subConversation, target);
+      shouldExecute = true;
+    } else if (["idle", "aborted", "error"].includes(subConversation.status)) {
+      this.resume(subConversation);
+      shouldExecute = true;
+    }
 
-    const executor = this.getExecutor(subConversation.id);
-    executor.execute(subConversation);
+    if (shouldExecute) {
+      const executor = this.getExecutor(subConversation.id);
+      executor.execute(subConversation);
+    }
+
+    let hasObservedActiveState = false;
+    let lastSyncedStatus: "running" | "waiting_user_input" | null = taskDescription
+      ? "running"
+      : null;
 
     // 等待子任务完成
-    await pWaitFor(() => subConversation.status === "completed", {
-      timeout: 30 * 60 * 1000,
-    });
+    await pWaitFor(
+      () => {
+        const currentStatus = subConversation.status;
+
+        const isSubTaskActive = [
+          "streaming",
+          "waiting_tool_confirmation",
+          "tool_executing",
+        ].includes(currentStatus);
+
+        if (isSubTaskActive) {
+          hasObservedActiveState = true;
+        }
+
+        if (taskDescription) {
+          if (isSubTaskActive && lastSyncedStatus !== "running") {
+            parentConversation.updateSubTaskStatus(taskDescription, {
+              status: "running",
+            });
+            lastSyncedStatus = "running";
+          } else if (
+            hasObservedActiveState &&
+            currentStatus === "idle" &&
+            lastSyncedStatus !== "waiting_user_input"
+          ) {
+            parentConversation.updateSubTaskStatus(taskDescription, {
+              status: "waiting_user_input",
+            });
+            lastSyncedStatus = "waiting_user_input";
+          }
+        }
+
+        if (["aborted", "error"].includes(currentStatus)) {
+          throw new Error(`子会话 ${subConversation.id} 已停止，当前状态: ${currentStatus}`);
+        }
+
+        return currentStatus === "completed";
+      },
+      {
+        timeout: 30 * 60 * 1000,
+      },
+    );
 
     logger.info(`子会话 ${subConversation.id} 已完成。`);
 
@@ -95,7 +162,6 @@ export class TaskOrchestrator {
       parentConversation.updateSubTaskStatus(taskDescription, {
         status: "completed",
         completedAt: new Date().toISOString(),
-        index,
       });
     }
 
@@ -112,9 +178,13 @@ export class TaskOrchestrator {
   /**
    * 设置用户输入
    */
-  setUserInput(conversation: Conversation, message: string): void {
+  setUserInput(
+    conversation: Conversation,
+    message: string,
+    attachments?: UserMessageAttachment[],
+  ): void {
     logger.info(
-      `[TaskOrchestrator] setUserInput - taskId: ${conversation.id}, message: ${message}`,
+      `[TaskOrchestrator] setUserInput - taskId: ${conversation.id}, message: ${message}, attachments: ${attachments?.length || 0}`,
     );
 
     conversation.userInput = message;
@@ -123,6 +193,7 @@ export class TaskOrchestrator {
     conversation.memory.addMessage({
       role: "user",
       content: message,
+      attachments,
       type: "userSendMessage",
       partial: false,
     });
@@ -131,6 +202,7 @@ export class TaskOrchestrator {
       type: "userSendMessage" as const,
       data: {
         message,
+        attachments,
         updateTime: Date.now(),
         taskId: conversation.id,
       },
@@ -151,8 +223,26 @@ export class TaskOrchestrator {
     if (conversation.status === "waiting_tool_confirmation") {
       logger.info("取消工具确认");
       conversation.pendingToolCall = null;
+      conversation.isAborted = true;
       conversation.status = "aborted";
       conversation.userInput = "";
+
+      conversation.memory.addMessage({
+        role: "assistant",
+        content: "用户已打断会话。",
+        type: "interrupt",
+        partial: false,
+      });
+
+      const interruptMessage = {
+        type: "interrupt" as const,
+        data: {
+          taskId: conversation.id,
+          updateTime: Date.now(),
+        },
+      };
+      conversation.memory.addWebsocketMessage(interruptMessage);
+      broadcaster.broadcast(conversation.id, interruptMessage);
 
       broadcaster.broadcast(conversation.id, {
         type: "conversationOver",

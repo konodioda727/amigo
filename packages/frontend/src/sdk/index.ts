@@ -89,7 +89,6 @@ export {
 export {
   DefaultAlertRenderer,
   DefaultAskFollowupQuestionRenderer,
-  DefaultAssignTaskRenderer,
   DefaultBrowserSearchRenderer,
   DefaultCompletionResultRenderer,
   DefaultErrorRenderer,

@@ -64,5 +64,4 @@ export { DefaultToolRenderer } from "./DefaultToolRenderer";
 export { DefaultUserMessageRenderer } from "./DefaultUserMessageRenderer";
 
 // Re-export tool-specific renderers
-export { DefaultAssignTaskRenderer } from "./tools/DefaultAssignTaskRenderer";
 export { DefaultBrowserSearchRenderer } from "./tools/DefaultBrowserSearchRenderer";

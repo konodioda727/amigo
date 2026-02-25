@@ -4,7 +4,7 @@
  * 用于动态管理工具和消息的注册表类
  */
 
-import type { MessageDefinition, ToolInterface, ToolNames } from "@amigo-llm/types";
+import type { MessageDefinition, ToolInterface } from "@amigo-llm/types";
 import type { ZodObject } from "zod";
 
 /**
@@ -21,30 +21,31 @@ export class RegistrationError extends Error {
  * 工具注册表
  */
 export class ToolRegistry {
-  private tools: Map<string, ToolInterface<ToolNames>> = new Map();
+  // biome-ignore lint/suspicious/noExplicitAny: 注册表需要同时容纳内置和自定义工具
+  private tools: Map<string, ToolInterface<any>> = new Map();
 
   /**
    * 注册工具
    * @throws {RegistrationError} 如果同名工具已存在
    */
-  register(tool: ToolInterface<ToolNames>): void {
+  register<K extends string>(tool: ToolInterface<K>): void {
     if (this.tools.has(tool.name)) {
       throw new RegistrationError(`工具 "${tool.name}" 已被注册`);
     }
-    this.tools.set(tool.name, tool);
+    this.tools.set(tool.name, tool as ToolInterface<any>);
   }
 
   /**
    * 根据名称获取工具
    */
-  get(name: string): ToolInterface<ToolNames> | undefined {
+  get(name: string): ToolInterface<any> | undefined {
     return this.tools.get(name);
   }
 
   /**
    * 获取所有已注册的工具
    */
-  getAll(): ToolInterface<ToolNames>[] {
+  getAll(): ToolInterface<any>[] {
     return Array.from(this.tools.values());
   }
 

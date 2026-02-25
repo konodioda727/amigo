@@ -36,6 +36,7 @@
     "react-hot-toast": "^2.6.0",
     "react-icons": "^4.11.0",
     "react-router-dom": "^7.12.0",
+    "react-virtuoso": "^4.12.3",
     "streamdown": "^1.3.0",
     "tippy.js": "^6.3.7",
     "uuid": "^9.0.1",

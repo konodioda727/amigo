@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { conversationRepository } from "@/core/conversation/ConversationRepository";
 import { parseChecklist } from "@/core/templates/checklistParser";
 import { logger } from "@/utils/logger";
 import { createTool } from "../base";
@@ -19,6 +20,9 @@ export const GetTaskListProgress = createTool({
     "1. **进度检查：** 在执行阶段查看当前完成进度\n" +
     "2. **完成判断：** 判断是否所有任务都已完成\n" +
     "3. **状态报告：** 向用户报告当前工作进度\n\n" +
+    "**异步执行注意：**\n" +
+    "- `executeTaskList` 为异步任务，会自动推送进展和完成消息\n" +
+    "- 不要在短时间内反复调用本工具轮询；仅在用户明确要求、执行卡住或失败排障时使用\n\n" +
     "**返回信息：**\n" +
     "- 总任务数\n" +
     "- 已完成任务数\n" +
@@ -72,12 +76,30 @@ export const GetTaskListProgress = createTool({
         .filter((item) => item.completed)
         .map((item) => item.description);
 
+      const currentConversation =
+        conversationRepository.get(taskId as string) ||
+        conversationRepository.load(taskId as string);
+      const subTaskStatuses = currentConversation?.memory.subTasks || {};
+      const statusList = Object.values(subTaskStatuses);
+      const runningSubTasks = statusList
+        .filter((item) => item.status === "running")
+        .map((item) => item.description || item.subTaskId || "未知任务");
+      const waitingSubTasks = statusList
+        .filter((item) => item.status === "waiting_user_input")
+        .map((item) => item.description || item.subTaskId || "未知任务");
+      const failedSubTasks = statusList
+        .filter((item) => item.status === "failed")
+        .map((item) => ({
+          task: item.description || item.subTaskId || "未知任务",
+          error: item.error || "未知错误",
+        }));
+
       const isAllDone = parseResult.total > 0 && parseResult.remaining === 0;
       const statusText = isAllDone
         ? "所有任务已完成！"
         : `还有 ${parseResult.remaining} 个任务待完成`;
 
-      const successMsg = `任务进度: ${parseResult.completed}/${parseResult.total} (${parseResult.percentage}%) - ${statusText}`;
+      const successMsg = `任务进度: ${parseResult.completed}/${parseResult.total} (${parseResult.percentage}%) - ${statusText}；运行中 ${runningSubTasks.length}，等待输入 ${waitingSubTasks.length}，失败 ${failedSubTasks.length}`;
       logger.info(`[GetTaskListProgress] ${successMsg}`);
 
       return {
@@ -90,10 +112,16 @@ export const GetTaskListProgress = createTool({
             completed: parseResult.completed,
             remaining: parseResult.remaining,
             percentage: parseResult.percentage,
+            running: runningSubTasks.length,
+            waitingUserInput: waitingSubTasks.length,
+            failed: failedSubTasks.length,
           },
           isAllCompleted: isAllDone,
           pendingTasks,
           completedTasks,
+          runningSubTasks,
+          waitingSubTasks,
+          failedSubTasks,
         },
       };
     } catch (error) {

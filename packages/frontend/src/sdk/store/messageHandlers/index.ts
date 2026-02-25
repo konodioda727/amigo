@@ -22,6 +22,7 @@ const handlers: Partial<Record<SERVER_SEND_MESSAGE_NAME, MessageHandler>> = {
   taskHistory: handleTaskHistory,
   taskCreated: handleTaskCreated,
   taskDeleted: handleTaskDeleted,
+  taskStatusMapUpdated: handleTaskStatusMapUpdated,
 };
 
 export const getMessageHandler = (type: SERVER_SEND_MESSAGE_NAME): MessageHandler => {

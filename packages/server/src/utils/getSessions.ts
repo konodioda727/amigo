@@ -21,11 +21,10 @@ export const getSessionHistories = async () => {
     for (const dirent of taskIds) {
       if (dirent.isDirectory()) {
         const taskId = dirent.name;
-        const originalJsonPath = path.join(
+        const taskStatusJsonPath = path.join(
           globalStoragePath,
           taskId,
-          "messages",
-          `${StorageType.ORIGINAL}.json`,
+          `${StorageType.TASK_STATUS}.json`,
         );
         const frontendJsonPath = path.join(
           globalStoragePath,
@@ -33,16 +32,23 @@ export const getSessionHistories = async () => {
           "messages",
           `${StorageType.FRONT_END}.json`,
         );
+
+        let taskStatusData: any = {};
         try {
-          // 读取 original.json 检查是否是 subTask
-          const originalContent = await fs.promises.readFile(originalJsonPath, "utf-8");
-          const originalData = JSON.parse(originalContent);
+          // 读取 taskStatus.json 检查是否是 subTask
+          const taskStatusContent = await fs.promises.readFile(taskStatusJsonPath, "utf-8");
+          taskStatusData = JSON.parse(taskStatusContent);
 
           // 跳过 subTask（有 fatherTaskId 的会话）
-          if (originalData.fatherTaskId) {
+          if (taskStatusData.fatherTaskId) {
             continue;
           }
+        } catch (error) {
+          // 如果 taskStatus.json 不存在，可能是旧任务，继续处理
+          logger.warn(`taskStatus.json not found for taskId ${taskId}, skipping subTask check.`);
+        }
 
+        try {
           // 读取 frontend.json 获取标题和时间
           const frontendContent = await fs.promises.readFile(frontendJsonPath, "utf-8");
           const frontendData = JSON.parse(frontendContent);
@@ -50,11 +56,14 @@ export const getSessionHistories = async () => {
             (msg: any) => msg.type === "userSendMessage",
           );
           if (firstUserMessage) {
+            const attachments = firstUserMessage.data.attachments || [];
+            const fallbackTitle =
+              attachments.length > 0 ? `[附件] ${attachments[0].name || "未命名文件"}` : "";
             sessionHistories.push({
               taskId,
-              title: firstUserMessage.data.message,
+              title: firstUserMessage.data.message || fallbackTitle || `Task ${taskId}`,
               updatedAt:
-                frontendData.updatedAt || originalData.updatedAt || new Date().toISOString(),
+                frontendData.updatedAt || taskStatusData.updatedAt || new Date().toISOString(),
             });
           }
         } catch (error) {

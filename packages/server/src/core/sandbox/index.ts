@@ -24,10 +24,16 @@ export class Sandbox {
    * 在容器中执行命令
    * @param cmd 具体命令
    */
-  async runCommand(cmd: string): Promise<string | undefined> {
+  async runCommand(cmd: string, abortSignal?: AbortSignal): Promise<string | undefined> {
     if (!this.container) {
       logger.error("[Sandbox] runCommand: container is null");
       return;
+    }
+
+    if (abortSignal?.aborted) {
+      const abortError = new Error("命令执行已取消");
+      abortError.name = "AbortError";
+      throw abortError;
     }
 
     try {
@@ -46,6 +52,49 @@ export class Sandbox {
 
         let output = "";
         let errorOutput = "";
+        let settled = false;
+
+        const cleanupAbortListener = () => {
+          abortSignal?.removeEventListener("abort", onAbort);
+        };
+
+        const finishReject = (err: Error) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          cleanupAbortListener();
+          reject(err);
+        };
+
+        const finishResolve = (result: string) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          cleanupAbortListener();
+          resolve(result);
+        };
+
+        const onAbort = () => {
+          logger.info("[Sandbox] 命令执行收到中断信号");
+          const abortError = new Error("命令执行已取消");
+          abortError.name = "AbortError";
+          try {
+            stream.destroy(abortError);
+          } catch (destroyError) {
+            logger.debug("[Sandbox] 终止命令流时出错（可忽略）:", destroyError);
+          }
+          finishReject(abortError);
+        };
+
+        if (abortSignal) {
+          abortSignal.addEventListener("abort", onAbort, { once: true });
+          if (abortSignal.aborted) {
+            onAbort();
+            return;
+          }
+        }
 
         stdout.on("data", (chunk: Buffer) => {
           output += chunk.toString("utf8");
@@ -61,12 +110,12 @@ export class Sandbox {
         stream.on("end", () => {
           const result = output + errorOutput;
           logger.debug(`[Sandbox] Command completed, output: ${result.substring(0, 200)}`);
-          resolve(result);
+          finishResolve(result);
         });
 
         stream.on("error", (err: Error) => {
           logger.error(`[Sandbox] Stream error: ${err.message}`);
-          reject(err);
+          finishReject(err);
         });
       });
     } catch (error) {

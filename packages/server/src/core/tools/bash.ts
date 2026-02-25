@@ -95,7 +95,7 @@ export const Bash = createTool({
       // Capture both output and exit code in a single command execution
       // We append "; echo EXIT_CODE:$?" to capture the exit code reliably
       const commandWithExitCode = `${fullCommand}; echo EXIT_CODE:$?`;
-      const rawOutput = await sandbox.runCommand(commandWithExitCode);
+      const rawOutput = await sandbox.runCommand(commandWithExitCode, context.signal);
 
       logger.info(`[Bash] Command raw output length: ${rawOutput?.length}`);
       logger.info(`[Bash] Command raw output (full): ${JSON.stringify(rawOutput)}`);

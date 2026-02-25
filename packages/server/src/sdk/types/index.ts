@@ -9,6 +9,7 @@ import { z } from "zod";
 
 // Re-export existing types from @amigo-llm/types package for convenience
 export type { ToolInterface, ToolParamDefinition } from "@amigo-llm/types";
+export type { AmigoLlm, LlmFactory } from "../../core/model";
 
 // ============================================================================
 // Server Configuration (SDK-specific)

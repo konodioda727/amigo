@@ -31,50 +31,12 @@ export const createMentionSlice: StateCreator<WebSocketStore, [], [], MentionSli
 
   updateFollowupQueue: () => {
     const state = get();
-    const mainTaskId = state.mainTaskId;
-    const mainTaskState = state.tasks[mainTaskId];
-
-    if (!mainTaskState) {
+    if (!state.mainTaskId) {
       set({ followupQueue: [] });
       return;
     }
-
-    const displayMessages = mainTaskState.displayMessages || [];
-    const queue: Array<{ taskId: string; title: string }> = [];
-
-    for (const msg of displayMessages) {
-      if (msg.type === "tool") {
-        const toolMsg = msg as {
-          type: "tool";
-          toolName: string;
-          params: Record<string, unknown>;
-        };
-
-        if (toolMsg.toolName === "assignTasks") {
-          const params = toolMsg.params as {
-            tasklist?: Array<{ taskId?: string; target?: string; completed?: boolean }>;
-          };
-          const tasklist = params.tasklist || [];
-
-          tasklist.forEach((task, idx: number) => {
-            if (task.taskId && !task.completed) {
-              const subTaskState = state.tasks[task.taskId];
-              const subTaskMessages = subTaskState?.displayMessages || [];
-              const lastSubTaskMessage = subTaskMessages[subTaskMessages.length - 1];
-
-              if (lastSubTaskMessage?.type === "askFollowupQuestion") {
-                queue.push({
-                  taskId: task.taskId,
-                  title: task.target || `子任务 #${idx + 1}`,
-                });
-              }
-            }
-          });
-        }
-      }
-    }
-
-    set({ followupQueue: queue });
+    // Follow-up mentions are not derived from tool payloads in the current workflow.
+    set({ followupQueue: [] });
   },
 
   mentionNextInQueue: () => {

@@ -5,12 +5,12 @@
  *
  * @example
  * ```typescript
- * import { AmigoServerBuilder, defineTool, defineMessage } from "@amigo-llm/server/sdk";
- * import { z } from "zod";
+ * import { AmigoServerBuilder, defineTool } from "@amigo-llm/server/sdk";
  *
  * const server = new AmigoServerBuilder()
  *   .port(8080)
  *   .storagePath("./my-storage")
+ *   .appendSystemPrompt("你是一个 coding agent，先搜索定位，再修改，修改后必须验证。")
  *   .registerTool(defineTool({
  *     name: "my_tool",
  *     description: "My custom tool",
@@ -22,12 +22,13 @@
  *       toolResult: params.input,
  *     }),
  *   }))
- *   .registerMessage(defineMessage({
- *     type: "myNotification",
- *     dataSchema: z.object({ text: z.string() }),
- *   }))
  *   .build();
  * ```
+ *
+ * Note:
+ * - `registerTool()` 已接入运行时执行链。
+ * - `registerMessage()` 会在运行时对未匹配内置消息的入站消息做 schema 校验，并在校验通过后调用 `handler`。
+ * - 内置 WebSocket 消息（如 `createTask`、`userSendMessage`）仍走内置 resolver。
  */
 
 // Builder API
@@ -41,10 +42,12 @@ export { defineMessage, defineTool } from "./helpers";
 // Types (SDK-specific)
 // Re-export existing types from @amigo-llm/types for convenience
 export type {
+  AmigoLlm,
   CustomMessageDefinition,
   CustomToolDefinition,
   CustomToolInvokeContext,
   CustomToolParam,
+  LlmFactory,
   ServerConfig,
   ToolInterface,
   ToolParamDefinition,

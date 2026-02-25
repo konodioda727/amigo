@@ -48,6 +48,72 @@ interface DocsResult {
   lastEdited: DocType | null;
 }
 
+const extractPendingToolCallFromMessages = (
+  messages: Array<WebSocketMessage<SERVER_SEND_MESSAGE_NAME>>,
+  expectedToolName?: string,
+) => {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.type !== "tool") continue;
+
+    try {
+      const msgData = msg.data as { message: string };
+      const toolData = JSON.parse(msgData.message) as { toolName?: string; params?: any };
+      if (!toolData.toolName) continue;
+      if (expectedToolName && toolData.toolName !== expectedToolName) continue;
+
+      return {
+        toolName: toolData.toolName,
+        params: toolData.params,
+      };
+    } catch {
+      // ignore parse error and continue searching older tool messages
+    }
+  }
+
+  return null;
+};
+
+const inferTaskStatusFromHistory = (
+  messages: Array<WebSocketMessage<SERVER_SEND_MESSAGE_NAME>>,
+): "idle" | "interrupted" | "completed" | "error" | "waiting_tool_call" => {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (!msg) continue;
+
+    if (msg.type === "waiting_tool_call") {
+      return "waiting_tool_call";
+    }
+
+    if (msg.type === "interrupt") {
+      return "interrupted";
+    }
+
+    if (msg.type === "completionResult") {
+      return "completed";
+    }
+
+    if (msg.type === "error") {
+      return "error";
+    }
+
+    if (msg.type === "conversationOver") {
+      const reason = (msg.data as { reason?: string }).reason;
+      if (reason === "interrupt") return "interrupted";
+      if (reason === "error") return "error";
+      if (reason === "completionResult" || reason === "completeTask") return "completed";
+      return "idle";
+    }
+
+    if (msg.type === "alert") {
+      const severity = (msg.data as { severity?: string }).severity;
+      if (severity === "error") return "error";
+    }
+  }
+
+  return "idle";
+};
+
 const findLatestDocs = (messages: WebSocketMessage<any>[]): DocsResult => {
   const docs: DocCollection = {};
   let lastEdited: DocType | null = null;
@@ -119,6 +185,9 @@ export const createMessageSlice: StateCreator<WebSocketStore, [], [], MessageSli
 
   sendMessage: (taskId, message) => {
     const { socket, tasks } = get();
+    const isFirstConversationMessage =
+      (!taskId || taskId.trim() === "") &&
+      (message.type === "userSendMessage" || message.type === "createTask");
 
     // Debug logging
     console.log("[MessageSlice] sendMessage called:", {
@@ -139,6 +208,10 @@ export const createMessageSlice: StateCreator<WebSocketStore, [], [], MessageSli
       return;
     }
 
+    if (isFirstConversationMessage) {
+      get().setCreatingConversation(true);
+    }
+
     const messageToSend = {
       ...message,
       data: {
@@ -154,6 +227,7 @@ export const createMessageSlice: StateCreator<WebSocketStore, [], [], MessageSli
           type: "userSendMessage",
           data: {
             message: (message.data as any).message,
+            attachments: (message.data as any).attachments,
             taskId,
             updateTime: Date.now(),
             status: "pending",
@@ -307,27 +381,35 @@ export const createMessageSlice: StateCreator<WebSocketStore, [], [], MessageSli
       console.log("[handleTaskHistory] Found waiting_tool_call in history");
       get().setTaskStatus(taskId, "waiting_tool_call");
 
-      // Extract toolName and params from the previous tool message
-      for (let i = messages.length - 2; i >= 0; i--) {
-        const msg = messages[i];
-        if (msg.type === "tool") {
-          try {
-            const msgData = msg.data as { message: string };
-            const toolData = JSON.parse(msgData.message);
-            if (toolData.toolName && toolData.params) {
-              get().setPendingToolCall(taskId, {
-                toolName: toolData.toolName,
-                params: toolData.params,
-              });
-              console.log("[handleTaskHistory] Set pending tool call from history:", {
-                toolName: toolData.toolName,
-              });
-              break;
-            }
-          } catch (e) {
-            console.error("[handleTaskHistory] Failed to parse tool message:", e);
+      const waitingToolCallData = lastMessage.data as {
+        toolName?: string;
+        params?: any;
+      };
+
+      let pendingToolName = waitingToolCallData.toolName;
+      let pendingParams = waitingToolCallData.params;
+
+      if (!pendingToolName || pendingParams === undefined) {
+        const fallback = extractPendingToolCallFromMessages(messages, pendingToolName);
+        if (fallback) {
+          pendingToolName = pendingToolName || fallback.toolName;
+          if (pendingParams === undefined) {
+            pendingParams = fallback.params;
           }
         }
+      }
+
+      if (pendingToolName) {
+        get().setPendingToolCall(taskId, {
+          toolName: pendingToolName,
+          params: pendingParams,
+        });
+        console.log("[handleTaskHistory] Set pending tool call from history:", {
+          toolName: pendingToolName,
+          hasParams: pendingParams !== undefined,
+        });
+      } else {
+        get().setPendingToolCall(taskId, undefined);
       }
     } else if (
       lastMessage &&
@@ -339,6 +421,10 @@ export const createMessageSlice: StateCreator<WebSocketStore, [], [], MessageSli
       if (get().tasks[taskId].status !== "waiting_tool_call") {
         get().setTaskStatus(taskId, "waiting_tool_call");
       }
+      get().setPendingToolCall(taskId, undefined);
+    } else {
+      get().setTaskStatus(taskId, inferTaskStatusFromHistory(messages));
+      get().setPendingToolCall(taskId, undefined);
     }
 
     // Get the latest task state after status updates

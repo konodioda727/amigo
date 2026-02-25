@@ -9,5 +9,8 @@ export const handleTaskStatusMapUpdated = (
   if (data.taskId && data.subTasks) {
     store.setTaskStatusMap(data.taskId, data.subTasks);
   }
+  if (data.taskId && Array.isArray(data.autoApproveToolNames)) {
+    store.setTaskAutoApproveToolNames(data.taskId, data.autoApproveToolNames);
+  }
   return true;
 };

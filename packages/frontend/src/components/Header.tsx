@@ -1,7 +1,14 @@
 import { Activity, ChevronLeft, Layout, Menu } from "lucide-react";
 import { useConnection, useTasks } from "@/sdk";
 import type { ConnectionStatus } from "@/sdk/types/store";
+import { AmigoLogo } from "./AmigoLogo";
 import { useSidebar } from "./Layout";
+
+const normalizeSubTaskDescription = (description: string): string =>
+  description
+    .replace(/[*_`~]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 
 const statusConfig: Record<ConnectionStatus, { label: string; color: string; pulse?: boolean }> = {
   connected: { label: "已连接", color: "bg-green-500" },
@@ -19,9 +26,15 @@ const Header: React.FC = () => {
   const currentTaskStatusMap = mainTaskId ? (taskStatusMaps as any)[mainTaskId] : undefined;
   const currentSubTaskDescription =
     currentTaskId && currentTaskId !== mainTaskId && currentTaskStatusMap
-      ? Object.entries(currentTaskStatusMap).find(
-          ([_, status]) => (status as any).subTaskId === currentTaskId,
-        )?.[0]
+      ? (() => {
+          const entry = Object.entries(currentTaskStatusMap).find(
+            ([_, status]) => (status as any).subTaskId === currentTaskId,
+          );
+          if (!entry) return undefined;
+          const [, status] = entry;
+          const description = (status as any).description || entry[0];
+          return normalizeSubTaskDescription(description);
+        })()
       : undefined;
 
   return (
@@ -36,7 +49,10 @@ const Header: React.FC = () => {
           >
             {isOpen ? <ChevronLeft className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
           </button>
-          <div className="text-sm font-semibold text-gray-800 tracking-tight">Amigo</div>
+          <div className="flex items-center gap-1.5">
+            <AmigoLogo className="w-8 h-8" />
+            <div className="text-sm font-semibold text-gray-800 tracking-tight">Amigo</div>
+          </div>
         </div>
 
         {/* 任务 Tabs */}

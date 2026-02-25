@@ -3,6 +3,7 @@ import type {
   ToolNames,
   ToolParams,
   ToolResult,
+  UserMessageAttachment,
   WebSocketMessage,
 } from "@amigo-llm/types";
 
@@ -63,6 +64,7 @@ export interface CompletionResultType extends MessageType<"completionResult"> {
  */
 export interface UserSendMessageDisplayType {
   message: string;
+  attachments?: UserMessageAttachment[];
   updateTime: number;
   status?: "pending" | "acked" | "failed";
   type: "userSendMessage";

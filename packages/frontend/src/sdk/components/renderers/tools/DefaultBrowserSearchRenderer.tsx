@@ -21,21 +21,9 @@ export const DefaultBrowserSearchRenderer: React.FC<ToolMessageRendererProps<"br
     );
   }
 
-  const { query, url, action = "search" } = params;
+  const { query } = params;
   const isCompleted = !!toolOutput;
-
-  const getActionTitle = () => {
-    switch (action) {
-      case "search":
-        return `搜索: ${query}`;
-      case "navigate":
-        return `访问: ${url}`;
-      case "extract":
-        return "提取内容";
-      default:
-        return "浏览器操作";
-    }
-  };
+  const getActionTitle = () => `搜索并抓取: ${query}`;
 
   const getDomain = (link: string) => {
     try {
@@ -58,7 +46,7 @@ export const DefaultBrowserSearchRenderer: React.FC<ToolMessageRendererProps<"br
         <div>{isCompleted ? <CheckCircle className="w-4 h-4 text-green-500" /> : null}</div>
       </div>
 
-      {/* Content (Link Only) */}
+      {/* Content */}
       {isCompleted && (
         <div className="p-3 bg-white border-t border-gray-200">
           <div className="flex items-center gap-2">

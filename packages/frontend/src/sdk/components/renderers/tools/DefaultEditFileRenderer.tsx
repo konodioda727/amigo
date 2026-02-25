@@ -10,19 +10,7 @@ export const DefaultEditFileRenderer: React.FC<ToolMessageRendererProps<"editFil
   const { filePath, content, mode = "overwrite", startLine, endLine } = params;
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const fileName = filePath?.split("/").pop() || filePath;
-
-  const getModeBadge = () => {
-    switch (mode) {
-      case "create":
-        return <span className="badge badge-sm badge-success badge-outline">Create</span>;
-      case "patch":
-        return <span className="badge badge-sm badge-warning badge-outline">Patch</span>;
-      default:
-        return <span className="badge badge-sm badge-info badge-outline">Overwrite</span>;
-    }
-  };
-
+  const fileName = filePath ? filePath.split("/").pop() || filePath : "";
   return (
     <div className="my-2 border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm max-w-3xl">
       {/* Header */}

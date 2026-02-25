@@ -54,7 +54,8 @@ const CHECKLIST_PATTERN = /^(\s*)-\s+\[([ xX])\]\s+(.+)$/;
  * @returns 任务 ID 或 null
  */
 export function getTaskId(description: string): string | null {
-  const match = description.match(/^Task\s+([\d.]+):/i);
+  const normalized = description.replace(/[*_`]/g, "").trim();
+  const match = normalized.match(/^Task\s+([\d.]+)\s*[:：]?\s*/i);
   return match ? match[1] || null : null;
 }
 

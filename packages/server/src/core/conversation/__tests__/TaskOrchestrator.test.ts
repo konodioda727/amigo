@@ -82,4 +82,25 @@ describe("TaskOrchestrator Interrupt Logic", () => {
 
     expect(logger.info).toHaveBeenCalledWith("会话状态为 completed，无需打断。");
   });
+
+  it("should set aborted flag when interrupting waiting_tool_confirmation", () => {
+    const conversation = {
+      id: "test-id-waiting",
+      status: "waiting_tool_confirmation",
+      isAborted: false,
+      pendingToolCall: { toolName: "bash" },
+      userInput: "confirm",
+      memory: {
+        addMessage: mock(),
+        addWebsocketMessage: mock(),
+      },
+    } as any;
+
+    taskOrchestrator.interrupt(conversation);
+
+    expect(conversation.isAborted).toBe(true);
+    expect(conversation.status).toBe("aborted");
+    expect(conversation.pendingToolCall).toBeNull();
+    expect(conversation.userInput).toBe("");
+  });
 });

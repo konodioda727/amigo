@@ -1,5 +1,6 @@
 import type { SERVER_SEND_MESSAGE_NAME, ServerSendMessageData } from "./serverSend";
 import type { USER_SEND_MESSAGE_NAME, UserSendMessageData } from "./userSend";
+import type { UserMessageAttachment } from "./userSend/message";
 
 /**
  * 系统保留标签
@@ -24,6 +25,7 @@ export const systemReservedTags: SYSTEM_RESERVED_TAGS[] = [
 export type ChatMessage = {
   role: "user" | "assistant" | "system";
   content: string;
+  attachments?: UserMessageAttachment[];
   type: USER_SEND_MESSAGE_NAME | SERVER_SEND_MESSAGE_NAME | SYSTEM_RESERVED_TAGS;
   partial?: boolean;
   updateTime?: number;

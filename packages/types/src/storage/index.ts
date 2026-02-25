@@ -34,11 +34,11 @@ export interface PendingToolCall {
  */
 export interface SubTaskStatus {
   subTaskId?: string;
-  status: "idle" | "running" | "completed" | "failed";
+  status: "idle" | "running" | "waiting_user_input" | "completed" | "failed";
+  description?: string;
   startedAt?: string;
   completedAt?: string;
   error?: string;
-  index?: number;
 }
 
 /**
@@ -49,6 +49,7 @@ export interface TaskStatusMetadata {
   fatherTaskId?: string;
   conversationStatus: ConversationStatus;
   toolNames: string[];
+  autoApproveToolNames?: string[];
   pendingToolCall?: PendingToolCall;
   subTasks?: Record<string, SubTaskStatus>;
   createdAt: string;

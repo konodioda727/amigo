@@ -12,7 +12,6 @@ import {
   ExecuteTaskListSchema,
   GetTaskListProgressSchema,
   ReadTaskDocsSchema,
-  UpdateTaskListSchema,
 } from "./taskDocs";
 
 export type { ToolExecutionContext } from "./context";
@@ -24,7 +23,6 @@ export const toolSchemas = z.discriminatedUnion("name", [
   BrowserSearchSchema,
   CreateTaskDocsSchema,
   ReadTaskDocsSchema,
-  UpdateTaskListSchema,
   GetTaskListProgressSchema,
   ExecuteTaskListSchema,
   EditFileSchema,

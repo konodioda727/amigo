@@ -1,7 +1,7 @@
 import type React from "react";
 import { useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ChatWindow, MessageInput, useConnection } from "@/sdk";
+import { ChatWindow, MessageInput, useConnection, useTasks } from "@/sdk";
 import { useWebSocketContext } from "@/sdk/context/WebSocketContext";
 
 /**
@@ -12,7 +12,9 @@ const ChatPage: React.FC = () => {
   const { taskId } = useParams<{ taskId: string }>();
   const { store } = useWebSocketContext();
   const { isConnected } = useConnection();
+  const { currentTaskId } = useTasks();
   const navigate = useNavigate();
+  const effectiveTaskId = currentTaskId || taskId;
 
   // Load task history when taskId changes or connection is established
   useEffect(() => {
@@ -69,8 +71,8 @@ const ChatPage: React.FC = () => {
 
   return (
     <>
-      <ChatWindow taskId={taskId} />
-      <MessageInput taskId={taskId} />
+      <ChatWindow taskId={effectiveTaskId} />
+      <MessageInput taskId={effectiveTaskId} />
     </>
   );
 };

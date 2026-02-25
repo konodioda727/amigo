@@ -1,44 +1,20 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { getGlobalState } from "@/globalState";
 import { logger } from "@/utils/logger";
 import { conversationRepository } from "../conversation/ConversationRepository";
 import { broadcaster } from "../conversation/WebSocketBroadcaster";
+import {
+  getTaskId,
+  parseChecklist,
+  updateChecklistItemContent,
+  updateProgressSection,
+} from "../templates/checklistParser";
 import { createTool } from "./base";
-
-/**
- * 解析 Markdown checklist 并返回行数组
- */
-function parseChecklistLines(markdown: string): string[] {
-  return markdown.split("\n");
-}
-
-/**
- * 更新指定索引的 checklist 项为完成状态
- */
-function markTaskAsCompleted(lines: string[], taskIndex: number): string[] {
-  const updatedLines = [...lines];
-  let checklistIndex = -1;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]?.trim() || "";
-    // 匹配 checklist 项：- [ ] 或 * [ ]
-    if (line.startsWith("- [") || line.startsWith("* [")) {
-      checklistIndex++;
-      if (checklistIndex === taskIndex) {
-        // 将 [ ] 替换为 [x]
-        updatedLines[i] = lines[i]?.replace(/\[\s\]/, "[x]") || "";
-        break;
-      }
-    }
-  }
-
-  return updatedLines;
-}
+import { getTaskDocsPath } from "./taskDocs/utils";
 
 /**
  * 子任务完成工具
- * 用于子任务完成时自动更新父任务的 todolist，并标记任务结束
+ * 用于子任务完成时自动更新父任务的 taskList，并标记任务结束
  */
 export const CompleteTask = createTool({
   name: "completeTask",
@@ -47,7 +23,7 @@ export const CompleteTask = createTool({
   whenToUse:
     "**关键规则：子任务完成后，必须使用此工具来结束任务。**\n\n" +
     "**工具功能：**\n" +
-    "1. 自动定位并更新父任务 todolist 中对应的任务项（将 `[ ]` 改为 `[x]`）\n" +
+    "1. 自动定位并更新父任务 taskList 中对应的任务项（将 `[ ]` 改为 `[x]`）\n" +
     "2. 向父任务发送完成通知（包含摘要）\n" +
     "3. 标记子任务为完成状态\n" +
     "4. 返回任务完成结果给用户\n\n" +
@@ -72,7 +48,7 @@ export const CompleteTask = createTool({
     "- ❌ 输出纯文本而不使用 Markdown 格式\n\n" +
     "**工作原理：**\n" +
     "- 系统会自动从子任务上下文中获取父任务 ID 和任务索引\n" +
-    "- 读取父任务的 todolist 文件\n" +
+    "- 读取父任务的 taskList 文件\n" +
     "- 定位到对应的任务项并标记为完成\n" +
     "- 通知父任务更新进度（显示 summary）\n" +
     "- 结束子任务执行",
@@ -185,6 +161,11 @@ my-project/
   ],
   async invoke({ params, context }) {
     const { summary, result, achievements, usage } = params;
+    const activeConversationStatuses = new Set([
+      "streaming",
+      "tool_executing",
+      "waiting_tool_confirmation",
+    ]);
 
     // 检查是否是子任务
     if (!context.parentId) {
@@ -199,12 +180,13 @@ my-project/
     const parentTaskId = context.parentId;
 
     logger.info(
-      `[completeTask] 子任务 ${subTaskId} 完成，准备更新父任务 ${parentTaskId} 的 todolist`,
+      `[completeTask] 子任务 ${subTaskId} 完成，准备更新父任务 ${parentTaskId} 的 taskList`,
     );
 
     try {
-      // 获取父任务
-      const parentConversation = conversationRepository.get(parentTaskId);
+      // 获取父任务（内存优先，不存在则从磁盘加载）
+      const parentConversation =
+        conversationRepository.get(parentTaskId) || conversationRepository.load(parentTaskId);
       if (!parentConversation) {
         logger.warn(`[completeTask] 未找到父任务 ${parentTaskId}`);
         // 即使找不到父任务，也返回结果
@@ -216,48 +198,123 @@ my-project/
 
       // 从父任务的子任务状态中找到对应的任务索引
       const subTasks = parentConversation.memory.subTasks;
-      let taskIndex = -1;
+      let taskKey: string | undefined;
+      let taskDescription: string | undefined;
 
-      for (const status of Object.values(subTasks)) {
-        if (status.subTaskId === subTaskId && status.index !== undefined) {
-          taskIndex = status.index;
+      for (const [key, status] of Object.entries(subTasks)) {
+        if (status.subTaskId === subTaskId) {
+          taskKey = key;
+          taskDescription = status.description;
           break;
         }
       }
 
-      if (taskIndex === -1) {
-        logger.warn(`[completeTask] 未找到子任务 ${subTaskId} 的索引信息`);
-        return {
-          message: "任务完成（警告：未找到任务索引）",
-          toolResult: result,
-        };
-      }
+      // 读取父任务的 taskList 文件
+      const taskDocsPath = getTaskDocsPath(parentTaskId);
+      const taskListPath = path.join(taskDocsPath, "taskList.md");
 
-      // 读取父任务的 todolist 文件
-      const storagePath = getGlobalState("globalStoragePath") || process.cwd();
-      const todolistPath = path.join(storagePath, parentTaskId, "todolist.md");
-
-      let todolistContent = "";
+      let taskListContent = "";
       try {
-        todolistContent = readFileSync(todolistPath, "utf-8");
+        taskListContent = readFileSync(taskListPath, "utf-8");
       } catch (error) {
-        logger.warn(`[completeTask] 无法读取父任务的 todolist 文件: ${error}`);
+        logger.warn(`[completeTask] 无法读取父任务的 taskList 文件: ${error}`);
         return {
-          message: "任务完成（警告：无法读取父任务 todolist）",
+          message: "任务完成（警告：无法读取父任务 taskList）",
           toolResult: result,
         };
       }
 
-      // 更新 todolist
-      const lines = parseChecklistLines(todolistContent);
-      const updatedLines = markTaskAsCompleted(lines, taskIndex);
-      const updatedContent = updatedLines.join("\n");
+      const normalizeDescription = (description: string) =>
+        description.replace(/\(In Progress\)$/, "").trim();
+
+      const parsed = parseChecklist(taskListContent);
+      const normalizedTarget = taskDescription ? normalizeDescription(taskDescription) : undefined;
+      let targetItem = normalizedTarget
+        ? parsed.items.find((item) => normalizeDescription(item.description) === normalizedTarget)
+        : undefined;
+
+      if (!targetItem && taskKey) {
+        targetItem = parsed.items.find((item) => getTaskId(item.description) === taskKey);
+      }
+
+      if (!targetItem) {
+        logger.warn(`[completeTask] 未找到子任务 ${subTaskId} 对应的 taskList 项`);
+        if (taskDescription || taskKey) {
+          parentConversation.updateSubTaskStatus(taskDescription || taskKey || "", {
+            status: "completed",
+            completedAt: new Date().toISOString(),
+            subTaskId,
+          });
+        }
+        return {
+          message: "任务完成（警告：未找到 taskList 项）",
+          toolResult: result,
+        };
+      }
+
+      const finalDescription = normalizedTarget || normalizeDescription(targetItem.description);
+      parentConversation.updateSubTaskStatus(finalDescription, {
+        status: "completed",
+        completedAt: new Date().toISOString(),
+        subTaskId,
+      });
+      const updatedContent = updateChecklistItemContent(
+        taskListContent,
+        targetItem.lineNumber,
+        finalDescription,
+        true,
+      );
+      const finalContent = updateProgressSection(updatedContent);
 
       // 写回文件
-      writeFileSync(todolistPath, updatedContent, "utf-8");
-      logger.info(
-        `[completeTask] 已更新父任务 ${parentTaskId} 的 todolist，任务索引: ${taskIndex}`,
+      writeFileSync(taskListPath, finalContent, "utf-8");
+      logger.info(`[completeTask] 已更新父任务 ${parentTaskId} 的 taskList`);
+
+      const parsedAfterComplete = parseChecklist(finalContent);
+      const hasPendingTasks = parsedAfterComplete.items.some((item) => !item.completed);
+      const parentIsRunning = activeConversationStatuses.has(parentConversation.status);
+      const hasRunningSubTasks = Object.values(parentConversation.memory.subTasks).some(
+        (subTaskStatus) =>
+          subTaskStatus.status === "running" || subTaskStatus.status === "waiting_user_input",
       );
+
+      if (hasPendingTasks && !parentIsRunning && !hasRunningSubTasks) {
+        const executeTaskListTool =
+          parentConversation.toolService.getToolFromName("executeTaskList");
+        if (!executeTaskListTool) {
+          logger.warn("[completeTask] 父任务缺少 executeTaskList 工具，无法自动续跑 taskList");
+        } else {
+          logger.info(
+            `[completeTask] 父任务 ${parentTaskId} 当前未运行，自动触发 executeTaskList 继续执行剩余任务`,
+          );
+          try {
+            await executeTaskListTool.invoke({
+              params: {},
+              context: {
+                taskId: parentConversation.id,
+                parentId: parentConversation.parentId,
+                getSandbox: context.getSandbox,
+                getToolByName: (name) => parentConversation.toolService.getToolFromName(name),
+                signal: context.signal,
+                postMessage: (msg: string | object) => {
+                  broadcaster.postMessage(parentConversation, {
+                    role: "assistant",
+                    content: typeof msg === "string" ? msg : JSON.stringify(msg),
+                    type: "message",
+                    partial: true,
+                  });
+                },
+              },
+            });
+          } catch (resumeError) {
+            logger.error(
+              `[completeTask] 自动触发父任务 executeTaskList 失败: ${
+                resumeError instanceof Error ? resumeError.message : String(resumeError)
+              }`,
+            );
+          }
+        }
+      }
 
       // 通知父任务
       const notificationMessage = [
@@ -282,7 +339,7 @@ my-project/
         toolResult: result,
       };
     } catch (error) {
-      logger.error(`[completeTask] 更新父任务 todolist 失败: ${error}`);
+      logger.error(`[completeTask] 更新父任务 taskList 失败: ${error}`);
       // 即使更新失败，也返回结果
       return {
         message: `任务完成（警告：更新父任务失败 - ${error}）`,

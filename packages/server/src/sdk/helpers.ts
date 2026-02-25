@@ -4,7 +4,7 @@
  * 提供类型安全的工具和消息定义辅助函数
  */
 
-import type { ToolInterface, ToolNames } from "@amigo-llm/types";
+import type { ToolInterface } from "@amigo-llm/types";
 import { defineMessage as defineMessageFromTypes } from "@amigo-llm/types";
 
 /**
@@ -27,7 +27,7 @@ import { defineMessage as defineMessageFromTypes } from "@amigo-llm/types";
  * });
  * ```
  */
-export function defineTool<K extends ToolNames>(definition: ToolInterface<K>): ToolInterface<K> {
+export function defineTool<K extends string>(definition: ToolInterface<K>): ToolInterface<K> {
   return definition;
 }
 

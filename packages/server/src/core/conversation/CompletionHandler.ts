@@ -23,6 +23,11 @@ export class CompletionHandler {
     hadError: boolean,
     lastToolError: ToolError | null,
   ): Promise<boolean> {
+    if (conversation.isAborted || conversation.status === "aborted") {
+      logger.info("[CompletionHandler] 会话已中断，跳过完成阶段处理");
+      return false;
+    }
+
     if (conversation.status === "waiting_tool_confirmation") {
       logger.info("[CompletionHandler] Waiting for tool confirmation, stopping stream loop.");
       return false;
@@ -60,6 +65,11 @@ export class CompletionHandler {
    * 处理工具执行错误
    */
   private handleToolError(conversation: Conversation, toolError: ToolError): boolean {
+    if (conversation.isAborted || conversation.status === "aborted") {
+      logger.info("[CompletionHandler] 会话已中断，忽略工具错误恢复流程");
+      return false;
+    }
+
     const { toolName, error, type } = toolError;
     logger.info(`[CompletionHandler] 工具执行出错，添加错误信息到 memory`);
 
@@ -118,8 +128,8 @@ export class CompletionHandler {
       },
     });
 
-    // 子任务完成后直接返回 false，不需要等待用户输入
     logger.info(`[CompletionHandler] 子任务 ${conversation.id} 已通过 completeTask 完成`);
+    conversation.userInput = "";
     return false;
   }
 
@@ -180,9 +190,11 @@ export class CompletionHandler {
   /**
    * 处理默认情况
    */
-  private handleDefault(conversation: Conversation, _currentTool: string): boolean {
-    logger.info(`[CompletionHandler] default 分支: 设置 status 为 idle，返回 true`);
-    conversation.status = "idle";
+  private handleDefault(conversation: Conversation, currentTool: string): boolean {
+    logger.info(
+      `[CompletionHandler] default 分支: 工具 ${currentTool} 执行后继续循环，设置 status 为 streaming`,
+    );
+    conversation.status = "streaming";
     return true;
   }
 }

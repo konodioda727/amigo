@@ -18,7 +18,14 @@ export const CreateTaskDocs = createTool({
     "仅在处理复杂项目或严肃任务时使用。简单任务或闲聊请勿使用此工具。\n" +
     "1. **requirements:** 记录需求\n" +
     "2. **design:** 记录设计\n" +
-    "3. **taskList:** 记录执行步骤。注意：在 taskList 中，如果任务之间有依赖关系，请在任务描述末尾使用 `[deps: X.Y]` 格式注明，以便进行拓扑排序。\n",
+    "3. **taskList:** 记录执行步骤。注意：在 taskList 中，如果任务之间有依赖关系，请在任务描述末尾使用 `[deps: X.Y]` 格式注明，以便进行拓扑排序。\n" +
+    "\n" +
+    "**内容要求：**\n" +
+    "- 文档内容要具体、可执行，避免一句话概括\n" +
+    "- requirements/design 必须包含清晰的目标、约束和验收标准\n" +
+    "- design 内容深度需匹配任务类型（通用任务强调方法与验证；编程任务强调接口/数据模型/错误处理/测试/权衡）\n" +
+    "- design 必须由主任务定义 subTask 协作契约：过程文档位置、命名规范、输入输出与交接规范\n" +
+    "- taskList 每条任务要包含上下文、涉及文件/路径、预期输出\n",
 
   useExamples: [
     `<createTaskDocs>
@@ -26,11 +33,20 @@ export const CreateTaskDocs = createTool({
   <content># Requirements
 
 ## Background
-用户需要一个安全的登录系统
+需要为现有的 Web 应用增加安全的登录能力，当前只有匿名访问。
 
 ## Objectives
-- 实现用户名密码登录
-- 支持记住登录状态
+- 支持用户名/密码登录
+- 支持 7 天内自动登录（可配置）
+- 登录失败给出明确错误信息
+
+## Constraints
+- 不引入新的数据库（必须复用现有用户表）
+- 兼容现有前端路由
+
+## Success Criteria
+- 用户可在 3 次内完成登录
+- 未登录访问受保护路由时会被重定向
   </content>
 </createTaskDocs>`,
     `<createTaskDocs>
@@ -40,8 +56,8 @@ export const CreateTaskDocs = createTool({
 ## Tasks
 
 ### Phase 1: 基础实现
-- [ ] Task 1.1: 实现数据查询接口 [tools: readFile, editFile]
-- [ ] Task 1.2: 实现 CSV 格式导出 [tools: editFile, deps: 1.1]
+- [ ] Task 1.1: 在 packages/server/src/api/report.ts 增加查询接口，返回分页 JSON（包含 total/items）[tools: readFile, editFile]
+- [ ] Task 1.2: 在 packages/server/src/api/report.ts 增加 CSV 导出能力，复用查询结果并添加列头 [tools: editFile, deps: 1.1]
 
 ## Progress
 - Total: 2 tasks

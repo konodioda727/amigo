@@ -17,12 +17,66 @@ import { Streamdown } from "streamdown";
 import { useWebSocketContext } from "../sdk/context/WebSocketContext";
 import { useTasks } from "../sdk/hooks";
 import type { DocType } from "../sdk/store/slices/docSlice";
+import { toast } from "../utils/toast";
+
+interface TaskListItem {
+  rawDescription: string;
+  normalizedDescription: string;
+  displayDescription: string;
+  taskKey: string;
+  isCompleted: boolean;
+}
+
+const TASK_LIST_LINE_PATTERN = /^\s*-\s+\[([ xX])\]\s+(.+)$/;
+const IN_PROGRESS_SUFFIX_PATTERN = /\s*\(In Progress\)\s*$/i;
+const TASK_ID_PATTERN = /\bTask\s+(\d+(?:\.\d+)*)\s*[:：]?/i;
+const TASK_ID_TAG_PATTERN = /\[id:\s*([\d.]+)\s*\]/i;
+
+const normalizeTaskDescription = (description: string): string =>
+  description
+    .replace(IN_PROGRESS_SUFFIX_PATTERN, "")
+    .replace(/[*_`~]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const extractTaskId = (description: string): string | null => {
+  const normalized = normalizeTaskDescription(description);
+  const idTagMatch = normalized.match(TASK_ID_TAG_PATTERN);
+  if (idTagMatch?.[1]) {
+    return idTagMatch[1];
+  }
+
+  const taskMatch = normalized.match(TASK_ID_PATTERN);
+  return taskMatch?.[1] ?? null;
+};
+
+const parseTaskListLine = (line: string): TaskListItem | null => {
+  const match = line.match(TASK_LIST_LINE_PATTERN);
+  if (!match) {
+    return null;
+  }
+
+  const checkmark = match[1];
+  const rawDescription = match[2]?.trim() || "";
+  const normalizedDescription = normalizeTaskDescription(rawDescription);
+  const displayDescription = normalizedDescription.replace(/^\[id:\s*[\d.]+\s*\]\s*/i, "");
+  const taskId = extractTaskId(rawDescription);
+
+  return {
+    rawDescription,
+    normalizedDescription,
+    displayDescription,
+    taskKey: taskId || normalizedDescription,
+    isCompleted: checkmark?.toLowerCase() === "x",
+  };
+};
 
 const DocSidebar: React.FC = () => {
   const { store } = useWebSocketContext();
   const { mainTaskId, currentTaskId, switchTask, taskStatusMaps } = useTasks();
   const docState = store((state) => state.docState);
   const closeDoc = store((state) => state.closeDoc);
+  const openDoc = store((state) => state.openDoc);
   const setActiveDoc = store((state) => state.setActiveDoc);
   const updateDocContent = store((state) => state.updateDocContent);
 
@@ -63,10 +117,26 @@ const DocSidebar: React.FC = () => {
     }
   }, [currentDoc.content, activeDoc]);
 
-  if (!shouldRender) return null;
+  if (!shouldRender && !hasAnyContent) return null;
 
   const handleSave = () => {
     updateDocContent(activeDoc, editContent);
+    const targetTaskId = mainTaskId || currentTaskId;
+    if (!targetTaskId) {
+      toast.error("当前没有可保存的任务，请先创建或加载任务");
+      setIsEditing(false);
+      return;
+    }
+
+    store.getState().sendMessage(targetTaskId, {
+      type: "updateTaskDoc",
+      data: {
+        taskId: targetTaskId,
+        phase: activeDoc,
+        content: editContent,
+      },
+    });
+
     setIsEditing(false);
   };
 
@@ -77,25 +147,38 @@ const DocSidebar: React.FC = () => {
   ];
 
   return (
-    <div
-      className={`
-        h-full flex flex-col border-l border-gray-200 bg-white shadow-xl z-10
-        transition-all duration-300 ease-in-out overflow-hidden
-        ${shouldShow ? "w-[450px]" : "w-0"}
-      `}
-    >
-      <div className="w-[450px] h-full flex flex-col">
-        <div className="px-3 py-3 border-b border-gray-100 bg-white">
-          <div className="flex items-center justify-between gap-1.5 p-1 bg-gray-100/50 rounded-xl border border-gray-200">
-            <div className="flex items-center gap-0.5">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.type}
-                  onClick={() => {
-                    setActiveDoc(tab.type);
-                    setIsEditing(false);
-                  }}
-                  className={`
+    <>
+      {!shouldShow && hasAnyContent && (
+        <button
+          onClick={openDoc}
+          className="fixed right-4 top-[100px] z-50 p-3 bg-white border border-gray-200 shadow-xl rounded-full text-gray-500 hover:text-blue-500 hover:border-blue-200 transition-all cursor-pointer group"
+          aria-label="Open documents"
+          title="打开文档栏"
+        >
+          <FileText className="w-5 h-5 group-hover:scale-110 transition-transform" />
+        </button>
+      )}
+
+      {shouldRender && (
+        <div
+          className={`
+            h-full flex flex-col border-l border-gray-200 bg-white shadow-xl z-10
+            transition-all duration-300 ease-in-out overflow-hidden
+            ${shouldShow ? "w-[450px]" : "w-0"}
+          `}
+        >
+          <div className="w-[450px] h-full flex flex-col">
+            <div className="px-3 py-3 border-b border-gray-100 bg-white">
+              <div className="flex items-center justify-between gap-1.5 p-1 bg-gray-100/50 rounded-xl border border-gray-200">
+                <div className="flex items-center gap-0.5">
+                  {tabs.map((tab) => (
+                    <button
+                      key={tab.type}
+                      onClick={() => {
+                        setActiveDoc(tab.type);
+                        setIsEditing(false);
+                      }}
+                      className={`
                   flex items-center space-x-1 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all
                   ${
                     activeDoc === tab.type
@@ -103,86 +186,88 @@ const DocSidebar: React.FC = () => {
                       : "text-gray-500 hover:text-gray-900 hover:bg-gray-200/50"
                   }
                 `}
-                >
-                  <span className="shrink-0">{tab.icon}</span>
-                  <span className="hidden sm:inline">{tab.label}</span>
-                </button>
-              ))}
-            </div>
+                    >
+                      <span className="shrink-0">{tab.icon}</span>
+                      <span className="hidden sm:inline">{tab.label}</span>
+                    </button>
+                  ))}
+                </div>
 
-            <div className="flex items-center gap-1.5 pr-1">
-              <button
-                onClick={() => {
-                  if (isEditing) handleSave();
-                  else setIsEditing(true);
-                }}
-                className="flex items-center space-x-1 text-xs font-medium text-gray-600 px-2.5 py-1.5 rounded-lg hover:bg-gray-100 transition-colors shrink-0"
-              >
-                {isEditing ? (
-                  <>
-                    <Eye className="w-3.5 h-3.5" />
-                    <span className="hidden xs:inline">Preview</span>
-                  </>
-                ) : (
-                  <>
-                    <Edit2 className="w-3.5 h-3.5" />
-                    <span className="hidden xs:inline">Edit</span>
-                  </>
-                )}
-              </button>
-
-              <div className="w-px h-4 bg-gray-300 mx-1" />
-
-              <button
-                onClick={closeDoc}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition-all shrink-0"
-                aria-label="Close"
-              >
-                <X className="w-4 h-4" strokeWidth={2} />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto bg-white">
-          {isEditing ? (
-            <textarea
-              className="w-full h-full p-4 resize-none focus:outline-none text-sm font-mono text-neutral-800 leading-relaxed"
-              value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-              placeholder={`在这里输入 ${tabs.find((t) => t.type === activeDoc)?.label.toLowerCase()}...`}
-            />
-          ) : activeDoc === "taskList" ? (
-            <div className="p-4">
-              <TaskListContent
-                content={currentDoc.content || ""}
-                statusMap={mainTaskId ? taskStatusMaps[mainTaskId] : {}}
-                currentTaskId={currentTaskId}
-                onTaskClick={(taskId) => taskId && switchTask(taskId)}
-              />
-            </div>
-          ) : (
-            <div className="p-4 prose prose-sm max-w-none prose-neutral">
-              {currentDoc.content ? (
-                <Streamdown>{currentDoc.content}</Streamdown>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-64 text-neutral-400 space-y-2">
-                  <FileText className="w-8 h-8 opacity-20" />
-                  <span className="text-sm">暂无内容</span>
+                <div className="flex items-center gap-1.5 pr-1">
                   <button
-                    onClick={() => setIsEditing(true)}
-                    className="text-blue-500 hover:underline text-xs"
+                    onClick={() => {
+                      if (isEditing) handleSave();
+                      else setIsEditing(true);
+                    }}
+                    className="flex items-center space-x-1 text-xs font-medium text-gray-600 px-2.5 py-1.5 rounded-lg hover:bg-gray-100 transition-colors shrink-0"
                   >
-                    开始编写
+                    {isEditing ? (
+                      <>
+                        <Eye className="w-3.5 h-3.5" />
+                        <span className="hidden xs:inline">Preview</span>
+                      </>
+                    ) : (
+                      <>
+                        <Edit2 className="w-3.5 h-3.5" />
+                        <span className="hidden xs:inline">Edit</span>
+                      </>
+                    )}
                   </button>
+
+                  <div className="w-px h-4 bg-gray-300 mx-1" />
+
+                  <button
+                    onClick={closeDoc}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition-all shrink-0"
+                    aria-label="Close"
+                  >
+                    <X className="w-4 h-4" strokeWidth={2} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto bg-white">
+              {isEditing ? (
+                <textarea
+                  className="w-full h-full p-4 resize-none focus:outline-none text-sm font-mono text-neutral-800 leading-relaxed"
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  placeholder={`在这里输入 ${tabs.find((t) => t.type === activeDoc)?.label.toLowerCase()}...`}
+                />
+              ) : activeDoc === "taskList" ? (
+                <div className="p-4">
+                  <TaskListContent
+                    content={currentDoc.content || ""}
+                    statusMap={mainTaskId ? taskStatusMaps[mainTaskId] : {}}
+                    currentTaskId={currentTaskId}
+                    onTaskClick={(taskId) => taskId && switchTask(taskId)}
+                  />
+                </div>
+              ) : (
+                <div className="p-4 prose prose-sm max-w-none prose-neutral">
+                  {currentDoc.content ? (
+                    <Streamdown>{currentDoc.content}</Streamdown>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-64 text-neutral-400 space-y-2">
+                      <FileText className="w-8 h-8 opacity-20" />
+                      <span className="text-sm">暂无内容</span>
+                      <button
+                        onClick={() => setIsEditing(true)}
+                        className="text-blue-500 hover:underline text-xs"
+                      >
+                        开始编写
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          )}
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+    </>
   );
 };
 
@@ -194,31 +279,40 @@ const TaskListContent: React.FC<{
 }> = ({ content, statusMap, currentTaskId, onTaskClick }) => {
   const items = useMemo(() => {
     if (!content) return [];
-    // 简单的 Markdown Checklist 解析
     const lines = content.split("\n");
-    const taskLines = lines.filter((line) => line.trim().startsWith("- ["));
-    return taskLines.map((line) => {
-      const isCompleted = line.includes("[x]") || line.includes("[X]");
-      const description = line
-        .replace(/- \[[x ]\]/i, "")
-        .replace(/\(In Progress\)$/, "")
-        .trim();
-      return { description, isCompleted };
-    });
+    return lines.map(parseTaskListLine).filter((item): item is TaskListItem => item !== null);
   }, [content]);
 
-  const getStatusIcon = (description: string, isCompleted: boolean) => {
-    const status = statusMap?.[description]?.status;
+  const getStatusEntry = (item: TaskListItem) => {
+    const lookupKeys = [
+      item.taskKey,
+      item.rawDescription,
+      item.normalizedDescription,
+      item.displayDescription,
+    ];
+
+    for (const key of lookupKeys) {
+      if (!key) continue;
+      if (statusMap?.[key]) {
+        return statusMap[key];
+      }
+    }
+
+    return undefined;
+  };
+
+  const getStatusIcon = (status: string | undefined, isCompleted: boolean) => {
     if (status === "running") return <PlayCircle className="w-4 h-4 text-blue-500 animate-pulse" />;
+    if (status === "waiting_user_input") return <Circle className="w-4 h-4 text-amber-500" />;
     if (status === "completed" || isCompleted)
       return <CheckCircle2 className="w-4 h-4 text-green-500" />;
     if (status === "failed") return <XCircle className="w-4 h-4 text-red-500" />;
     return <Circle className="w-4 h-4 text-gray-300" />;
   };
 
-  const getStatusText = (description: string, isCompleted: boolean) => {
-    const status = statusMap?.[description]?.status;
+  const getStatusText = (status: string | undefined, isCompleted: boolean) => {
     if (status === "running") return "进行中";
+    if (status === "waiting_user_input") return "等待用户输入";
     if (status === "completed" || isCompleted) return "已完成";
     if (status === "failed") return "已失败";
     return "空闲";
@@ -234,11 +328,13 @@ const TaskListContent: React.FC<{
       ) : (
         <div className="space-y-1">
           {items.map((item) => {
-            const subTaskId = statusMap?.[item.description]?.subTaskId;
+            const statusEntry = getStatusEntry(item);
+            const status = statusEntry?.status;
+            const subTaskId = statusEntry?.subTaskId;
             const isActive = subTaskId === currentTaskId;
             return (
               <button
-                key={item.description}
+                key={`${item.taskKey}-${item.rawDescription}`}
                 onClick={() => onTaskClick(subTaskId)}
                 disabled={!subTaskId}
                 className={`
@@ -252,15 +348,15 @@ const TaskListContent: React.FC<{
                   }
                 `}
               >
-                <div className="shrink-0">{getStatusIcon(item.description, item.isCompleted)}</div>
+                <div className="shrink-0">{getStatusIcon(status, item.isCompleted)}</div>
                 <div className="flex-1 min-w-0">
                   <div
                     className={`text-sm font-medium truncate ${isActive ? "text-blue-700" : "text-gray-700"}`}
                   >
-                    {item.description}
+                    {item.displayDescription}
                   </div>
                   <div className="text-[10px] text-gray-400 font-medium">
-                    {getStatusText(item.description, item.isCompleted)}
+                    {getStatusText(status, item.isCompleted)}
                   </div>
                 </div>
                 {subTaskId && (

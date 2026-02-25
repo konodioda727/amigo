@@ -141,13 +141,10 @@ const toolProcessor: MessageProcessor<"tool"> = ({ msg, res }) => {
 
   if (shouldMerge && lastMessage?.type === "tool") {
     // 合并消息：更新最后一条 tool 消息
-    // 特殊处理 assignTasks：需要保留已经添加的 taskId
-    const mergedParams = (params as unknown as ToolParams<any>) || lastMessage.params;
-
     res[res.length - 1] = {
       type: "tool",
       toolName: lastMessage.toolName,
-      params: mergedParams,
+      params: (params as unknown as ToolParams<any>) || lastMessage.params,
       toolOutput: result as unknown as ToolResult<any>,
       error: error,
       hasError: !!error,
@@ -181,12 +178,14 @@ const userSendMessageProcessor: MessageProcessor<"userSendMessage"> = ({ msg, re
   if (msg.type !== "userSendMessage") return { handled: false };
   const userMsg = msg.data as {
     message: string;
+    attachments?: any[];
     updateTime?: number;
     status?: "pending" | "acked" | "failed";
   };
   res.push({
     type: "userSendMessage",
     message: userMsg.message ?? "",
+    attachments: userMsg.attachments,
     updateTime: typeof userMsg.updateTime === "number" ? userMsg.updateTime : Date.now(),
     status: userMsg.status,
   });

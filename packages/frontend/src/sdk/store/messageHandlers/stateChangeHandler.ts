@@ -5,6 +5,8 @@ export const handleStateChange: MessageHandler = (message, store) => {
   const messageData = message.data as any;
   const taskId = messageData.taskId || store.mainTaskId;
 
+  store.setCreatingConversation(false);
+
   switch (message.type) {
     case "conversationOver": {
       const reason = messageData.reason;
@@ -26,8 +28,21 @@ export const handleStateChange: MessageHandler = (message, store) => {
       store.setTaskStatus(taskId, "interrupted");
       break;
     case "alert":
-      store.setTaskStatus(taskId, "error");
-      toast.error(messageData.message);
+      switch (messageData.severity) {
+        case "error":
+          store.setTaskStatus(taskId, "error");
+          toast.error(messageData.message);
+          break;
+        case "warning":
+          toast.warning(messageData.message);
+          break;
+        case "success":
+          toast.success(messageData.message);
+          break;
+        default:
+          toast.info(messageData.message);
+          break;
+      }
       break;
   }
 

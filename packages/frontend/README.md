@@ -1,86 +1,80 @@
 # @amigo-llm/frontend
 
-A React SDK for building AI agent orchestration interfaces with WebSocket-based real-time communication, customizable message rendering, and hierarchical task management.
+`@amigo-llm/frontend` 是 Amigo 的 React SDK，提供 WebSocket 连接管理、任务状态管理、消息渲染能力以及一组可复用组件，适合在业务应用中快速接入多任务对话界面。
 
-## Features
+本文档以当前仓库代码为准，重点覆盖：安装、最小示例、常用 hooks、组件使用、渲染定制、常见问题。
 
-- 🔌 **WebSocket Provider** - Centralized connection and state management
-- 🎣 **React Hooks** - Access messages, tasks, and connection state
-- 🎨 **Customizable Renderers** - Override default message rendering with your own components
-- 🧩 **Pre-built Components** - ChatWindow, MessageInput, ConversationHistory, and more
-- 📦 **Type-Safe** - Full TypeScript support with strict type checking
-- ⚡ **Performance** - Efficient re-renders with Zustand state management
-- 🌳 **Tree-Shakeable** - Import only what you need
-
-## Installation
+## 安装
 
 ```bash
-# Using pnpm
-pnpm add @amigo-llm/frontend
-
-# Using npm
-npm install @amigo-llm/frontend
-
-# Using yarn
-yarn add @amigo-llm/frontend
-
-# Using bun
-bun add @amigo-llm/frontend
+bun add @amigo-llm/frontend react react-dom
 ```
 
-### Peer Dependencies
+也可使用 `pnpm` / `npm` / `yarn`。
 
-This package requires React 18 or higher:
+### 样式引入
 
-```bash
-pnpm add react react-dom
+SDK 提供样式导出：
+
+```ts
+import "@amigo-llm/frontend/styles";
 ```
 
-### Styles
+建议在应用入口文件中引入一次。
 
-Import the SDK styles in your application:
+## 快速开始
 
-```typescript
-import '@amigo-llm/frontend/styles';
-```
-
-## Quick Start
-
-Here's a minimal example to get you started:
+### 最小可用示例
 
 ```tsx
 import {
   WebSocketProvider,
   ChatWindow,
   MessageInput,
-} from '@amigo-llm/frontend';
-import '@amigo-llm/frontend/styles';
+} from "@amigo-llm/frontend";
+import "@amigo-llm/frontend/styles";
 
-function App() {
+export default function App() {
   return (
-    <WebSocketProvider
-      url="ws://localhost:10013"
-      autoConnect={true}
-    >
-      <div className="flex flex-col h-screen">
+    <WebSocketProvider url="ws://localhost:10013" autoConnect>
+      <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
         <ChatWindow className="flex-1" />
-        <MessageInput placeholder="Type a message..." />
+        <MessageInput placeholder="输入消息..." />
       </div>
     </WebSocketProvider>
   );
 }
-
-export default App;
 ```
 
-## Core Concepts
+前提条件：
 
-### WebSocketProvider
+- WebSocket 服务端已启动（默认 `ws://localhost:10013`）
+- 前后端消息协议与 `@amigo-llm/types` 保持一致（仓库内联调时已满足）
 
-The `WebSocketProvider` is the root component that manages the WebSocket connection and provides context to all child components.
+## 核心概念
+
+### `WebSocketProvider`
+
+`WebSocketProvider` 是 SDK 的入口组件，负责：
+
+- 创建内部 Zustand store
+- 建立/关闭 WebSocket 连接
+- 向子组件提供上下文（store、配置、渲染器、事件回调）
+
+必须把所有 SDK hooks 和组件放在 `WebSocketProvider` 内部使用。
+
+### 任务（Task）与消息（Message）
+
+SDK 的状态组织方式不是单一聊天流，而是围绕 `taskId` 管理：
+
+- 每个任务维护自己的 `rawMessages` 和 `displayMessages`
+- 当前激活任务可切换（适合主任务/子任务场景）
+- SDK 会根据服务端消息更新任务状态、任务树和文档侧栏数据
+
+## `WebSocketProvider` 使用说明
 
 ```tsx
-import { WebSocketProvider } from '@amigo-llm/frontend';
+import { WebSocketProvider } from "@amigo-llm/frontend";
 
 <WebSocketProvider
   url="ws://localhost:10013"
@@ -88,680 +82,295 @@ import { WebSocketProvider } from '@amigo-llm/frontend';
   reconnect={true}
   reconnectInterval={3000}
   reconnectAttempts={5}
-  onConnect={() => console.log('Connected')}
-  onDisconnect={() => console.log('Disconnected')}
-  onError={(error) => console.error('Error:', error)}
-  onMessage={(message) => console.log('Message:', message)}
-  renderers={{
-    message: CustomMessageRenderer,
-    tool: CustomToolRenderer,
-  }}
+  onConnect={() => console.log("connected")}
+  onDisconnect={() => console.log("disconnected")}
+  onError={(error) => console.error(error)}
 >
-  {/* Your app components */}
-</WebSocketProvider>
+  <YourApp />
+</WebSocketProvider>;
 ```
 
-#### Props
+### 常用 props
 
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `url` | `string` | - | WebSocket server URL |
-| `autoConnect` | `boolean` | `true` | Automatically connect on mount |
-| `reconnect` | `boolean` | `true` | Enable automatic reconnection |
-| `reconnectInterval` | `number` | `3000` | Milliseconds between reconnection attempts |
-| `reconnectAttempts` | `number` | `5` | Maximum reconnection attempts |
-| `onConnect` | `() => void` | - | Called when connection is established |
-| `onDisconnect` | `() => void` | - | Called when connection is closed |
-| `onError` | `(error: Error) => void` | - | Called on connection errors |
-| `onMessage` | `(message: any) => void` | - | Called on every received message |
-| `renderers` | `Partial<MessageRendererMap>` | - | Custom message renderers |
-| `children` | `ReactNode` | - | Child components |
+| Prop | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `url` | `string` | `ws://localhost:10013` | WebSocket 地址 |
+| `autoConnect` | `boolean` | `true` | Provider 挂载后是否自动连接 |
+| `reconnect` | `boolean` | `true` | 预留配置（由 store 配置承载） |
+| `reconnectInterval` | `number` | `3000` | 重连间隔（毫秒） |
+| `reconnectAttempts` | `number` | `5` | 最大重连次数 |
+| `onConnect` | `() => void` | - | 连接建立回调 |
+| `onDisconnect` | `() => void` | - | 连接断开回调 |
+| `onError` | `(error: Error) => void` | - | 错误回调 |
+| `onMessage` | `(message: any) => void` | - | 预留消息回调（当前实现未做细粒度转发） |
+| `renderers` | `Partial<MessageRendererMap>` | - | 自定义渲染器映射 |
+| `initialState` | `WebSocketStoreConfig["initialState"]` | - | 初始化任务状态（测试/恢复场景） |
 
-### Hooks
+### 当前版本已知行为（重要）
 
-The SDK provides several hooks to access state and functionality:
+当前仓库实现中，底层连接切片会直接使用 `window.location.hostname:10013` 建立连接，`url` 参数尚未完整贯通到底层连接逻辑。
 
-#### useConnection
+这意味着：
 
-Access connection state and status:
+- 你传入 `url` 仍会进入 Provider 配置，但实际连接地址可能仍是 `*:10013`
+- 如果你的服务端不在 `10013` 端口，可能需要先修改 SDK 源码中的连接逻辑（`src/sdk/store/slices/connectionSlice.ts`）
+
+如果你准备对外发布 SDK，建议优先修复这点。
+
+## Hooks
+
+所有 hooks 都必须在 `WebSocketProvider` 内使用。
+
+### `useConnection()`
+
+读取连接状态。
 
 ```tsx
-import { useConnection } from '@amigo-llm/frontend';
+import { useConnection } from "@amigo-llm/frontend";
 
 function ConnectionStatus() {
-  const { status, isConnected, isConnecting, isDisconnected, error } = useConnection();
-  
+  const { status, isConnected, isConnecting, isDisconnected } = useConnection();
+
   return (
     <div>
-      Status: {status}
-      {error && <p>Error: {error.message}</p>}
+      状态: {status}
+      {isConnected && " (已连接)"}
+      {isConnecting && " (连接中)"}
+      {isDisconnected && " (未连接)"}
     </div>
   );
 }
 ```
 
-#### useMessages
+返回值（常用）：
 
-Access messages for the current or specific task:
+- `status`
+- `isConnected`
+- `isConnecting`
+- `isDisconnected`
+- `error`（当前实现固定为 `null`，预留字段）
 
-```tsx
-import { useMessages } from '@amigo-llm/frontend';
+### `useWebSocket()`
 
-function MessageList({ taskId }) {
-  const { messages, rawMessages, sendMessage, clearMessages } = useMessages(taskId);
-  
-  return (
-    <div>
-      {messages.map((msg, i) => (
-        <div key={i}>{msg.content}</div>
-      ))}
-      <button onClick={() => sendMessage('Hello!')}>Send</button>
-      <button onClick={clearMessages}>Clear</button>
-    </div>
-  );
-}
-```
-
-#### useTasks
-
-Access task hierarchy and status:
+底层连接与消息发送/订阅能力，适合需要更强控制的场景。
 
 ```tsx
-import { useTasks } from '@amigo-llm/frontend';
+import { useEffect } from "react";
+import { useWebSocket } from "@amigo-llm/frontend";
 
-function TaskList() {
-  const {
-    tasks,
-    currentTaskId,
-    mainTaskId,
-    switchTask,
-    getTaskHierarchy,
-    getTaskStatus,
-  } = useTasks();
-  
-  return (
-    <div>
-      {Object.values(tasks).map(task => (
-        <div key={task.taskId} onClick={() => switchTask(task.taskId)}>
-          {task.taskId} - {getTaskStatus(task.taskId)}
-        </div>
-      ))}
-    </div>
-  );
-}
-```
+function DebugPanel() {
+  const { status, connect, disconnect, subscribe } = useWebSocket();
 
-#### useSendMessage
-
-Send different types of messages and commands:
-
-```tsx
-import { useSendMessage } from '@amigo-llm/frontend';
-
-function Controls() {
-  const { 
-    sendMessage,      // 发送普通消息
-    sendCreateTask,   // 创建新任务/对话
-    sendInterrupt,    // 中断当前执行
-    sendResume,       // 恢复被中断的任务
-    sendLoadTask,     // 加载特定任务历史
-    sendConfirm,      // 确认工具执行
-    sendReject,       // 拒绝工具执行
-    sendDeleteTask    // 删除任务
-  } = useSendMessage();
-  
-  return (
-    <div>
-      <button onClick={() => sendMessage('Hello')}>发送</button>
-      <button onClick={() => sendInterrupt()}>停止</button>
-      <button onClick={() => sendConfirm('task-id')}>确认工具调用</button>
-    </div>
-  );
-}
-```
-
-#### useMentions
-
-Access mention suggestions and followup queue:
-
-```tsx
-import { useMentions } from '@amigo-llm/frontend';
-
-function MentionSuggestions() {
-  const { mentions, getMentionSuggestions, followupQueue, pendingMention } = useMentions();
-  
-  const suggestions = getMentionSuggestions('search query');
-  
-  return (
-    <div>
-      {suggestions.map(mention => (
-        <div key={mention.id}>{mention.label}</div>
-      ))}
-    </div>
-  );
-}
-```
-
-#### useWebSocket
-
-Low-level access to WebSocket functionality:
-
-```tsx
-import { useWebSocket } from '@amigo-llm/frontend';
-
-function WebSocketControls() {
-  const { status, isConnected, connect, disconnect, reconnect, send, subscribe } = useWebSocket();
-  
-  // Subscribe to specific message types
   useEffect(() => {
-    const unsubscribe = subscribe('tool', (data) => {
-      console.log('Tool message:', data);
+    const unsubscribe = subscribe("ack", (data) => {
+      console.log("ack:", data);
     });
-    
     return unsubscribe;
   }, [subscribe]);
-  
+
   return (
     <div>
-      <button onClick={connect}>Connect</button>
-      <button onClick={disconnect}>Disconnect</button>
-      <button onClick={reconnect}>Reconnect</button>
+      <div>{status}</div>
+      <button onClick={connect}>连接</button>
+      <button onClick={disconnect}>断开</button>
     </div>
   );
 }
 ```
 
-### Components
+常用返回值：
 
-#### ChatWindow
+- `connect()` / `disconnect()` / `reconnect()`
+- `send(taskId, message)`
+- `subscribe(type, listener)`
 
-A complete chat interface with message rendering:
+### `useMessages(taskId?)`
 
-```tsx
-import { ChatWindow } from '@amigo-llm/frontend';
-
-<ChatWindow
-  taskId="optional-task-id"
-  className="h-full"
-  showHeader={true}
-  headerContent={<CustomHeader />}
-/>
-```
-
-**Props:**
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `taskId` | `string` | Current task | Task ID to display messages for |
-| `className` | `string` | - | CSS class name |
-| `showHeader` | `boolean` | `false` | Show header section |
-| `headerContent` | `ReactNode` | - | Custom header content |
-
-#### MessageInput
-
-An input field with mention support:
+读取某个任务的消息（未传 `taskId` 时使用当前激活任务）。
 
 ```tsx
-import { MessageInput } from '@amigo-llm/frontend';
+import { useMessages } from "@amigo-llm/frontend";
 
-<MessageInput
-  taskId="optional-task-id"
-  className="border-t"
-  placeholder="Type a message..."
-  onSend={(message) => console.log('Sent:', message)}
-  disabled={false}
-  showMentions={true}
-/>
-```
+function TaskMessages({ taskId }: { taskId?: string }) {
+  const { messages, sendMessage, clearMessages } = useMessages(taskId);
 
-**Props:**
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `taskId` | `string` | Current task | Task ID to send messages to |
-| `className` | `string` | - | CSS class name |
-| `placeholder` | `string` | - | Input placeholder text |
-| `onSend` | `(message: string) => void` | - | Called when message is sent |
-| `disabled` | `boolean` | `false` | Disable input |
-| `showMentions` | `boolean` | `true` | Enable mention suggestions |
-
-#### ConversationHistory
-
-Display a list of conversations:
-
-```tsx
-import { ConversationHistory } from '@amigo-llm/frontend';
-
-<ConversationHistory
-  className="w-64"
-  onSelectConversation={(taskId) => console.log('Selected:', taskId)}
-/>
-```
-
-**Props:**
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `className` | `string` | - | CSS class name |
-| `onSelectConversation` | `(taskId: string) => void` | - | Called when conversation is selected |
-
-#### TaskRenderer
-
-Render task hierarchy recursively:
-
-```tsx
-import { TaskRenderer } from '@amigo-llm/frontend';
-
-<TaskRenderer
-  taskId="task-123"
-  showChildren={true}
-  depth={0}
-  className="p-4"
-/>
-```
-
-**Props:**
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `taskId` | `string` | - | Task ID to render |
-| `showChildren` | `boolean` | `true` | Show child tasks |
-| `depth` | `number` | `0` | Current nesting depth |
-| `className` | `string` | - | CSS class name |
-
-## Custom Renderers
-
-You can customize how messages are displayed by providing custom renderers.
-
-### Renderer Interface
-
-All renderers follow this interface:
-
-```typescript
-type MessageRenderer<T extends DisplayMessageType> = (
-  props: MessageRendererProps<T>
-) => React.ReactNode;
-
-interface MessageRendererProps<T> {
-  message: T;
-  taskId: string;
-  isLatest: boolean;
-}
-```
-
-### Example: Custom Message Renderer
-
-```tsx
-import type { CommonMessageRendererProps } from '@amigo-llm/frontend';
-
-function CustomMessageRenderer({ message, taskId, isLatest }: CommonMessageRendererProps) {
-  return (
-    <div className={`message ${isLatest ? 'latest' : ''}`}>
-      <div className="content">{message.data.content}</div>
-      <div className="meta">Task: {taskId}</div>
-    </div>
-  );
-}
-
-// Use it in WebSocketProvider
-<WebSocketProvider
-  url="ws://localhost:10013"
-  renderers={{
-    message: CustomMessageRenderer,
-  }}
->
-  {/* ... */}
-</WebSocketProvider>
-```
-
-### Example: Custom Tool Renderer
-
-```tsx
-import type { ToolMessageRendererProps } from '@amigo-llm/frontend';
-
-function CustomToolRenderer({ message, taskId, isLatest }: ToolMessageRendererProps<any>) {
-  const { toolName, params, result } = message.data;
-  
-  return (
-    <div className="tool-message">
-      <h3>Tool: {toolName}</h3>
-      <pre>Params: {JSON.stringify(params, null, 2)}</pre>
-      {result && <pre>Result: {JSON.stringify(result, null, 2)}</pre>}
-    </div>
-  );
-}
-```
-
-### Available Renderer Types
-
-You can customize renderers for these message types:
-
-- `message` - Regular assistant messages
-- `tool` - Tool execution messages
-- `userSendMessage` - User messages
-- `completionResult` - Task completion messages
-- `askFollowupQuestion` - Followup question prompts
-- `interrupt` - Interrupt notifications
-- `error` - Error messages
-- `alert` - Alert notifications
-
-### Using Default Renderers
-
-You can import and extend default renderers:
-
-```tsx
-import {
-  defaultRenderers,
-  DefaultMessageRenderer,
-  DefaultToolRenderer,
-} from '@amigo-llm/frontend';
-
-// Use all defaults
-<WebSocketProvider renderers={defaultRenderers}>
-
-// Mix custom and default
-<WebSocketProvider
-  renderers={{
-    message: CustomMessageRenderer,
-    tool: DefaultToolRenderer, // Use default for tools
-  }}
->
-```
-
-### Per-Component Renderer Override
-
-You can also override renderers at the component level using the `useRenderer` hook:
-
-```tsx
-import { useRenderer } from '@amigo-llm/frontend';
-
-function CustomChatWindow() {
-  const renderMessage = useRenderer('message');
-  const { messages } = useMessages();
-  
   return (
     <div>
-      {messages.map((msg, i) => (
-        <div key={i}>
-          {msg.type === 'message' ? (
-            <CustomMessageRenderer message={msg} taskId="..." isLatest={false} />
-          ) : (
-            renderMessage({ message: msg, taskId: "...", isLatest: false })
-          )}
-        </div>
-      ))}
+      <button onClick={() => sendMessage("继续执行")}>发送消息</button>
+      <button onClick={clearMessages}>清空当前任务消息</button>
+      <pre>{JSON.stringify(messages, null, 2)}</pre>
     </div>
   );
 }
 ```
 
-## Advanced Usage
+返回值：
 
-### Accessing WebSocket Context
+- `messages`：面向 UI 的显示消息数组（已做聚合/转换）
+- `rawMessages`：原始 WebSocket 消息数组
+- `sendMessage(message)`
+- `clearMessages()`
 
-For advanced use cases, you can access the WebSocket context directly:
+注意：当当前没有可用任务 ID 时，`sendMessage` / `clearMessages` 会直接返回并在控制台打印警告。
 
-```tsx
-import { useWebSocketContext } from '@amigo-llm/frontend';
+### `useSendMessage()`
 
-function AdvancedComponent() {
-  const context = useWebSocketContext();
-  
-  // Access store directly
-  const store = context.store;
-  
-  // Access configuration
-  const config = context.config;
-  
-  // Access custom renderers
-  const renderers = context.renderers;
-  
-  return <div>...</div>;
-}
-```
-
-### Type Exports
-
-The SDK exports all TypeScript types for your convenience:
-
-```typescript
-import type {
-  // Provider types
-  WebSocketProviderProps,
-  
-  // Hook return types
-  UseWebSocketReturn,
-  UseConnectionReturn,
-  UseMessagesReturn,
-  UseTasksReturn,
-  UseMentionsReturn,
-  UseSendMessageReturn,
-  
-  // Component props
-  ChatWindowProps,
-  MessageInputProps,
-  ConversationHistoryProps,
-  TaskRendererProps,
-  
-  // Renderer types
-  MessageRendererMap,
-  MessageRendererProps,
-  MessageRenderer,
-  CommonMessageRendererProps,
-  ToolMessageRendererProps,
-  UserMessageRendererProps,
-  CompletionResultRendererProps,
-  AskFollowupQuestionRendererProps,
-  InterruptRendererProps,
-  ErrorRendererProps,
-  AlertRendererProps,
-  
-  // Store types
-  WebSocketStore,
-  TaskState,
-  ConnectionStatus,
-  
-  // Context types
-  WebSocketContextValue,
-} from '@amigo-llm/frontend';
-```
-
-### Error Handling
-
-The SDK provides error handling through the `onError` callback and connection state:
+面向业务层的消息发送封装，适合直接操作任务生命周期。
 
 ```tsx
-function App() {
-  const [error, setError] = useState<Error | null>(null);
-  
-  return (
-    <WebSocketProvider
-      url="ws://localhost:10013"
-      onError={(err) => {
-        console.error('WebSocket error:', err);
-        setError(err);
-      }}
-      onDisconnect={() => {
-        console.log('Disconnected from server');
-      }}
-    >
-      {error && (
-        <div className="error-banner">
-          Error: {error.message}
-        </div>
-      )}
-      <ChatWindow />
-    </WebSocketProvider>
-  );
-}
-```
+import { useSendMessage } from "@amigo-llm/frontend";
 
-### Connection Management
+function TaskControls({ taskId }: { taskId?: string }) {
+  const {
+    sendCreateTask,
+    sendMessage,
+    sendInterrupt,
+    sendResume,
+    sendLoadTask,
+    sendConfirm,
+    sendReject,
+    sendDeleteTask,
+  } = useSendMessage();
 
-Control the connection lifecycle:
-
-```tsx
-function ConnectionManager() {
-  const { status, connect, disconnect, reconnect } = useWebSocket();
-  
   return (
     <div>
-      <p>Status: {status}</p>
-      {status === 'disconnected' && (
-        <button onClick={connect}>Connect</button>
-      )}
-      {status === 'connected' && (
-        <button onClick={disconnect}>Disconnect</button>
-      )}
-      {status === 'error' && (
-        <button onClick={reconnect}>Retry</button>
-      )}
+      <button onClick={() => sendCreateTask("帮我整理这个需求")}>新建任务</button>
+      <button onClick={() => sendMessage("继续", taskId)}>发送消息</button>
+      <button onClick={() => sendInterrupt(taskId)}>中断</button>
+      <button onClick={() => sendResume(taskId)}>继续执行</button>
+      <button onClick={() => taskId && sendLoadTask(taskId)}>加载历史</button>
+      <button onClick={() => taskId && sendConfirm(taskId)}>确认工具调用</button>
+      <button onClick={() => taskId && sendReject(taskId)}>拒绝工具调用</button>
+      <button onClick={() => taskId && sendDeleteTask(taskId)}>删除任务</button>
     </div>
   );
 }
 ```
 
-## Complete Example
+说明：
 
-Here's a complete example with custom styling and renderers:
+- `sendCreateTask(message)` 会发送 `createTask`，由服务端生成新的 `taskId`
+- `sendMessage(message, taskId?)` 在未提供 `taskId` 时会尝试使用当前活动任务
+- `sendConfirm/sendReject` 会同时更新本地任务状态（便于 UI 及时响应）
+
+### `useTasks()`
+
+读取任务树和任务状态。
+
+常用字段：
+
+- `tasks`
+- `currentTaskId`
+- `mainTaskId`
+- `switchTask(taskId)`
+- `getTaskHierarchy(taskId)`
+- `getTaskStatus(taskId)`
+
+适用于：任务侧栏、任务树导航、状态标签等 UI。
+
+### 其他 hooks
+
+- `useMentions()`：提及项 / 追问队列（输入联想场景）
+- `useRenderer()`：获取自定义或默认消息渲染器
+- `useWebSocketContext()`：高级用法，直接访问内部 store 与配置
+
+## 组件
+
+### `ChatWindow`
+
+用于展示当前任务的消息列表，通常与 `MessageInput` 搭配使用。
+
+### `MessageInput`
+
+输入框组件，负责发送用户消息。适合快速搭建默认聊天界面。
+
+### `TaskRenderer`
+
+用于渲染任务相关内容（任务层级/状态展示场景）。
+
+说明：组件的细节 props 以导出类型定义为准（`src/sdk/index.ts` / `dist/sdk/index.d.ts`）。如果你需要高度自定义布局，也可以只使用 hooks 自己实现 UI。
+
+## 自定义渲染器
+
+SDK 支持通过 `WebSocketProvider` 的 `renderers` 属性覆盖默认消息渲染器。
 
 ```tsx
-import { useState } from 'react';
 import {
   WebSocketProvider,
-  ChatWindow,
-  MessageInput,
-  ConversationHistory,
-  useConnection,
-  useTasks,
-  type CommonMessageRendererProps,
-} from '@amigo-llm/frontend';
-import '@amigo-llm/frontend/styles';
-import './app.css';
+  defaultRenderers,
+  type MessageRendererProps,
+} from "@amigo-llm/frontend";
 
-// Custom message renderer
-function CustomMessageRenderer({ message, isLatest }: CommonMessageRendererProps) {
-  return (
-    <div className={`custom-message ${isLatest ? 'latest' : ''}`}>
-      <div className="avatar">AI</div>
-      <div className="content">
-        {message.data.content}
-      </div>
-      <div className="timestamp">
-        {new Date(message.timestamp).toLocaleTimeString()}
-      </div>
-    </div>
-  );
+function MyMessageRenderer(props: MessageRendererProps) {
+  return <div style={{ whiteSpace: "pre-wrap" }}>{JSON.stringify(props.message.data)}</div>;
 }
 
-// Connection status indicator
-function ConnectionIndicator() {
-  const { status, isConnected } = useConnection();
-  
-  return (
-    <div className={`status-indicator ${status}`}>
-      <span className={`dot ${isConnected ? 'connected' : 'disconnected'}`} />
-      {status}
-    </div>
-  );
-}
-
-// Task switcher
-function TaskSwitcher() {
-  const { tasks, currentTaskId, switchTask } = useTasks();
-  
-  return (
-    <select
-      value={currentTaskId || ''}
-      onChange={(e) => switchTask(e.target.value)}
-    >
-      {Object.values(tasks).map(task => (
-        <option key={task.taskId} value={task.taskId}>
-          {task.taskId}
-        </option>
-      ))}
-    </select>
-  );
-}
-
-// Main app
-function App() {
-  const [showHistory, setShowHistory] = useState(false);
-  
-  return (
-    <WebSocketProvider
-      url="ws://localhost:10013"
-      autoConnect={true}
-      reconnect={true}
-      onConnect={() => console.log('Connected to Amigo')}
-      onError={(error) => console.error('Connection error:', error)}
-      renderers={{
-        message: CustomMessageRenderer,
-      }}
-    >
-      <div className="app-container">
-        {/* Sidebar */}
-        <aside className={`sidebar ${showHistory ? 'open' : ''}`}>
-          <ConversationHistory
-            onSelectConversation={(taskId) => {
-              console.log('Selected:', taskId);
-              setShowHistory(false);
-            }}
-          />
-        </aside>
-        
-        {/* Main content */}
-        <main className="main-content">
-          {/* Header */}
-          <header className="header">
-            <button onClick={() => setShowHistory(!showHistory)}>
-              ☰ History
-            </button>
-            <TaskSwitcher />
-            <ConnectionIndicator />
-          </header>
-          
-          {/* Chat */}
-          <ChatWindow className="chat-window" />
-          
-          {/* Input */}
-          <MessageInput
-            className="message-input"
-            placeholder="Ask me anything..."
-            showMentions={true}
-          />
-        </main>
-      </div>
-    </WebSocketProvider>
-  );
-}
-
-export default App;
+<WebSocketProvider
+  renderers={{
+    ...defaultRenderers,
+    message: MyMessageRenderer,
+  }}
+>
+  <App />
+</WebSocketProvider>;
 ```
 
-## API Reference
+建议做法：
 
-For detailed API documentation, see the [TypeScript definitions](./src/sdk/index.ts) or use your IDE's IntelliSense.
+- 只覆盖你关心的类型，其他继续复用 `defaultRenderers`
+- 保留错误消息和中断消息渲染，便于排障
+- 渲染器组件保持纯函数，避免在渲染期触发副作用
 
-## Browser Support
+## 与服务端联调
 
-- Chrome/Edge: Latest 2 versions
-- Firefox: Latest 2 versions
-- Safari: Latest 2 versions
+最常见的本地联调方式：
 
-## License
+1. 启动 Amigo 服务端（默认 `10013`）
+2. 启动你的 React 应用
+3. 使用 `WebSocketProvider` 包裹页面
+4. 通过 `useSendMessage` 或 `MessageInput` 发送 `createTask` / `userSendMessage`
 
-ISC
+如果你直接使用本仓库示例页面，也可以参考根目录 README 的启动方式。
 
-## Contributing
+## 常见问题
 
-Contributions are welcome! Please see the main repository for contribution guidelines.
+### 1. `useXxx` hooks 报错：必须在 `WebSocketProvider` 内使用
 
-## Support
+原因：SDK hooks 依赖 React Context。
 
-- GitHub Issues: [Report bugs or request features](https://github.com/your-org/amigo/issues)
-- Documentation: [Full documentation](https://github.com/your-org/amigo)
+处理：确认组件树中已被 `WebSocketProvider` 包裹。
 
----
+### 2. 前端显示已打开页面，但一直连不上服务端
 
-Made with ❤️ by the Amigo team
+- 确认服务端已启动
+- 确认端口为 `10013`
+- 查看浏览器控制台 WebSocket 报错
+- 注意本文档上面的“当前版本已知行为（url 未完全贯通）”
+
+### 3. `onMessage` 没有拿到每条消息回调
+
+当前 Provider 中 `onMessage` 为预留接口，尚未实现细粒度消息分发回调。如需监听消息，请使用 `useWebSocket().subscribe(...)`。
+
+## 导出概览（按分组）
+
+- Provider：`WebSocketProvider`
+- Hooks：`useConnection` `useMessages` `useSendMessage` `useTasks` `useWebSocket` 等
+- Components：`ChatWindow` `MessageInput` `TaskRenderer` 等
+- Renderers：`defaultRenderers` 及默认渲染器组件
+- Types：hooks 返回值、渲染器类型、消息类型重导出
+
+## 开发与调试（仓库内）
+
+```bash
+# 在仓库根目录
+bun --filter @amigo-llm/frontend start
+bun --filter @amigo-llm/frontend dev
+bun --filter @amigo-llm/frontend build
+```
+
+如果你在修改 SDK 源码并联调服务端，建议同时启动：
+
+```bash
+bun --filter @amigo-llm/server start
+bun --filter @amigo-llm/frontend dev
+```

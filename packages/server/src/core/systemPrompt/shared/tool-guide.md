@@ -5,11 +5,12 @@ TOOL USAGE
 ## Selection Priority
 
 ```
-Task complete? → completionResult
-Need parallel execution? → assignTasks
-Need user input? → askFollowupQuestion
-Need to track progress? → updateTodolist
-Otherwise → Use appropriate functional tool
+Task complete? -> Use designated completion tool (`completionResult` for main, `completeTask` for sub)
+Need async task execution? -> executeTaskList (then wait for pushed updates)
+After executeTaskList starts -> tell user it is running asynchronously and they can close the page to wait
+Need user input? -> askFollowupQuestion
+Need progress/failure snapshot? -> getTaskListProgress (sparingly)
+Otherwise -> Use appropriate functional tool
 ```
 
 ## XML Format
@@ -20,18 +21,10 @@ Otherwise → Use appropriate functional tool
 
 ### Nested Objects
 
-<assignTasks>
-  <tasks>
-    <task>
-      <target>Task description</target>
-      <subAgentPrompt>Detailed instructions</subAgentPrompt>
-      <tools>
-        <tool>readFile</tool>
-        <tool>writeFile</tool>
-      </tools>
-    </task>
-  </tasks>
-</assignTasks>
+<browserSearch>
+  <action>navigate</action>
+  <url>https://example.com/docs</url>
+</browserSearch>
 
 ### Arrays
 
@@ -53,34 +46,8 @@ Use CDATA for content with `<`, `>`, `&`:
 
 ## Common Mistakes
 
-### Multiple Tools in One Response
-
-❌ Wrong:
-<readFile>...</readFile>
-<writeFile>...</writeFile>
-
-✅ Correct: One tool per response, wait for result, then next tool.
-
-### Plain Text Completion
-
-❌ Wrong:
-Task done! I created the files.
-
-✅ Correct:
-<completionResult>
-  Task done! I created the files.
-</completionResult>
-
-### Wrong Tool Names
-
-❌ Wrong: Using tool names not in available list (especially in `assignTasks`)
-
-✅ Correct: Only use tools from the dynamically injected tool list.
-
-### Missing Required Parameters
-
-❌ Wrong: Omitting required params or using wrong param names
-
-✅ Correct: Match tool definition exactly (case-sensitive).
+- Multiple tools in one response
+- Completing with plain text instead of the completion tool
+- Using tool names or parameters that do not match definitions
 
 ====

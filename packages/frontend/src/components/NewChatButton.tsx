@@ -19,13 +19,13 @@ const NewChatButton: React.FC = () => {
   return (
     <button
       onClick={handleClick}
-      className="w-full h-[42px] flex items-center px-3.5 rounded-xl border border-blue-100 bg-blue-50/30 hover:bg-blue-50 hover:border-blue-200 shadow-sm transition-all group"
+      className="w-full h-[42px] flex items-center px-3.5 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 hover:border-gray-300 shadow-sm transition-all group"
       type="button"
     >
       <div className="flex items-center gap-2.5">
-        <SquarePen className="w-4.5 h-4.5 shrink-0 text-blue-600" />
+        <SquarePen className="w-4 h-4 shrink-0 text-gray-500 group-hover:text-gray-700 transition-colors" />
         <span
-          className={`text-[13.5px] font-semibold text-blue-600 transition-opacity duration-150 ${
+          className={`text-[13px] font-medium text-gray-700 transition-opacity duration-150 ${
             isOpen ? "opacity-100" : "opacity-0"
           }`}
           style={{ display: isOpen ? "inline" : "none" }}

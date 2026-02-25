@@ -2,15 +2,47 @@ import type { WebSocketMessage } from "@amigo-llm/types";
 import type { WebSocketStore } from "../websocket";
 import type { MessageHandler } from ".";
 
+const extractPendingToolCallFromRawMessages = (
+  rawMessages: WebSocketStore["tasks"][string]["rawMessages"],
+  expectedToolName?: string,
+) => {
+  for (let i = rawMessages.length - 1; i >= 0; i--) {
+    const msg = rawMessages[i];
+    if (msg.type !== "tool") continue;
+
+    try {
+      const msgData = msg.data as { message: string };
+      const toolData = JSON.parse(msgData.message) as { toolName?: string; params?: any };
+
+      if (!toolData.toolName) continue;
+      if (expectedToolName && toolData.toolName !== expectedToolName) continue;
+
+      return {
+        toolName: toolData.toolName,
+        params: toolData.params,
+      };
+    } catch {
+      // ignore parse error and continue searching older tool messages
+    }
+  }
+
+  return null;
+};
+
 export const handleWaitingToolCall: MessageHandler = (
   message: WebSocketMessage<"waiting_tool_call">,
   store: WebSocketStore,
 ): boolean => {
-  const { taskId } = message.data;
+  const { taskId, toolName, params } = message.data as {
+    taskId: string;
+    toolName?: string;
+    params?: any;
+  };
 
   console.log("[waitingToolCallHandler] Received waiting_tool_call message:", {
     taskId,
-    messageData: message.data,
+    toolName,
+    hasParams: params !== undefined,
   });
 
   // Use registerTask instead of ensureTask to maintain consistency
@@ -18,52 +50,27 @@ export const handleWaitingToolCall: MessageHandler = (
 
   store.setTaskStatus(taskId, "waiting_tool_call");
 
-  // Extract toolName and params from the previous tool message
+  let resolvedToolName = toolName;
+  let resolvedParams = params;
+
   const task = store.tasks[taskId];
-  console.log("[waitingToolCallHandler] Task state:", {
-    hasTask: !!task,
-    rawMessagesCount: task?.rawMessages.length,
-    taskStatus: task?.status,
-  });
-
-  if (task && task.rawMessages.length > 0) {
-    // Find the last tool message before this waiting_tool_call
-    for (let i = task.rawMessages.length - 1; i >= 0; i--) {
-      const msg = task.rawMessages[i];
-      console.log(`[waitingToolCallHandler] Checking message ${i}:`, {
-        type: msg.type,
-        hasData: !!msg.data,
-      });
-
-      if (msg.type === "tool") {
-        try {
-          const msgData = msg.data as { message: string };
-          console.log("[waitingToolCallHandler] Found tool message:", {
-            messageContent: msgData.message,
-          });
-
-          const toolData = JSON.parse(msgData.message);
-          console.log("[waitingToolCallHandler] Parsed tool data:", {
-            toolName: toolData.toolName,
-            hasParams: !!toolData.params,
-          });
-
-          if (toolData.toolName && toolData.params) {
-            store.setPendingToolCall(taskId, {
-              toolName: toolData.toolName,
-              params: toolData.params,
-            });
-            console.log("[waitingToolCallHandler] Set pending tool call:", {
-              toolName: toolData.toolName,
-              params: toolData.params,
-            });
-            break;
-          }
-        } catch (e) {
-          console.error("[waitingToolCallHandler] Failed to parse tool message:", e);
-        }
+  if (task && (!resolvedToolName || resolvedParams === undefined)) {
+    const fallback = extractPendingToolCallFromRawMessages(task.rawMessages, resolvedToolName);
+    if (fallback) {
+      resolvedToolName = resolvedToolName || fallback.toolName;
+      if (resolvedParams === undefined) {
+        resolvedParams = fallback.params;
       }
     }
+  }
+
+  if (resolvedToolName) {
+    store.setPendingToolCall(taskId, {
+      toolName: resolvedToolName,
+      params: resolvedParams,
+    });
+  } else {
+    store.setPendingToolCall(taskId, undefined);
   }
 
   // Log final task state
@@ -71,7 +78,8 @@ export const handleWaitingToolCall: MessageHandler = (
   console.log("[waitingToolCallHandler] Final task state:", {
     status: finalTask?.status,
     hasPendingToolCall: !!finalTask?.pendingToolCall,
-    pendingToolCall: finalTask?.pendingToolCall,
+    pendingToolName: finalTask?.pendingToolCall?.toolName,
+    hasPendingParams: finalTask?.pendingToolCall?.params !== undefined,
   });
 
   return true;

@@ -10,7 +10,7 @@ export const DefaultReadFileRenderer: React.FC<ToolMessageRendererProps<"readFil
   const { filePath, startLine, endLine } = params;
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const fileName = filePath?.split("/").pop() || filePath;
+  const fileName = filePath ? filePath.split("/").pop() || filePath : "";
 
   return (
     <div className="my-2 border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm max-w-3xl">

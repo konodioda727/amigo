@@ -34,7 +34,9 @@ export const ToolConfirmationRequest = ({
       lastMsg.role === "system" &&
       lastMsg.content.includes("Waiting for confirmation to execute tool:")
     ) {
-      const match = lastMsg.content.match(/Waiting for confirmation to execute tool: (\w+)/);
+      const match = lastMsg.content.match(
+        /Waiting for confirmation to execute tool:\s*([A-Za-z0-9_.-]+)/,
+      );
       if (match && match[1]) return match[1];
     }
     return null;

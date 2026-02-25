@@ -25,6 +25,21 @@ export class ToolExecutor {
   private lastToolHadError = false;
   private lastToolError: ToolError | null = null;
 
+  private serializeResultForMemory(toolName: string, result: unknown): string {
+    try {
+      const serialized = JSON.stringify(result, null, 2);
+      const maxLength = toolName === "browserSearch" ? 120_000 : 20_000;
+      if (serialized.length <= maxLength) {
+        return serialized;
+      }
+      return `${serialized.slice(0, maxLength)}\n...（已截断，共 ${serialized.length} 字符）`;
+    } catch (error) {
+      const fallback = String(result);
+      logger.warn("[ToolExecutor] 序列化工具结果失败，将使用字符串兜底:", error);
+      return fallback;
+    }
+  }
+
   /**
    * 获取最后一个工具是否有错误
    */
@@ -57,6 +72,11 @@ export class ToolExecutor {
     type: ChatMessage["type"],
     abortSignal?: AbortSignal,
   ): Promise<void> {
+    if (conversation.isAborted || conversation.status === "aborted" || abortSignal?.aborted) {
+      logger.info(`[ToolExecutor] 会话已中断，跳过工具调用: ${toolName}`);
+      return;
+    }
+
     // 发送 partial 消息 - 使用 partial: true 避免参数验证错误
     const { params: partialParams } = conversation.toolService.parseParams(fullToolCall, true);
     broadcaster.postMessage(conversation, {
@@ -92,6 +112,10 @@ export class ToolExecutor {
       xmlParams: fullToolCall,
       context,
     });
+    if (conversation.isAborted || conversation.status === "aborted" || abortSignal?.aborted) {
+      logger.info(`[ToolExecutor] 工具返回后检测到中断，丢弃结果: ${toolName}`);
+      return;
+    }
 
     if (error) {
       logger.error(`[ToolExecutor] 工具调用错误: ${error}`);
@@ -150,9 +174,13 @@ export class ToolExecutor {
       partial: false,
     });
 
+    const serializedResult = this.serializeResultForMemory(toolName, result);
     conversation.memory.addMessage({
       role: "system",
-      content: `当前工具调用：${toolName}，\n工具执行信息：\n${message}\n`,
+      content:
+        `当前工具调用：${toolName}，\n` +
+        `工具执行结果（result）：\n${serializedResult}\n\n` +
+        `工具执行信息（message）：\n${message}\n`,
       type,
       partial: false,
     });
@@ -167,6 +195,9 @@ export class ToolExecutor {
     toolName: string,
     type: ChatMessage["type"],
   ): void {
+    if (conversation.isAborted || conversation.status === "aborted") {
+      return;
+    }
     const { params } = conversation.toolService.parseParams(partialToolCall, true);
     broadcaster.postMessage(conversation, {
       role: "assistant",

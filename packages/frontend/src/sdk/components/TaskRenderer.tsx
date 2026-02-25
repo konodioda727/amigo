@@ -141,7 +141,11 @@ export const TaskRenderer: FC<TaskRendererProps> = ({
     if (messages.length > 0) {
       const firstMessage = messages[0];
       if (firstMessage.type === "userSendMessage") {
-        return (firstMessage as any).message || `Task ${taskId}`;
+        const firstUserMessage = firstMessage as any;
+        const fallbackAttachmentTitle = firstUserMessage.attachments?.[0]?.name
+          ? `[附件] ${firstUserMessage.attachments[0].name}`
+          : null;
+        return firstUserMessage.message || fallbackAttachmentTitle || `Task ${taskId}`;
       }
     }
     return `Task ${taskId}`;

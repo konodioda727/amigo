@@ -4,9 +4,11 @@ import { CreateTaskSchema } from "./createTask";
 import { DeleteTaskSchema } from "./deleteTask";
 import { IntertuptSchema } from "./interrupt";
 import { LoadTaskSchema } from "./loadTask";
-import { MessageSchema as SocketMessageSchema } from "./message";
+import { UserSendMessageSchema as SocketMessageSchema } from "./message";
 import { RejectSchema } from "./reject";
 import { ResumeSchema } from "./resume";
+import { UpdateAutoApproveToolsSchema } from "./updateAutoApproveTools";
+import { UpdateTaskDocSchema } from "./updateTaskDoc";
 
 export const UserSendMessageSchema = z.discriminatedUnion("type", [
   SocketMessageSchema,
@@ -17,6 +19,8 @@ export const UserSendMessageSchema = z.discriminatedUnion("type", [
   ConfirmSchema,
   RejectSchema,
   DeleteTaskSchema,
+  UpdateAutoApproveToolsSchema,
+  UpdateTaskDocSchema,
 ]);
 
 /**
@@ -50,3 +54,5 @@ const UserSendWebSocketSchema = z.object({
 });
 
 export type UserSendWebsocketMessageType = z.infer<typeof UserSendWebSocketSchema>;
+
+export * from "./message";

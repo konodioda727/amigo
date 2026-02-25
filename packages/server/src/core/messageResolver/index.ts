@@ -9,6 +9,8 @@ import { InterruptMessageResolver } from "./interruptMessageResolver";
 import { LoadTaskMessageResolver } from "./loadTaskMessageResolver";
 import { RejectMessageResolver } from "./rejectMessageResolver";
 import { ResumeMessageResolver } from "./resumeMessageResolver";
+import { UpdateAutoApproveToolsMessageResolver } from "./updateAutoApproveToolsMessageResolver";
+import { UpdateTaskDocMessageResolver } from "./updateTaskDocMessageResolver";
 
 /**
  * 不同 message 处理器
@@ -22,6 +24,8 @@ const resolvers = [
   ConfirmMessageResolver,
   RejectMessageResolver,
   DeleteTaskMessageResolver,
+  UpdateAutoApproveToolsMessageResolver,
+  UpdateTaskDocMessageResolver,
 ];
 
 const defaultResolver = CommonMessageResolver;
@@ -34,5 +38,5 @@ export const getResolver = <K extends USER_SEND_MESSAGE_NAME>(
   conversation: Conversation,
 ): BaseMessageResolver<K> => {
   const resolver = resolvers.find((res) => res.resolverName === type) || defaultResolver;
-  return new resolver(conversation);
+  return new resolver(conversation) as BaseMessageResolver<K>;
 };

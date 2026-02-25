@@ -88,31 +88,6 @@ export const TaskProgressSchema = z.object({
 });
 
 /**
- * UpdateTaskList 工具 Schema
- * 用于更新当前任务的 taskList.md 中的任务状态
- */
-export const UpdateTaskListSchema = z.object({
-  name: z.literal("updateTaskList"),
-  params: z
-    .object({
-      taskDescription: z.string().describe("要更新的任务描述，必须精确匹配"),
-      completed: z.union([z.boolean(), z.string()]).describe("任务是否完成"),
-    })
-    .describe("更新任务状态的参数"),
-  result: z
-    .object({
-      success: z.boolean().describe("操作是否成功"),
-      message: z.string().describe("操作结果消息"),
-      progress: TaskProgressSchema.optional().describe("更新后的进度统计"),
-      availableTasks: z
-        .array(z.string())
-        .optional()
-        .describe("可用的任务列表（当找不到匹配任务时返回）"),
-    })
-    .describe("更新任务状态的结果"),
-});
-
-/**
  * GetTaskListProgress 工具 Schema
  * 用于获取当前任务的 taskList.md 进度统计
  */
@@ -158,16 +133,6 @@ export const ExecuteTaskListSchema = z.object({
     })
     .describe("执行任务列表的结果"),
 });
-
-/**
- * UpdateTaskList 参数类型
- */
-export type UpdateTaskListParams = z.infer<typeof UpdateTaskListSchema>["params"];
-
-/**
- * UpdateTaskList 结果类型
- */
-export type UpdateTaskListResult = z.infer<typeof UpdateTaskListSchema>["result"];
 
 /**
  * GetTaskListProgress 参数类型

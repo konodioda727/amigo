@@ -1,9 +1,10 @@
-import type { ToolInterface } from "@amigo-llm/types";
-import type { ChatOpenAI } from "@langchain/openai";
+import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import path from "node:path";
+import { StorageType, type TaskStatusMetadata, type ToolInterface } from "@amigo-llm/types";
 import { getGlobalState } from "@/globalState";
 import { logger } from "@/utils/logger";
 import { FilePersistedMemory } from "../memory";
-import { getLlm } from "../model";
+import { type AmigoLlm, getLlm } from "../model";
 import { CUSTOMED_TOOLS, MAIN_BASIC_TOOLS, SUB_BASIC_TOOLS, ToolService } from "../tools";
 import { Conversation, type ConversationType } from "./Conversation";
 
@@ -23,6 +24,100 @@ function getAllCustomTools(): ToolInterface<any>[] {
  */
 export class ConversationRepository {
   private conversations = new Map<string, Conversation>();
+
+  private buildTaskRelationGraph(storageRoot: string): {
+    existingTaskIds: Set<string>;
+    parentMap: Map<string, string>;
+    childrenMap: Map<string, Set<string>>;
+  } {
+    const existingTaskIds = new Set<string>();
+    const parentMap = new Map<string, string>();
+    const childrenMap = new Map<string, Set<string>>();
+
+    const addRelation = (parentId: string, childId: string): void => {
+      const children = childrenMap.get(parentId) || new Set<string>();
+      children.add(childId);
+      childrenMap.set(parentId, children);
+    };
+
+    if (existsSync(storageRoot)) {
+      for (const entry of readdirSync(storageRoot, { withFileTypes: true })) {
+        if (!entry.isDirectory()) {
+          continue;
+        }
+
+        const taskId = entry.name;
+        existingTaskIds.add(taskId);
+
+        const taskStatusPath = path.join(storageRoot, taskId, `${StorageType.TASK_STATUS}.json`);
+        if (!existsSync(taskStatusPath)) {
+          continue;
+        }
+
+        try {
+          const taskStatus = JSON.parse(
+            readFileSync(taskStatusPath, "utf-8"),
+          ) as TaskStatusMetadata;
+          if (taskStatus.fatherTaskId) {
+            parentMap.set(taskId, taskStatus.fatherTaskId);
+            addRelation(taskStatus.fatherTaskId, taskId);
+          }
+        } catch (error) {
+          logger.warn(
+            `[ConversationRepository] 读取任务状态失败: ${taskStatusPath}, error: ${error}`,
+          );
+        }
+      }
+    }
+
+    for (const conversation of this.getAll()) {
+      existingTaskIds.add(conversation.id);
+      if (!conversation.parentId) {
+        continue;
+      }
+      parentMap.set(conversation.id, conversation.parentId);
+      addRelation(conversation.parentId, conversation.id);
+    }
+
+    return { existingTaskIds, parentMap, childrenMap };
+  }
+
+  private collectTaskTree(taskId: string, childrenMap: Map<string, Set<string>>): string[] {
+    const allTaskIds: string[] = [];
+    const visited = new Set<string>();
+
+    const dfs = (currentTaskId: string): void => {
+      if (visited.has(currentTaskId)) {
+        return;
+      }
+
+      visited.add(currentTaskId);
+      allTaskIds.push(currentTaskId);
+
+      const children = childrenMap.get(currentTaskId);
+      if (!children) {
+        return;
+      }
+
+      for (const childId of children) {
+        dfs(childId);
+      }
+    };
+
+    dfs(taskId);
+    return allTaskIds;
+  }
+
+  private deleteTaskStorage(taskId: string, storageRoot: string): boolean {
+    const taskStoragePath = path.join(storageRoot, taskId);
+    if (!existsSync(taskStoragePath)) {
+      return false;
+    }
+
+    rmSync(taskStoragePath, { recursive: true, force: true });
+    logger.info(`[Memory] 已删除存储目录: ${taskStoragePath}`);
+    return true;
+  }
 
   /**
    * 根据 ID 获取会话
@@ -58,33 +153,21 @@ export class ConversationRepository {
    */
   async deleteWithChildren(taskId: string): Promise<string[]> {
     const deletedIds: string[] = [];
-
-    // 先获取主任务以确定 sandbox key
-    const mainConversation = this.get(taskId);
-    if (!mainConversation) {
+    const storageRoot = getGlobalState("globalStoragePath") || process.cwd();
+    const { existingTaskIds, parentMap, childrenMap } = this.buildTaskRelationGraph(storageRoot);
+    if (!existingTaskIds.has(taskId)) {
       logger.warn(`[ConversationRepository] 任务不存在: ${taskId}`);
       return deletedIds;
     }
 
     // 只有删除主任务时才删除 sandbox（子任务共享父任务的 sandbox）
-    const shouldDeleteSandbox = !mainConversation.parentId;
-    const sandboxKey = mainConversation.parentId || taskId;
-
-    // 递归收集所有子任务
-    const collectChildren = (parentId: string): string[] => {
-      const children: string[] = [];
-      for (const conv of this.getAll()) {
-        if (conv.parentId === parentId) {
-          children.push(conv.id);
-          // 递归收集子任务的子任务
-          children.push(...collectChildren(conv.id));
-        }
-      }
-      return children;
-    };
+    const rootConversation = this.get(taskId);
+    const rootParentId = rootConversation?.parentId || parentMap.get(taskId);
+    const shouldDeleteSandbox = !rootParentId;
+    const sandboxKey = rootParentId || taskId;
 
     // 收集所有需要删除的任务（包括主任务和所有子任务）
-    const allTaskIds = [taskId, ...collectChildren(taskId)];
+    const allTaskIds = this.collectTaskTree(taskId, childrenMap);
 
     // 删除所有会话
     for (const id of allTaskIds) {
@@ -95,14 +178,12 @@ export class ConversationRepository {
           const { taskOrchestrator } = await import("./TaskOrchestrator");
           taskOrchestrator.interrupt(conversation);
         }
+      }
 
-        // 删除会话存储
-        await conversation.memory.delete();
-
-        // 从内存中移除
-        this.remove(id);
+      const deletedFromStorage = this.deleteTaskStorage(id, storageRoot);
+      const deletedFromMemory = this.remove(id);
+      if (deletedFromStorage || deletedFromMemory) {
         deletedIds.push(id);
-
         logger.info(`[ConversationRepository] 已删除会话: ${id}`);
       }
     }
@@ -193,7 +274,7 @@ export class ConversationRepository {
     customPrompt?: string;
     // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
     tools?: ToolInterface<any>[];
-    llm?: ChatOpenAI;
+    llm?: AmigoLlm;
   }): Conversation {
     const allCustomTools = getAllCustomTools();
     const type = params?.type || "main";

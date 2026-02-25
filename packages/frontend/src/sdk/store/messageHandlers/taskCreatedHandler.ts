@@ -7,11 +7,13 @@ export function handleTaskCreated(
 ): boolean {
   const { taskId, sessionHistories } = message.data;
 
-  // 只更新 mainTaskId，不发送 loadTask（因为这是新创建的任务，不需要加载历史）
-  store.mainTaskId = taskId;
+  // 绑定新会话 taskId（不触发 loadTask，避免无意义历史加载）
+  store.setCurrentTaskIdsForNewConversation(taskId);
 
-  // 注册任务
-  store.registerTask(taskId);
+  // createTask 场景下 taskCreated 可能先于 ack 到达，先进入 streaming，后续 ack 会再次确认状态。
+  if (store.isCreatingConversation) {
+    store.setTaskStatus(taskId, "streaming");
+  }
 
   // 更新会话历史列表
   store.handleSessionHistories(sessionHistories);

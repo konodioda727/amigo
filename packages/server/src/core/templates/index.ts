@@ -33,6 +33,7 @@ export interface DesignTemplateParams {
   solutionApproach?: string;
   technicalDecisions?: string;
   implementationStrategy?: string;
+  subTaskCollaboration?: string;
 }
 
 /**
@@ -73,6 +74,7 @@ export const REQUIRED_SECTIONS = {
     "Solution Approach",
     "Technical Decisions",
     "Implementation Strategy",
+    "SubTask Collaboration Contract",
   ],
   taskList: ["Tasks"],
 } as const;
@@ -123,6 +125,26 @@ export function generateDesignTemplate(params: DesignTemplateParams): string {
     solutionApproach = "{解决方案概述}",
     technicalDecisions = "{技术决策及理由}",
     implementationStrategy = "{实现策略}",
+    subTaskCollaboration = `### Ownership
+- 主任务负责定义并维护 subTask 协作规范，subTask 不得自行改写。
+
+### Process Docs
+- 文档位置：{例如 taskDocs/process/}
+- 文档清单：{例如 handoff.md, decisions.md, progress.md}
+
+### Naming Convention
+- 目录与文件命名：{例如 kebab-case}
+- 任务条目命名：{例如 "Task X.Y: 动作 + 对象 + 输出"}
+
+### Collaboration Protocol
+- 输入格式：{subTask 接收的信息结构}
+- 输出格式：{subTask 完成结果结构}
+- 状态同步：{更新频率、更新位置、冲突处理}
+
+### Handoff Rules
+- 完成定义：{何时视为完成}
+- 交付清单：{必须提交的文档/产物}
+- 异常升级：{无法继续时如何上报主任务}`,
   } = params;
 
   return `# Design: ${taskName}
@@ -138,6 +160,9 @@ ${technicalDecisions}
 
 ## Implementation Strategy
 ${implementationStrategy}
+
+## SubTask Collaboration Contract
+${subTaskCollaboration}
 `;
 }
 

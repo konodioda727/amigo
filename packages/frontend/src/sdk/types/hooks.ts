@@ -2,6 +2,7 @@ import type {
   SERVER_SEND_MESSAGE_NAME,
   ServerSendMessageData,
   USER_SEND_MESSAGE_NAME,
+  UserMessageAttachment,
   WebSocketMessage,
 } from "@amigo-llm/types";
 import type { DisplayMessageType } from "../messages/types";
@@ -70,6 +71,7 @@ export interface UseTasksReturn {
   currentTaskId: string | null;
   mainTaskId: string | null;
   taskStatusMaps: Record<string, Record<string, any>>;
+  taskAutoApproveToolNameMaps: Record<string, string[]>;
 
   // Task operations
   switchTask: (taskId: string) => void;
@@ -96,12 +98,13 @@ export interface UseMentionsReturn {
  * useSendMessage hook return type
  */
 export interface UseSendMessageReturn {
-  sendMessage: (message: string, taskId?: string) => void;
-  sendCreateTask: (message: string) => void;
+  sendMessage: (message: string, taskId?: string, attachments?: UserMessageAttachment[]) => void;
+  sendCreateTask: (message: string, attachments?: UserMessageAttachment[]) => void;
   sendInterrupt: (taskId?: string) => void;
   sendResume: (taskId?: string) => void;
   sendLoadTask: (taskId: string) => void;
   sendConfirm: (taskId: string) => void;
   sendReject: (taskId: string) => void;
   sendDeleteTask: (taskId: string) => void;
+  sendUpdateAutoApproveTools: (toolNames: string[], taskId?: string) => void;
 }

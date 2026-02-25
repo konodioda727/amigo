@@ -1,304 +1,399 @@
+import type { Page } from "playwright";
 import { browserManager } from "@/utils/browserManager";
 import { logger } from "@/utils/logger";
 import { createTool } from "./base";
 
+type SearchResult = {
+  title: string;
+  snippet: string;
+  url: string;
+};
+
+type FetchedSearchResult = {
+  title: string;
+  url: string;
+  snippet?: string;
+  content?: string;
+  error?: string;
+};
+
+const SEARCH_PAGE_TIMEOUT_MS = 12000;
+const FETCH_PAGE_TIMEOUT_MS = 10000;
+const SEARCH_RESULT_WAIT_MS = 5000;
+const MAX_PAGE_CONTENT_LENGTH = 5000;
+const FETCH_CONCURRENCY = 4;
+const PAGE_SETTLE_WAIT_MS = 1500;
+const PAGE_EVALUATE_RETRY_COUNT = 2;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isExecutionContextDestroyedError = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("Execution context was destroyed");
+};
+
 export const BrowserSearch = createTool({
   name: "browserSearch",
-  description: "使用浏览器搜索信息或访问网页。可以执行搜索查询、访问特定URL或提取页面内容。",
+  description: "使用浏览器搜索信息，并自动抓取搜索结果页面的正文内容。",
   whenToUse:
-    "当需要从互联网获取实时信息、查找资料、访问网页或提取网页内容时使用此工具。\n\n" +
-    "## 使用场景\n\n" +
-    "1. **搜索信息** - 使用 Bing 搜索引擎查找相关信息，获取搜索结果列表\n" +
-    "2. **访问网页** - 访问特定的URL，自动提取：\n" +
-    "   - 页面的主要文本内容\n" +
-    "   - 页面中的重要链接（最多15个）\n" +
-    "   - 可以根据这些链接继续深入探索\n\n" +
-    "## ⚠️ 重要工作流程\n\n" +
-    "**搜索后必须访问页面获取详细内容！**\n\n" +
-    "正确的工作流程：\n" +
-    "1. 使用 `action=search` 搜索相关信息，获取搜索结果列表\n" +
-    "2. **从搜索结果中选择最相关的 2-3 个链接**\n" +
-    "3. **使用 `action=navigate` 逐个访问这些链接，提取详细内容**\n" +
-    "4. **页面会返回主要内容和相关链接列表**\n" +
-    "5. **如果需要更深入的信息，可以继续访问页面中的相关链接**\n" +
-    "6. 基于访问到的详细内容回答用户问题\n\n" +
-    "❌ 错误做法：只搜索就直接总结，不访问具体页面\n" +
-    "✅ 正确做法：搜索 → 访问最相关的页面 → 查看页面链接 → 深入探索 → 综合回答\n\n" +
+    "当需要从互联网获取实时信息并查看搜索结果对应网页的实际内容时使用此工具。\n\n" +
+    "## 工具行为\n\n" +
+    "1. 使用 Bing 执行搜索\n" +
+    "2. 提取当前搜索结果页中的结果链接\n" +
+    "3. 自动逐个访问这些链接\n" +
+    "4. 返回每个网站的标题、链接、摘要和抓取到的正文内容（或失败原因）\n\n" +
     "## 注意事项\n\n" +
-    "- 搜索结果只提供标题和摘要，**必须访问页面才能获取完整内容**\n" +
-    "- 某些网站可能有访问限制或需要登录\n" +
-    "- 提取的内容会自动清理HTML标签，保留纯文本\n" +
+    "- 该工具只有搜索功能，不再支持单独传入 URL 导航\n" +
+    "- 会尝试抓取搜索结果页中识别到的全部标准结果\n" +
+    "- 某些网站可能有访问限制、反爬或需要登录，工具会返回失败原因\n" +
+    "- 单个页面正文会截断（默认最多5000字符）以控制返回体积\n" +
     "- 页面加载超时时间为30秒\n" +
     "- 可通过设置环境变量 BROWSER_HEADLESS=false 启用有头浏览器模式",
 
   useExamples: [
-    `**示例 1 - 完整的搜索和访问流程**
+    `**示例 1 - 搜索并自动抓取所有结果页内容**
 
-用户请求：帮我查一下最新的 React 19 有什么新特性
+用户请求：帮我查一下 React 19 新特性
 
-步骤1：先搜索
 <browserSearch>
   <query>React 19 新特性</query>
-  <action>search</action>
-</browserSearch>
-
-步骤2：从搜索结果中选择最相关的链接，访问获取详细内容
-<browserSearch>
-  <url>https://react.dev/blog/2024/04/25/react-19</url>
-  <action>navigate</action>
-</browserSearch>
-
-步骤3：页面返回了内容和相关链接，如果需要更多细节，继续访问相关链接
-<browserSearch>
-  <url>https://react.dev/reference/react/use</url>
-  <action>navigate</action>
-</browserSearch>
-
-步骤4：基于访问到的详细内容，综合回答用户问题`,
-
-    `**示例 2 - 直接访问已知网页**
-
-用户请求：帮我看看 React 官网的文档
-
-<browserSearch>
-  <url>https://react.dev</url>
-  <action>navigate</action>
 </browserSearch>`,
 
-    `**示例 3 - 新闻类查询的完整流程**
+    `**示例 2 - 新闻查询**
 
-用户请求：今天有什么重要新闻
+用户请求：今天 AI 领域有哪些重要新闻
 
-步骤1：搜索最新新闻
 <browserSearch>
-  <query>今天重要新闻</query>
-  <action>search</action>
-</browserSearch>
-
-步骤2：访问搜索结果中的新闻网站获取详细内容
-<browserSearch>
-  <url>https://news.example.com/article/123</url>
-  <action>navigate</action>
-</browserSearch>
-
-步骤3：访问更多新闻源
-<browserSearch>
-  <url>https://news.example2.com/article/456</url>
-  <action>navigate</action>
+  <query>今天 AI 重要新闻</query>
 </browserSearch>`,
   ],
 
   params: [
     {
       name: "query",
-      optional: true,
-      description: "搜索查询关键词（action为search时必填）",
-    },
-    {
-      name: "url",
-      optional: true,
-      description: "要访问的网页URL（action为navigate时必填）",
-    },
-    {
-      name: "action",
-      optional: true,
-      description: "操作类型：search（搜索）、navigate（访问URL并提取内容），默认为search",
+      optional: false,
+      description: "搜索关键词。工具会自动搜索并抓取搜索结果页面内容。",
     },
   ],
 
   async invoke({ params, context }) {
-    const { query, url, action = "search" } = params;
+    const { query } = params;
     const { signal } = context;
-    let page = null;
+    const activePages = new Set<Page>();
 
-    try {
-      let content = "";
-      let resultUrl = "";
-      let title = "";
+    const createAbortError = () => {
+      const abortError = new Error("操作已取消");
+      abortError.name = "AbortError";
+      return abortError;
+    };
 
-      page = await browserManager.getPage();
-
-      // 处理中断信号
+    const assertNotAborted = () => {
       if (signal?.aborted) {
-        throw new Error("操作已取消");
+        throw createAbortError();
       }
+    };
 
-      switch (action) {
-        case "search": {
-          if (!query) {
-            throw new Error("搜索操作需要提供 query 参数");
+    const withAbort = async <T>(promise: Promise<T>): Promise<T> => {
+      if (!signal) {
+        return promise;
+      }
+      assertNotAborted();
+
+      return new Promise<T>((resolve, reject) => {
+        const onAbort = () => reject(createAbortError());
+        signal.addEventListener("abort", onAbort, { once: true });
+
+        promise
+          .then(resolve)
+          .catch(reject)
+          .finally(() => signal.removeEventListener("abort", onAbort));
+      });
+    };
+
+    const trackPage = (page: Page) => {
+      activePages.add(page);
+      return page;
+    };
+
+    const createTrackedPage = async () => trackPage(await withAbort(browserManager.getPage()));
+
+    const optimizePageForScrape = async (page: Page) => {
+      try {
+        await page.route("**/*", (route) => {
+          const resourceType = route.request().resourceType();
+          if (resourceType === "image" || resourceType === "media" || resourceType === "font") {
+            return route.abort();
           }
+          return route.continue();
+        });
+      } catch (error) {
+        logger.debug("[BrowserSearch] 注册资源拦截失败（可忽略）:", error);
+      }
+    };
 
-          logger.info(`[BrowserSearch] 搜索: ${query}`);
+    const closeTrackedPage = async (page: Page | null | undefined) => {
+      if (!page) {
+        return;
+      }
+      activePages.delete(page);
+      try {
+        await page.close();
+      } catch (error) {
+        logger.debug("[BrowserSearch] 关闭页面失败（可忽略）:", error);
+      }
+    };
 
-          // 使用 Bing 搜索（对自动化更友好）
-          const searchUrl = `https://www.bing.com/search?q=${encodeURIComponent(query)}&setlang=zh-CN`;
+    const waitForPageToSettle = async (page: Page) => {
+      await withAbort(page.waitForLoadState("domcontentloaded", { timeout: 3000 }).catch(() => {}));
+      await withAbort(
+        page.waitForLoadState("load", { timeout: PAGE_SETTLE_WAIT_MS }).catch(() => {}),
+      );
+      await withAbort(
+        page.waitForLoadState("networkidle", { timeout: PAGE_SETTLE_WAIT_MS }).catch(() => {}),
+      );
+      await withAbort(page.waitForTimeout(200));
+    };
 
-          try {
-            await page.goto(searchUrl, {
-              waitUntil: "domcontentloaded",
-              timeout: 30000,
-            });
-
-            // 等待搜索结果加载
-            await page.waitForSelector("#b_results, .b_algo", { timeout: 10000 }).catch(() => {
-              logger.warn("[BrowserSearch] 搜索结果加载超时");
-            });
-
-            // 提取搜索结果
-            const searchResults = await page.evaluate(() => {
-              const results: Array<{ title: string; snippet: string; url: string }> = [];
-
-              // @ts-expect-error
-              const resultElements = document.querySelectorAll(".b_algo");
-
-              for (let i = 0; i < Math.min(resultElements.length, 8); i++) {
-                const element = resultElements[i];
-                const titleEl = element.querySelector("h2 a");
-                const snippetEl = element.querySelector(".b_caption p, .b_algoSlug");
-
-                if (titleEl) {
-                  results.push({
-                    title: titleEl.textContent?.trim() || "",
-                    snippet: snippetEl?.textContent?.trim() || "",
-                    //@ts-expect-error
-                    url: (titleEl as HTMLAnchorElement).href || "",
-                  });
-                }
-              }
-
-              return results.filter((item) => item.title && item.url);
-            });
-
-            // 格式化搜索结果
-            content = `搜索 "${query}" 的结果：\n\n`;
-            if (searchResults.length > 0) {
-              searchResults.forEach(
-                (result: { title: string; snippet: string; url: string }, index: number) => {
-                  content += `${index + 1}. ${result.title}\n`;
-                  if (result.snippet) {
-                    content += `   ${result.snippet}\n`;
-                  }
-                  if (result.url) {
-                    content += `   链接: ${result.url}\n`;
-                  }
-                  content += "\n";
-                },
-              );
-            } else {
-              content += "未找到相关结果。建议直接访问特定网页。";
-            }
-
-            resultUrl = searchUrl;
-            title = `搜索结果 - ${query}`;
-          } catch (error) {
-            logger.error(`[BrowserSearch] 搜索失败: ${error}`);
-            content = `搜索失败: ${error instanceof Error ? error.message : String(error)}\n\n建议：可以尝试直接访问特定网页获取信息。`;
-            resultUrl = searchUrl;
-            title = `搜索失败 - ${query}`;
-          }
-          break;
-        }
-
-        case "navigate": {
-          if (!url) {
-            throw new Error("导航操作需要提供 url 参数");
-          }
-
-          logger.info(`[BrowserSearch] 访问URL: ${url}`);
-
-          await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-
-          // 提取页面标题、内容和可交互元素
-          const pageData = await page.evaluate(() => {
-            // @ts-expect-error
-            const scripts = document.querySelectorAll("script, style, noscript");
-            // @ts-expect-error
-            scripts.forEach((el) => {
-              el.remove();
-            });
-
-            // @ts-expect-error
-            const pageTitle = document.title;
-
-            const mainContent =
-              // @ts-expect-error
-              document.querySelector("main")?.textContent ||
-              // @ts-expect-error
-              document.querySelector("article")?.textContent ||
-              // @ts-expect-error
-              document.body.textContent ||
-              "";
-
-            // 提取页面中的重要链接
-            const links: Array<{ text: string; url: string; type: string }> = [];
-
-            // @ts-expect-error
-            const linkElements = document.querySelectorAll(
-              "a[href], button[onclick], [role='button']",
-            );
-
-            for (let i = 0; i < Math.min(linkElements.length, 20); i++) {
-              const el = linkElements[i];
-              const text = el.textContent?.trim() || "";
-
-              // 过滤掉空文本和太短的链接
-              if (text && text.length > 2 && text.length < 100) {
-                let linkUrl = "";
-                let linkType = "link";
-
-                if (el.tagName === "A") {
-                  linkUrl = el.href || "";
-                  linkType = "link";
-                } else if (el.tagName === "BUTTON" || el.getAttribute("role") === "button") {
-                  linkType = "button";
-                  linkUrl = el.getAttribute("data-url") || el.getAttribute("onclick") || "";
-                }
-
-                // 只保留有效的链接
-                if (linkType === "link" && linkUrl && !linkUrl.startsWith("javascript:")) {
-                  links.push({ text, url: linkUrl, type: linkType });
-                }
-              }
-            }
-
-            return {
-              title: pageTitle,
-              content: mainContent.replace(/\s+/g, " ").trim().substring(0, 5000),
-              links: links.slice(0, 15), // 最多返回15个链接
-            };
+    const extractPageData = async (page: Page) =>
+      withAbort(
+        page.evaluate((maxLength) => {
+          // @ts-expect-error
+          const removableNodes = document.querySelectorAll("script, style, noscript");
+          // @ts-expect-error
+          removableNodes.forEach((node) => {
+            node.remove();
           });
 
-          // 格式化内容，包含链接信息
-          content = pageData.content;
+          // @ts-expect-error
+          const pageTitle = document.title?.trim() || "";
 
-          if (pageData.links && pageData.links.length > 0) {
-            content += "\n\n---\n## 页面中的相关链接：\n\n";
-            pageData.links.forEach(
-              (link: { text: string; url: string; type: string }, index: number) => {
-                content += `${index + 1}. [${link.text}](${link.url})\n`;
-              },
-            );
-            content += "\n💡 提示：如果需要更深入的信息，可以继续访问上述相关链接。";
-          }
+          const contentCandidates = [
+            // @ts-expect-error
+            document.querySelector("main")?.textContent,
+            // @ts-expect-error
+            document.querySelector("article")?.textContent,
+            // @ts-expect-error
+            document.querySelector("[role='main']")?.textContent,
+            // @ts-expect-error
+            document.body?.innerText,
+            // @ts-expect-error
+            document.body?.textContent,
+          ];
 
-          title = pageData.title;
-          resultUrl = url;
-          break;
-        }
-
-        default:
-          throw new Error(
-            `不支持的操作类型: ${action}。支持的操作：search（搜索）、navigate（访问网页）`,
+          const rawContent = contentCandidates.find(
+            (value) => typeof value === "string" && value.trim().length > 0,
           );
+
+          const content = String(rawContent || "")
+            .replace(/\s+/g, " ")
+            .trim()
+            .substring(0, maxLength);
+
+          return {
+            title: pageTitle,
+            content,
+          };
+        }, MAX_PAGE_CONTENT_LENGTH),
+      );
+
+    const onAbortClosePages = () => {
+      for (const page of activePages) {
+        void page.close().catch((error: unknown) => {
+          logger.debug("[BrowserSearch] 中断时关闭页面失败（可忽略）:", error);
+        });
+      }
+      activePages.clear();
+    };
+    signal?.addEventListener("abort", onAbortClosePages, { once: true });
+
+    try {
+      if (!query?.trim()) {
+        throw new Error("搜索操作需要提供 query 参数");
       }
 
+      const keyword = query.trim();
+      const searchUrl = `https://www.bing.com/search?q=${encodeURIComponent(keyword)}&setlang=zh-CN`;
+      logger.info(`[BrowserSearch] 搜索并抓取: ${keyword}`);
+
+      let searchPage: Page | null = null;
+      let searchResults: SearchResult[] = [];
+
+      try {
+        searchPage = await createTrackedPage();
+
+        await withAbort(
+          searchPage.goto(searchUrl, {
+            waitUntil: "domcontentloaded",
+            timeout: SEARCH_PAGE_TIMEOUT_MS,
+          }),
+        );
+
+        await withAbort(
+          searchPage
+            .waitForSelector("#b_results, .b_algo", { timeout: SEARCH_RESULT_WAIT_MS })
+            .catch(() => {
+              logger.warn("[BrowserSearch] 搜索结果加载超时");
+            }),
+        );
+
+        searchResults = await withAbort(
+          searchPage.evaluate(() => {
+            const results: Array<{ title: string; snippet: string; url: string }> = [];
+            const seenUrls = new Set<string>();
+
+            // @ts-expect-error
+            const resultElements = document.querySelectorAll(".b_algo");
+
+            for (const element of resultElements) {
+              const titleEl = element.querySelector("h2 a");
+              const snippetEl = element.querySelector(".b_caption p, .b_algoSlug");
+
+              if (!titleEl) {
+                continue;
+              }
+
+              // @ts-expect-error
+              const href = (titleEl as HTMLAnchorElement).href || "";
+              const title = titleEl.textContent?.trim() || "";
+              const snippet = snippetEl?.textContent?.trim() || "";
+
+              if (!title || !href || seenUrls.has(href)) {
+                continue;
+              }
+
+              if (href.startsWith("javascript:")) {
+                continue;
+              }
+
+              seenUrls.add(href);
+              results.push({ title, snippet, url: href });
+            }
+
+            return results;
+          }),
+        );
+      } finally {
+        await closeTrackedPage(searchPage);
+      }
+
+      if (searchResults.length === 0) {
+        const emptyContent = `搜索 "${keyword}" 未找到可抓取的结果。`;
+        return {
+          message: `浏览器搜索完成，但没有可抓取的搜索结果。关键词: ${keyword}`,
+          toolResult: {
+            content: emptyContent,
+            url: searchUrl,
+            title: `搜索结果 - ${keyword}`,
+            results: [],
+          },
+        };
+      }
+
+      const fetchSingleResult = async (result: SearchResult): Promise<FetchedSearchResult> => {
+        assertNotAborted();
+        let page: Page | null = null;
+        try {
+          logger.info(`[BrowserSearch] 抓取结果页: ${result.url}`);
+          page = await createTrackedPage();
+          await optimizePageForScrape(page);
+
+          await withAbort(
+            page.goto(result.url, {
+              waitUntil: "domcontentloaded",
+              timeout: FETCH_PAGE_TIMEOUT_MS,
+            }),
+          );
+          await waitForPageToSettle(page);
+
+          let pageData: { title: string; content: string } | null = null;
+          let lastEvaluateError: unknown = null;
+          for (let attempt = 0; attempt <= PAGE_EVALUATE_RETRY_COUNT; attempt++) {
+            try {
+              pageData = await extractPageData(page);
+              break;
+            } catch (error) {
+              lastEvaluateError = error;
+              if (
+                !isExecutionContextDestroyedError(error) ||
+                attempt === PAGE_EVALUATE_RETRY_COUNT
+              ) {
+                throw error;
+              }
+              logger.debug(
+                `[BrowserSearch] 页面抓取遇到导航抖动，重试 evaluate（${attempt + 1}/${PAGE_EVALUATE_RETRY_COUNT + 1}）: ${result.url}`,
+              );
+              await waitForPageToSettle(page);
+              await sleep(150);
+            }
+          }
+
+          if (!pageData) {
+            throw lastEvaluateError instanceof Error
+              ? lastEvaluateError
+              : new Error("页面内容提取失败");
+          }
+
+          const finalUrl = page.url() || result.url;
+          return {
+            title: pageData.title || result.title,
+            url: finalUrl,
+            snippet: result.snippet || undefined,
+            content: pageData.content || "",
+          };
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            throw error;
+          }
+
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          logger.warn(`[BrowserSearch] 抓取失败: ${result.url} - ${errorMessage}`);
+          return {
+            title: result.title,
+            url: page?.url() || result.url,
+            snippet: result.snippet || undefined,
+            error: errorMessage,
+          };
+        } finally {
+          await closeTrackedPage(page);
+        }
+      };
+
+      const fetchedResults = new Array<FetchedSearchResult>(searchResults.length);
+      let nextIndex = 0;
+      const workerCount = Math.min(FETCH_CONCURRENCY, searchResults.length);
+
+      await Promise.all(
+        Array.from({ length: workerCount }, async () => {
+          while (true) {
+            assertNotAborted();
+            const currentIndex = nextIndex;
+            nextIndex += 1;
+            if (currentIndex >= searchResults.length) {
+              return;
+            }
+            const result = searchResults[currentIndex];
+            if (!result) {
+              return;
+            }
+            fetchedResults[currentIndex] = await fetchSingleResult(result);
+          }
+        }),
+      );
+
+      const successCount = fetchedResults.filter((item) => item && !item.error).length;
+      const failureCount = fetchedResults.filter((item) => item?.error).length;
+      let content = `搜索 "${keyword}" 并抓取网页内容完成。\n`;
+      content += `共识别 ${searchResults.length} 个搜索结果，成功抓取 ${successCount} 个，失败 ${failureCount} 个。\n`;
+      content +=
+        "详细网页内容已写入 result.results（每条包含 title/url/snippet/content 或 error）。";
+
       return {
-        message: `浏览器操作成功完成。${action === "search" ? `\n搜索关键词: ${query} \n ## 搜索结论：${content}` : action === "navigate" ? `访问URL: ${url}，页面内容为： ${content}` : `已提取页面内容，如下：${content}`}`,
+        message: `浏览器搜索并抓取完成。关键词: ${keyword}，共处理 ${searchResults.length} 个搜索结果。`,
         toolResult: {
           content,
-          url: resultUrl || undefined,
-          title: title || undefined,
+          url: searchUrl,
+          title: `搜索并抓取 - ${keyword}`,
+          results: fetchedResults.filter(Boolean),
         },
       };
     } catch (error) {
@@ -306,19 +401,15 @@ export const BrowserSearch = createTool({
       logger.error(`[BrowserSearch] 执行失败: ${errorMessage}`);
 
       return {
-        message: `浏览器操作失败: ${errorMessage}`,
+        message: `浏览器搜索失败: ${errorMessage}`,
         toolResult: {
           content: `错误: ${errorMessage}`,
         },
       };
     } finally {
-      // 关闭页面
-      if (page) {
-        try {
-          await page.close();
-        } catch (error) {
-          logger.error("[BrowserSearch] 关闭页面失败:", error);
-        }
+      signal?.removeEventListener("abort", onAbortClosePages);
+      for (const page of [...activePages]) {
+        await closeTrackedPage(page);
       }
     }
   },

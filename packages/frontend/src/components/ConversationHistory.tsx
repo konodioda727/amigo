@@ -50,10 +50,10 @@ const ConversationHistory = () => {
         return (
           <div
             key={history.taskId}
-            className={`relative group flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl transition-all ${
+            className={`relative group flex items-center gap-2.5 px-2 py-2 rounded-xl transition-all ${
               isActive
-                ? "bg-white shadow-sm text-gray-900"
-                : "text-gray-600 hover:bg-gray-200/30 hover:text-gray-900"
+                ? "bg-white shadow-sm border border-gray-100 text-gray-900"
+                : "text-gray-600 hover:bg-gray-200/40 hover:text-gray-900 border border-transparent"
             } ${isDeleting ? "opacity-50" : ""}`}
           >
             <button
@@ -63,11 +63,13 @@ const ConversationHistory = () => {
               disabled={isDeleting}
             >
               <div
-                className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-colors ${
-                  isActive ? "bg-blue-50" : "bg-gray-100 group-hover:bg-gray-200"
+                className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                  isActive
+                    ? "bg-gray-50 border border-gray-100/50"
+                    : "bg-transparent group-hover:bg-white"
                 }`}
               >
-                <MessageCircle size={14} className={isActive ? "text-blue-500" : "text-gray-400"} />
+                <MessageCircle size={14} className={isActive ? "text-gray-700" : "text-gray-400"} />
               </div>
               <span className="text-[13px] font-medium truncate flex-1 pr-2">
                 {history.title || "新对话"}

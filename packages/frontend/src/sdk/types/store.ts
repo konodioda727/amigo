@@ -77,7 +77,9 @@ export type Unsubscribe = () => void;
  */
 export interface WebSocketStore {
   taskStatusMaps: Record<string, Record<string, any>>;
+  taskAutoApproveToolNameMaps: Record<string, string[]>;
   setTaskStatusMap: (taskId: string, subTasks: Record<string, any>) => void;
+  setTaskAutoApproveToolNames: (taskId: string, toolNames: string[]) => void;
   // Connection state
   socket: WebSocket | null;
   connectionStatus: ConnectionStatus;

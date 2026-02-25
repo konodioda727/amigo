@@ -16,7 +16,6 @@ import {
   ExecuteTaskList,
   GetTaskListProgress,
   ReadTaskDocs,
-  UpdateTaskList,
 } from "./taskDocs/index";
 
 export class ToolService {
@@ -417,7 +416,6 @@ export const SUB_BASIC_TOOLS: ToolInterface<any>[] = [
   Bash,
   CreateTaskDocs,
   ReadTaskDocs,
-  UpdateTaskList,
   CompleteTask,
 ];
 
@@ -434,7 +432,6 @@ export {
   Bash,
   CreateTaskDocs,
   ReadTaskDocs,
-  UpdateTaskList,
   GetTaskListProgress,
   ExecuteTaskList,
 };

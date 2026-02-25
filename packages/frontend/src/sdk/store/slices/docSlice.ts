@@ -88,6 +88,7 @@ export const createDocSlice: StateCreator<WebSocketStore, [], [], DocSlice> = (s
       docState: {
         ...get().docState,
         isOpen: hasAnyContent,
+        activeDoc: targetType,
         documents: updatedDocuments,
       },
     });
