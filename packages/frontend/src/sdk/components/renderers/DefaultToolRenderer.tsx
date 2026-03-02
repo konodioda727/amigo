@@ -4,9 +4,11 @@ import type React from "react";
 import type { ToolMessageRendererProps } from "../../types/renderers";
 import { DefaultBashRenderer } from "./tools/DefaultBashRenderer";
 import { DefaultBrowserSearchRenderer } from "./tools/DefaultBrowserSearchRenderer";
+import { DefaultCompleteTaskRenderer } from "./tools/DefaultCompleteTaskRenderer";
 import { DefaultCreateTaskDocsRenderer } from "./tools/DefaultCreateTaskDocsRenderer";
 import { DefaultEditFileRenderer } from "./tools/DefaultEditFileRenderer";
 import { DefaultExecuteTaskListRenderer } from "./tools/DefaultExecuteTaskListRenderer";
+import { DefaultGetTaskListProgressRenderer } from "./tools/DefaultGetTaskListProgressRenderer";
 import { DefaultReadFileRenderer } from "./tools/DefaultReadFileRenderer";
 import { DefaultReadTaskDocsRenderer } from "./tools/DefaultReadTaskDocsRenderer";
 
@@ -26,6 +28,10 @@ const toolRendererMap: {
   readTaskDocs: DefaultReadTaskDocsRenderer as React.FC<ToolMessageRendererProps<"readTaskDocs">>,
   executeTaskList: DefaultExecuteTaskListRenderer as React.FC<
     ToolMessageRendererProps<"executeTaskList">
+  >,
+  completeTask: DefaultCompleteTaskRenderer as React.FC<ToolMessageRendererProps<"completeTask">>,
+  getTaskListProgress: DefaultGetTaskListProgressRenderer as React.FC<
+    ToolMessageRendererProps<"getTaskListProgress">
   >,
 };
 

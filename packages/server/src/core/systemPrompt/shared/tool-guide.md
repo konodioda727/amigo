@@ -13,41 +13,17 @@ Need progress/failure snapshot? -> getTaskListProgress (sparingly)
 Otherwise -> Use appropriate functional tool
 ```
 
-## XML Format
+## Native Tool Call Format
 
-<toolName>
-  <param>value</param>
-</toolName>
-
-### Nested Objects
-
-<browserSearch>
-  <action>navigate</action>
-  <url>https://example.com/docs</url>
-</browserSearch>
-
-### Arrays
-
-<askFollowupQuestion>
-  <question>Which option?</question>
-  <suggestOptions>
-    <option>Option A</option>
-    <option>Option B</option>
-  </suggestOptions>
-</askFollowupQuestion>
-
-### Special Characters
-
-Use CDATA for content with `<`, `>`, `&`:
-
-<completionResult>
-  <![CDATA[if (x > 5 && y < 10) { ... }]]>
-</completionResult>
+- Use native tool calls only (structured function call with JSON arguments).
+- Do not output XML tags like `<toolName>...</toolName>`.
+- For nested objects/arrays, pass valid JSON object/array arguments.
+- If a tool has no parameters, call it with an empty JSON object.
 
 ## Common Mistakes
 
 - Multiple tools in one response
 - Completing with plain text instead of the completion tool
-- Using tool names or parameters that do not match definitions
+- Using tool names or JSON parameters that do not match definitions
 
 ====

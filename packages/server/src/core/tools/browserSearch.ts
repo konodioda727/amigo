@@ -380,15 +380,10 @@ export const BrowserSearch = createTool({
         }),
       );
 
-      const successCount = fetchedResults.filter((item) => item && !item.error).length;
-      const failureCount = fetchedResults.filter((item) => item?.error).length;
-      let content = `搜索 "${keyword}" 并抓取网页内容完成。\n`;
-      content += `共识别 ${searchResults.length} 个搜索结果，成功抓取 ${successCount} 个，失败 ${failureCount} 个。\n`;
-      content +=
-        "详细网页内容已写入 result.results（每条包含 title/url/snippet/content 或 error）。";
+      const content = `抓取网页内容完成。\n`;
 
       return {
-        message: `浏览器搜索并抓取完成。关键词: ${keyword}，共处理 ${searchResults.length} 个搜索结果。`,
+        message: `网页搜索并抓取完成。`,
         toolResult: {
           content,
           url: searchUrl,

@@ -1,7 +1,7 @@
 import type { ToolInterface } from "@amigo-llm/types";
 import { systemReservedTags } from "@amigo-llm/types";
 import type { ToolExecutionContext, ToolNames, ToolResult } from "@amigo-llm/types/src/tool";
-import { XMLParser } from "fast-xml-parser";
+import type { AmigoToolDefinition } from "@/core/model";
 import { ensureArray } from "@/utils/array";
 import { logger } from "@/utils/logger";
 import { AskFollowupQuestions } from "./askFollowupQuestions";
@@ -60,13 +60,26 @@ export class ToolService {
   }
 
   /**
-   * 解析 XML 并自动调用所有工具
+   * 生成供原生 Tool Call 使用的工具声明
    */
-  public async parseAndExecute({
-    xmlParams,
+  public getToolDefinitions(): AmigoToolDefinition[] {
+    return this.getAllTools().map((tool) => ({
+      name: tool.name,
+      description: `${tool.description}\n\n${tool.whenToUse}`.trim(),
+      parameters: this.buildToolParametersSchema(tool),
+    }));
+  }
+
+  /**
+   * 执行原生 Tool Call（结构化参数）
+   */
+  public async executeToolCall({
+    toolName,
+    params,
     context,
   }: {
-    xmlParams: string;
+    toolName: string;
+    params: unknown;
     context: ToolExecutionContext;
   }): Promise<{
     message: string;
@@ -75,37 +88,25 @@ export class ToolService {
     error?: string;
   }> {
     try {
-      const { params, toolName, error } = this.parseParams(xmlParams);
-
-      // If there's a parsing error, return it
-      if (error) {
-        logger.error("[ToolService] 工具参数解析错误:", error);
-        return {
-          message: error,
-          toolResult: "",
-          params,
-          error,
-        };
-      }
-
       const tool = this._availableTools[toolName || ""];
       if (!tool) {
         const errorMsg = `工具 '${toolName}' 不存在。请使用正确的工具名称。`;
         return {
           message: errorMsg,
           toolResult: "",
-          params,
+          params: {},
           error: errorMsg,
         };
       }
 
+      const normalizedParams = this.normalizeToolCallParams(toolName, params, tool.params);
       const { toolResult, message } = await tool.invoke({
-        params: params as never,
+        params: normalizedParams as never,
         context,
       });
-      logger.debug("[ToolService] 工具调用完成:", toolName, params, toolResult);
+      logger.debug("[ToolService] 工具调用完成:", toolName, normalizedParams, toolResult);
 
-      return { message, toolResult, params };
+      return { message, toolResult, params: normalizedParams };
     } catch (err) {
       const errorMsg = `工具执行错误: ${err instanceof Error ? err.message : String(err)}`;
       logger.error("[ToolService] 工具执行异常:", err);
@@ -116,6 +117,152 @@ export class ToolService {
         error: errorMsg,
       };
     }
+  }
+
+  /**
+   * 解析 XML 并自动调用所有工具
+   */
+  public async parseAndExecute({
+    xmlParams: _xmlParams,
+    context: _context,
+  }: {
+    xmlParams: string;
+    context: ToolExecutionContext;
+  }): Promise<{
+    message: string;
+    params: Record<string, unknown> | string;
+    toolResult: ToolResult<ToolNames>;
+    error?: string;
+  }> {
+    const error =
+      "XML tool-call path has been removed. Use native structured tool call via executeToolCall().";
+    return {
+      message: error,
+      params: {},
+      toolResult: "",
+      error,
+    };
+  }
+
+  private inferParamType(param: any): "string" | "array" | "object" {
+    if (param?.type === "string" || param?.type === "array" || param?.type === "object") {
+      return param.type;
+    }
+    if (Array.isArray(param?.params) && param.params.length > 0) {
+      return "object";
+    }
+    return "string";
+  }
+
+  private buildObjectSchemaFromParams(params: any[]): Record<string, unknown> {
+    const properties: Record<string, unknown> = {};
+    const required: string[] = [];
+
+    for (const param of params) {
+      const type = this.inferParamType(param);
+      properties[param.name] = this.buildSchemaForParamDefinition({
+        ...param,
+        type,
+      });
+
+      if (!param.optional) {
+        required.push(param.name);
+      }
+    }
+
+    return {
+      type: "object",
+      properties,
+      additionalProperties: false,
+      ...(required.length > 0 ? { required } : {}),
+    };
+  }
+
+  private buildArrayItemsSchema(param: any): Record<string, unknown> {
+    const children = Array.isArray(param?.params) ? param.params : [];
+    if (children.length === 0) {
+      return { type: "string" };
+    }
+
+    if (children.length === 1) {
+      const child = children[0];
+      const childType = this.inferParamType(child);
+
+      if (childType === "string") {
+        return {
+          type: "string",
+          ...(child.description ? { description: child.description } : {}),
+        };
+      }
+
+      if (childType === "array") {
+        return {
+          type: "array",
+          items: this.buildArrayItemsSchema(child),
+          ...(child.description ? { description: child.description } : {}),
+        };
+      }
+
+      if (Array.isArray(child.params) && child.params.length > 0) {
+        return this.buildObjectSchemaFromParams(child.params);
+      }
+    }
+
+    return this.buildObjectSchemaFromParams(children);
+  }
+
+  private buildSchemaForParamDefinition(param: any): Record<string, unknown> {
+    const type = this.inferParamType(param);
+
+    if (type === "array") {
+      return {
+        type: "array",
+        items: this.buildArrayItemsSchema(param),
+        ...(param.description ? { description: param.description } : {}),
+      };
+    }
+
+    if (type === "object") {
+      const nested = Array.isArray(param.params) ? param.params : [];
+      const objectSchema = this.buildObjectSchemaFromParams(nested);
+      return {
+        ...objectSchema,
+        ...(param.description ? { description: param.description } : {}),
+      };
+    }
+
+    return {
+      type: "string",
+      ...(param.description ? { description: param.description } : {}),
+    };
+  }
+
+  private buildToolParametersSchema(tool: ToolInterface<any>): Record<string, unknown> {
+    const params = Array.isArray(tool.params) ? tool.params : [];
+    if (params.length === 0) {
+      return {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      };
+    }
+    return this.buildObjectSchemaFromParams(params);
+  }
+
+  private normalizeToolCallParams(
+    toolName: string,
+    params: unknown,
+    paramDefinitions: any[],
+  ): Record<string, unknown> | string {
+    if (paramDefinitions.length === 0) {
+      return {};
+    }
+
+    if (!params || typeof params !== "object" || Array.isArray(params)) {
+      throw new Error(`工具 '${toolName}' 参数必须是对象`);
+    }
+
+    return this.mapAndValidateParams(params, paramDefinitions, false, toolName);
   }
 
   /**
@@ -163,59 +310,20 @@ export class ToolService {
   }
 
   public parseParams(
-    buffer: string,
-    partial = false,
+    _buffer: string,
+    _partial = false,
   ): {
     params: Record<string, unknown> | string;
     toolName: string;
     error?: string;
   } {
-    try {
-      const completedXml = this.completePartialXml(buffer);
-
-      // 先用简单解析获取工具名
-      const simpleParser = new XMLParser({ ignoreAttributes: true });
-      const preParseResult = simpleParser.parse(completedXml);
-      const toolName = Object.keys(preParseResult).find((key) => this._availableTools[key]) || "";
-      const tool = this._availableTools[toolName];
-
-      if (!tool) {
-        const firstKey = Object.keys(preParseResult)[0] || "";
-        if (!partial) {
-          logger.warn(`[parseTool] 未找到名为 '${toolName || firstKey}' 的工具。`);
-        }
-        return {
-          params: {},
-          toolName: toolName || firstKey,
-        };
-      }
-
-      // 收集所有叶子节点路径作为 stopNodes，防止内容中的 HTML 标签被解析
-      // 如果 params 为空，则将工具名本身作为 stopNode
-      const hasParams = tool.params.length !== 0;
-      const stopNodes = hasParams ? this.collectLeafNodePaths(tool.params, toolName) : [toolName];
-
-      const parser = new XMLParser({
-        ignoreAttributes: false,
-        trimValues: true,
-        stopNodes,
-      });
-      const jsonOutput = parser.parse(completedXml);
-
-      const finalParams = hasParams
-        ? this.mapAndValidateParams(jsonOutput[toolName], tool.params, partial, toolName)
-        : String(jsonOutput[toolName]);
-
-      return { params: finalParams, toolName };
-    } catch (err) {
-      const errorMsg = `XML 解析错误: ${err instanceof Error ? err.message : String(err)}。\n\n⚠️ 请注意：必须使用子标签格式，不能使用属性格式。\n\n❌ 错误格式: <tool param1="value1" param2="value2"/>\n✅ 正确格式: <tool><param1>value1</param1><param2>value2</param2></tool>`;
-      logger.error("[parseParams] 解析失败:", err);
-      return {
-        params: {},
-        toolName: "",
-        error: errorMsg,
-      };
-    }
+    const error =
+      "XML tool-call path has been removed. Use native structured tool call via executeToolCall().";
+    return {
+      params: {},
+      toolName: "",
+      error,
+    };
   }
 
   /**
@@ -340,35 +448,13 @@ export class ToolService {
       }
 
       // --- 1. 数组类型 (type: "array") ---
-      if (paramDef.type === "array" && !Array.isArray(rawValue)) {
-        // 如果为数组类型，则 params 定义中必须有且仅有一个子定义
-        if (paramDef.params.length !== 1) {
-          logger.warn(
-            `[parseTool] Array type param '${paramDef.name}' should have exactly one child definition.`,
-          );
-          continue;
-        }
-        if (Object.keys(rawValue).length !== 1) {
-          const errorMsg = `Array type param '${paramDef.name}' should have exactly one child element instance named ${paramDef.params[0]?.name}.`;
-          if (!partial) {
-            logger.warn(`\n[parseTool] ${errorMsg}`);
-            missingParams.push(errorMsg);
-          }
-          finalParams[paramDef.name] = [];
-          continue;
-        }
-        const childTag = paramDef.params[0];
-        const childTagName = childTag?.name;
-        const rawArray = ensureArray(rawValue[childTagName]);
-
-        // 如果数组元素有更深层次的定义, 递归处理数组中的每个元素
-        if (childTag.params && childTag.params.length > 0) {
-          finalParams[paramDef.name] = rawArray.map((item: any) =>
-            this.mapAndValidateParams(item, childTag.params, partial),
-          );
-        } else {
-          finalParams[paramDef.name] = rawArray;
-        }
+      if (paramDef.type === "array") {
+        finalParams[paramDef.name] = this.normalizeArrayParam(
+          rawValue,
+          paramDef,
+          partial,
+          toolName,
+        );
       }
 
       // --- 2. 对象类型 (type: "object" 或具有子标签的复杂结构) ---
@@ -392,6 +478,54 @@ export class ToolService {
     }
 
     return finalParams;
+  }
+
+  private normalizeArrayParam(
+    rawValue: unknown,
+    paramDef: any,
+    partial: boolean,
+    toolName: string,
+  ): unknown[] {
+    const childDefs = Array.isArray(paramDef?.params) ? paramDef.params : [];
+    if (childDefs.length !== 1) {
+      if (!partial) {
+        throw new Error(
+          `工具 '${toolName}' 的数组参数 '${paramDef?.name}' 定义无效：必须有且仅有一个子参数定义。`,
+        );
+      }
+      return [];
+    }
+
+    const childDef = childDefs[0];
+    const unwrapLegacyChild = (item: unknown): unknown => {
+      if (
+        item &&
+        typeof item === "object" &&
+        !Array.isArray(item) &&
+        typeof childDef?.name === "string" &&
+        Object.hasOwn(item, childDef.name) &&
+        Object.keys(item as Record<string, unknown>).length === 1
+      ) {
+        return (item as Record<string, unknown>)[childDef.name];
+      }
+      return item;
+    };
+
+    const sourceArray = Array.isArray(rawValue)
+      ? rawValue
+      : ensureArray(
+          rawValue && typeof rawValue === "object" && !Array.isArray(rawValue)
+            ? (rawValue as Record<string, unknown>)[childDef.name]
+            : rawValue,
+        );
+
+    if (Array.isArray(childDef?.params) && childDef.params.length > 0) {
+      return sourceArray.map((item) =>
+        this.mapAndValidateParams(unwrapLegacyChild(item), childDef.params, partial, toolName),
+      );
+    }
+
+    return sourceArray.map((item) => unwrapLegacyChild(item));
   }
 }
 

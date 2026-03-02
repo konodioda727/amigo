@@ -213,7 +213,7 @@ server.start();
 
 ## 模型注入（`llmFactory` / `modelProvider`）
 
-默认情况下，服务端会从环境变量创建模型实例（例如读取 `MODEL_API_KEY`、`MODEL_NAME` 等）。
+默认情况下，服务端会从环境变量创建模型实例（例如读取 `MODEL_API_KEY`、`MODEL_NAME` 等），并通过内置的 modelName→provider 映射表选择 provider；若 `MODEL_NAME` 未命中映射表会直接报错。
 
 你可以在 SDK 层覆盖这个逻辑：
 
@@ -221,7 +221,7 @@ server.start();
 import { AmigoServerBuilder } from "@amigo-llm/server/sdk";
 
 const builder = new AmigoServerBuilder().modelProvider(() => {
-  // 返回符合 BaseChatModel 的实例
+  // 返回符合 AmigoLlm 接口的实例（需实现 stream(messages, { signal })）
   // 这里省略具体实现
   return myChatModel;
 });

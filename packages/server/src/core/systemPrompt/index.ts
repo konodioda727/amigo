@@ -3,7 +3,6 @@ import path from "node:path";
 
 import { logger } from "@/utils/logger";
 import type { ToolService } from "../tools";
-import { generateToolsPrompt } from "./tools";
 
 /**
  * Load a prompt file from the systemPrompt directory
@@ -24,32 +23,6 @@ const loadSharedModules = () => {
   const criticalRules = loadPrompt("./shared/critical-rules.md");
   const toolGuide = loadPrompt("./shared/tool-guide.md");
   return { criticalRules, toolGuide };
-};
-
-/**
- * Generate tool sections for the prompt
- */
-const generateToolSections = (toolService: ToolService): string => {
-  const allToolNames = toolService.toolNames;
-
-  return [
-    `
-====
-
-TOOLS
-
-## Base Tools
-
-${generateToolsPrompt(toolService.baseTools, allToolNames)}
-`,
-    `
-## Custom Tools
-
-${generateToolsPrompt(toolService.customedTools, allToolNames)}
-
-====
-`,
-  ].join("\n");
 };
 
 /**
@@ -75,9 +48,8 @@ export function getSystemPrompt(
  * 3. main/rules.md
  * 4. main/workflow.md (structured workflow guidance)
  * 5. shared/tool-guide.md
- * 6. [Dynamic tool list]
  */
-export const getMainSystemPrompt = (toolService: ToolService): string => {
+export const getMainSystemPrompt = (_toolService: ToolService): string => {
   const { criticalRules, toolGuide } = loadSharedModules();
   const identity = loadPrompt("./main/identity.md");
   const rules = loadPrompt("./main/rules.md");
@@ -85,14 +57,7 @@ export const getMainSystemPrompt = (toolService: ToolService): string => {
 
   logger.debug("Loaded main agent prompts:", { identity, rules, workflow });
 
-  return [
-    criticalRules,
-    identity,
-    rules,
-    workflow,
-    toolGuide,
-    generateToolSections(toolService),
-  ].join("\n\n");
+  return [criticalRules, identity, rules, workflow, toolGuide].join("\n\n");
 };
 
 /**
@@ -102,16 +67,13 @@ export const getMainSystemPrompt = (toolService: ToolService): string => {
  * 2. sub/identity.md
  * 3. sub/rules.md
  * 4. shared/tool-guide.md
- * 5. [Dynamic tool list]
  */
-export const getSubSystemPrompt = (toolService: ToolService): string => {
+export const getSubSystemPrompt = (_toolService: ToolService): string => {
   const { criticalRules, toolGuide } = loadSharedModules();
   const identity = loadPrompt("./sub/identity.md");
   const rules = loadPrompt("./sub/rules.md");
 
   logger.debug("Loaded sub agent prompts:", { identity, rules });
 
-  return [criticalRules, identity, rules, toolGuide, generateToolSections(toolService)].join(
-    "\n\n",
-  );
+  return [criticalRules, identity, rules, toolGuide].join("\n\n");
 };

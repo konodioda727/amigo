@@ -14,8 +14,8 @@ You MUST follow these rules.
    - Do not call any other tools after completion
 
 3. BROWSER SEARCH DISCIPLINE
-   - At most TWO `browserSearch` calls with `<action>search</action>` per user request
-   - After search, open 1-3 relevant results with `<action>navigate</action>` before answering
+   - At most TWO `browserSearch` calls with action `search` per user request
+   - After search, open 1-3 relevant results with action `navigate` before answering
    - You may skip navigation only when no relevant result exists, or the user explicitly wants the search list (explain why)
    - If still insufficient after two searches, stop searching and ask for guidance via `askFollowupQuestion`
 

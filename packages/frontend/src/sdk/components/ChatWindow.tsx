@@ -235,9 +235,7 @@ export const ChatWindow: FC<ChatWindowProps> = ({
             data={messages}
             atBottomThreshold={AT_BOTTOM_THRESHOLD_PX}
             computeItemKey={(index, message) => getMessageKey(message, index)}
-            followOutput={(isAtBottom) =>
-              isAtBottom ? (status === "streaming" ? "auto" : "smooth") : false
-            }
+            followOutput={(isAtBottom) => (status === "streaming" && isAtBottom ? "auto" : false)}
             atBottomStateChange={(isAtBottom) => {
               setShowScrollButton(!isAtBottom);
             }}

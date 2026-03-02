@@ -8,6 +8,7 @@ import { broadcaster } from "./WebSocketBroadcaster";
 interface ToolContent {
   toolName: string;
   params: unknown;
+  toolCallId?: string;
   result?: unknown;
   error?: string;
 }
@@ -18,6 +19,12 @@ interface ToolError {
   type: ChatMessage["type"];
 }
 
+export interface NativeToolCall {
+  toolCallId?: string;
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
 /**
  * 工具执行器 - 负责工具调用的执行和结果处理
  */
@@ -25,10 +32,125 @@ export class ToolExecutor {
   private lastToolHadError = false;
   private lastToolError: ToolError | null = null;
 
+  private static readonly BROWSER_SEARCH_RESULT_PREVIEW_COUNT = 8;
+  private static readonly BROWSER_SEARCH_CONTENT_PREVIEW_LENGTH = 1200;
+
+  private asRecord(value: unknown): Record<string, unknown> | null {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return null;
+    }
+    return value as Record<string, unknown>;
+  }
+
+  private compactBrowserSearchResult(result: unknown): unknown {
+    const record = this.asRecord(result);
+    if (!record) {
+      return result;
+    }
+
+    const rawResults = Array.isArray(record.results) ? record.results : [];
+    const compactResults = rawResults
+      .slice(0, ToolExecutor.BROWSER_SEARCH_RESULT_PREVIEW_COUNT)
+      .map((item) => {
+        const row = this.asRecord(item);
+        if (!row) {
+          return item;
+        }
+
+        const compactRow: Record<string, unknown> = {};
+        if (typeof row.title === "string") {
+          compactRow.title = row.title;
+        }
+        if (typeof row.url === "string") {
+          compactRow.url = row.url;
+        }
+        if (typeof row.snippet === "string") {
+          compactRow.snippet = row.snippet;
+        }
+        if (typeof row.error === "string" && row.error) {
+          compactRow.error = row.error;
+        }
+
+        if (typeof row.content === "string" && row.content) {
+          const content = row.content;
+          compactRow.contentPreview =
+            content.length > ToolExecutor.BROWSER_SEARCH_CONTENT_PREVIEW_LENGTH
+              ? `${content.slice(0, ToolExecutor.BROWSER_SEARCH_CONTENT_PREVIEW_LENGTH)}...`
+              : content;
+          compactRow.contentLength = content.length;
+        }
+
+        return compactRow;
+      });
+
+    const failureCount = rawResults.filter((item) => {
+      const row = this.asRecord(item);
+      return !!(row && typeof row.error === "string" && row.error);
+    }).length;
+    const successCount = rawResults.length - failureCount;
+
+    return {
+      content: typeof record.content === "string" ? record.content : "",
+      title: typeof record.title === "string" ? record.title : "",
+      url: typeof record.url === "string" ? record.url : "",
+      totalResults: rawResults.length,
+      successCount,
+      failureCount,
+      results: compactResults,
+      omittedResults: Math.max(
+        0,
+        rawResults.length - ToolExecutor.BROWSER_SEARCH_RESULT_PREVIEW_COUNT,
+      ),
+    };
+  }
+
+  private normalizeResultForMemory(toolName: string, result: unknown): unknown {
+    if (toolName === "browserSearch") {
+      return this.compactBrowserSearchResult(result);
+    }
+    return result;
+  }
+
+  private buildAssistantMemoryToolContent(
+    toolName: string,
+    params: unknown,
+    toolCallId: string | undefined,
+    result: unknown,
+  ): string {
+    if (toolName !== "browserSearch") {
+      return JSON.stringify({
+        result,
+        params,
+        toolName,
+        toolCallId,
+      } satisfies ToolContent);
+    }
+
+    const compactResult = this.compactBrowserSearchResult(result);
+    const compactRecord = this.asRecord(compactResult) || {};
+    const summary = {
+      content: typeof compactRecord.content === "string" ? compactRecord.content : "",
+      totalResults:
+        typeof compactRecord.totalResults === "number" ? compactRecord.totalResults : undefined,
+      successCount:
+        typeof compactRecord.successCount === "number" ? compactRecord.successCount : undefined,
+      failureCount:
+        typeof compactRecord.failureCount === "number" ? compactRecord.failureCount : undefined,
+    };
+
+    return JSON.stringify({
+      result: summary,
+      params,
+      toolName,
+      toolCallId,
+    } satisfies ToolContent);
+  }
+
   private serializeResultForMemory(toolName: string, result: unknown): string {
     try {
-      const serialized = JSON.stringify(result, null, 2);
-      const maxLength = toolName === "browserSearch" ? 120_000 : 20_000;
+      const normalized = this.normalizeResultForMemory(toolName, result);
+      const serialized = JSON.stringify(normalized, null, 2);
+      const maxLength = toolName === "browserSearch" ? 60_000 : 20_000;
       if (serialized.length <= maxLength) {
         return serialized;
       }
@@ -67,25 +189,25 @@ export class ToolExecutor {
    */
   async executeToolCall(
     conversation: Conversation,
-    fullToolCall: string,
-    toolName: string,
+    toolCall: NativeToolCall,
     type: ChatMessage["type"],
     abortSignal?: AbortSignal,
   ): Promise<void> {
+    const toolName = toolCall.name;
+
     if (conversation.isAborted || conversation.status === "aborted" || abortSignal?.aborted) {
       logger.info(`[ToolExecutor] 会话已中断，跳过工具调用: ${toolName}`);
       return;
     }
 
-    // 发送 partial 消息 - 使用 partial: true 避免参数验证错误
-    const { params: partialParams } = conversation.toolService.parseParams(fullToolCall, true);
+    // 发送 partial 消息，展示待执行参数
     broadcaster.postMessage(conversation, {
       role: "assistant",
       content: JSON.stringify({
-        params: partialParams,
+        params: toolCall.arguments,
         toolName,
+        toolCallId: toolCall.toolCallId,
       } satisfies ToolContent),
-      originalMessage: fullToolCall,
       type,
       partial: true,
     });
@@ -108,8 +230,9 @@ export class ToolExecutor {
     };
 
     // 执行工具
-    const { toolResult, message, params, error } = await conversation.toolService.parseAndExecute({
-      xmlParams: fullToolCall,
+    const { toolResult, message, params, error } = await conversation.toolService.executeToolCall({
+      toolName,
+      params: toolCall.arguments,
       context,
     });
     if (conversation.isAborted || conversation.status === "aborted" || abortSignal?.aborted) {
@@ -129,9 +252,9 @@ export class ToolExecutor {
           result: "",
           params,
           toolName,
+          toolCallId: toolCall.toolCallId,
           error,
         } satisfies ToolContent),
-        originalMessage: fullToolCall,
         type,
         partial: true,
       });
@@ -142,9 +265,9 @@ export class ToolExecutor {
         conversation,
         toolName,
         params,
+        toolCall.toolCallId,
         toolResult,
         message,
-        fullToolCall,
         type,
       );
     }
@@ -157,19 +280,23 @@ export class ToolExecutor {
     conversation: Conversation,
     toolName: string,
     params: unknown,
+    toolCallId: string | undefined,
     result: unknown,
     message: string,
-    originalMessage: string,
     type: ChatMessage["type"],
   ): void {
+    const toolPayload = {
+      result,
+      params,
+      toolName,
+      toolCallId,
+    } satisfies ToolContent;
+
     broadcaster.postMessage(conversation, {
       role: "assistant",
-      content: JSON.stringify({
-        result,
-        params,
-        toolName,
-      } satisfies ToolContent),
-      originalMessage,
+      content: JSON.stringify(toolPayload),
+      // 对 browserSearch，在 memory 中只保留精简摘要，避免与 system 工具结果重复。
+      originalMessage: this.buildAssistantMemoryToolContent(toolName, params, toolCallId, result),
       type,
       partial: false,
     });
@@ -183,32 +310,6 @@ export class ToolExecutor {
         `工具执行信息（message）：\n${message}\n`,
       type,
       partial: false,
-    });
-  }
-
-  /**
-   * 处理 partial 工具调用
-   */
-  handlePartialToolCall(
-    conversation: Conversation,
-    partialToolCall: string,
-    toolName: string,
-    type: ChatMessage["type"],
-  ): void {
-    if (conversation.isAborted || conversation.status === "aborted") {
-      return;
-    }
-    const { params } = conversation.toolService.parseParams(partialToolCall, true);
-    broadcaster.postMessage(conversation, {
-      role: "assistant",
-      content: JSON.stringify({
-        params,
-        result: "",
-        toolName,
-      } satisfies ToolContent),
-      originalMessage: partialToolCall,
-      type,
-      partial: true,
     });
   }
 }

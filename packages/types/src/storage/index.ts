@@ -25,7 +25,7 @@ export enum StorageType {
 export interface PendingToolCall {
   toolName: string;
   params: unknown;
-  fullToolCall: string;
+  toolCallId?: string;
   type: ChatMessage["type"];
 }
 

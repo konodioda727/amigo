@@ -117,9 +117,6 @@ export function generateToolsPrompt(
         `描述：${tool.description}`,
         `适用场景：${tool.whenToUse}`,
         paramsSection, // 插入参数说明部分
-        Array.isArray(tool.useExamples) && tool.useExamples.length > 0
-          ? `用例：\n${tool.useExamples.map((e) => `- ${e}`).join("\n")}`
-          : "",
         "",
       ]
         .filter(Boolean)

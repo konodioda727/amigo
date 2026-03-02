@@ -77,7 +77,7 @@ LOG_LEVEL=info
 - `MODEL_API_KEY`：必填；未配置时服务端会直接报错退出。
 - `MODEL_NAME`：默认 `qwen3-coder`。
 - `MODEL_BASE_URL`：默认 `https://openrouter.ai/api/v1`（仅 OpenAI 兼容模型路径使用）。
-- `MODEL_NAME` 包含 `gemini` 时，会走 Gemini 客户端分支，此时 `MODEL_BASE_URL` 不生效。
+- `MODEL_NAME` 会通过内置映射表解析到 provider；若未命中任何 provider，会直接报错（不再做隐式兜底）。
 - `SERVER_PORT`：WebSocket 服务端口，默认 `10013`。
 - `STORAGE_PATH`：会话存储目录，默认 `./storage`（通常是 `packages/server/storage/`）。
 

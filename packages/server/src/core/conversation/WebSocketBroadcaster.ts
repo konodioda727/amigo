@@ -107,10 +107,12 @@ export class WebSocketBroadcaster {
       return;
     }
 
+    const { originalMessage, ...persistableMessage } = message;
+
     // 保存到 memory
     conversation.memory.addMessage({
-      ...message,
-      content: message.originalMessage || message.content,
+      ...persistableMessage,
+      content: originalMessage || message.content,
     });
 
     const lastMessage = conversation.memory.lastMessage!;

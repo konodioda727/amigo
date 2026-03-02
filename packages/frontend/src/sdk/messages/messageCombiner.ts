@@ -13,6 +13,24 @@ type SupportedWebsocketMessage = WebSocketMessage<
   SERVER_SEND_MESSAGE_NAME | USER_SEND_MESSAGE_NAME
 >;
 
+const getStableUpdateTime = (candidate: unknown, res: DisplayMessageType[]): number => {
+  const lastUpdateTime = res.at(-1)?.updateTime;
+  const hasLast = typeof lastUpdateTime === "number" && Number.isFinite(lastUpdateTime);
+
+  if (typeof candidate === "number" && Number.isFinite(candidate)) {
+    if (!hasLast) {
+      return candidate;
+    }
+    return candidate >= (lastUpdateTime as number) ? candidate : (lastUpdateTime as number) + 1;
+  }
+
+  if (hasLast) {
+    return (lastUpdateTime as number) + 1;
+  }
+
+  return 0;
+};
+
 type MessageProcessor<T extends SERVER_SEND_MESSAGE_NAME | USER_SEND_MESSAGE_NAME> = (params: {
   msg: WebSocketMessage<T>;
   res: DisplayMessageType[];
@@ -25,7 +43,7 @@ const thinkProcessor: MessageProcessor<"think"> = ({ msg: thinkMsg, res }) => {
   const thinkEntry: FrontendCommonMessageType = {
     message: "",
     think: thinkData.message ?? "",
-    updateTime: thinkData.updateTime || Date.now(),
+    updateTime: getStableUpdateTime(thinkData.updateTime, res),
     type: "message",
   };
   const lastMessage = res.at(-1);
@@ -45,7 +63,7 @@ const messageProcessor: MessageProcessor<"message"> = ({ msg, res, pendingThink 
   const messageData = msg.data as WebSocketMessage<"message">["data"] & {
     think?: string;
   };
-  const updateTime = messageData.updateTime || Date.now();
+  const updateTime = getStableUpdateTime(messageData.updateTime, res);
   const isPartial = messageData.partial ?? false;
 
   const messageEntry: FrontendCommonMessageType = {
@@ -87,12 +105,14 @@ const completionResultProcessor: MessageProcessor<"completionResult"> = ({ msg, 
   let conclusion = "";
   try {
     const parsed = JSON.parse(completionData.message || "");
-    conclusion = parsed?.params || "";
+    const params = parsed?.params;
+    conclusion =
+      typeof params === "string" ? params : typeof params?.result === "string" ? params.result : "";
   } catch (error) {
     console.error("处理 completionResult 消息时出错:", error);
   }
 
-  const updateTime = completionData.updateTime || Date.now();
+  const updateTime = getStableUpdateTime(completionData.updateTime, res);
   const isPartial = completionData.partial ?? false;
 
   // 检查是否应该合并：type 相同、updateTime 相同、前一个消息 partial 为 true
@@ -128,7 +148,7 @@ const toolProcessor: MessageProcessor<"tool"> = ({ msg, res }) => {
   // 解析 tool 消息，结构化为 DisplayMessageType
   const parsed = JSON.parse(msg.data.message) as TransportToolContent<any> & { error?: string };
   const { toolName, params, result, error } = parsed;
-  const updateTime = typeof msg.data.updateTime === "number" ? msg.data.updateTime : Date.now();
+  const updateTime = getStableUpdateTime(msg.data.updateTime, res);
   const isPartial = msg.data.partial ?? false;
 
   // 查找是否已经有相同 toolName 和 updateTime 的 tool（用于合并 partial 消息）
@@ -186,7 +206,7 @@ const userSendMessageProcessor: MessageProcessor<"userSendMessage"> = ({ msg, re
     type: "userSendMessage",
     message: userMsg.message ?? "",
     attachments: userMsg.attachments,
-    updateTime: typeof userMsg.updateTime === "number" ? userMsg.updateTime : Date.now(),
+    updateTime: getStableUpdateTime(userMsg.updateTime, res),
     status: userMsg.status,
   });
   return { handled: true };
@@ -200,7 +220,7 @@ const askFollowupQuestionProcessor: MessageProcessor<"askFollowupQuestion"> = ({
     suggestOptions: string[];
   };
 
-  const updateTime = msg.data.updateTime || Date.now();
+  const updateTime = getStableUpdateTime(msg.data.updateTime, res);
   const isPartial = msg.data.partial ?? false;
 
   // 检查是否应该合并：type 相同、updateTime 相同、前一个消息 partial 为 true
@@ -243,7 +263,7 @@ const interruptProcessor: MessageProcessor<"interrupt"> = ({ msg, res }) => {
 
   res.push({
     type: "interrupt",
-    updateTime: msg.data.updateTime || Date.now(),
+    updateTime: getStableUpdateTime(msg.data.updateTime, res),
   });
   return { handled: true };
 };
@@ -254,7 +274,7 @@ const errorProcessor: MessageProcessor<"error"> = ({ msg, res }) => {
   res.push({
     type: "error",
     message: msg.data.message || "未知错误",
-    updateTime: msg.data.updateTime || Date.now(),
+    updateTime: getStableUpdateTime(msg.data.updateTime, res),
   });
   return { handled: true };
 };

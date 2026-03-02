@@ -73,12 +73,14 @@ export class CompletionHandler {
     const { toolName, error, type } = toolError;
     logger.info(`[CompletionHandler] 工具执行出错，添加错误信息到 memory`);
 
-    // 检测是否是格式错误（包含 "XML 解析错误" 或 "缺少必需参数"）
-    const isFormatError = error.includes("XML 解析错误") || error.includes("缺少必需参数");
-
     conversation.memory.addMessage({
       role: "system",
-      content: `❌ 工具调用失败：${toolName}\n\n错误原因：${error}\n\n${isFormatError ? "⚠️ 这是格式错误！请严格按照以下格式调用工具：\n\n" : ""}请仔细阅读工具定义和示例，确保：\n1. 使用正确的 XML 子标签结构（不是属性格式）\n2. 提供所有必需参数\n3. 参数格式符合要求\n\n${isFormatError ? '❌ 错误示例（属性格式）：\n<askFollowupQuestion question="问题" suggestOptions="选项"/>\n\n✅ 正确示例（子标签格式）：\n<askFollowupQuestion>\n  <question>问题</question>\n  <suggestOptions>\n    <option>选项1</option>\n    <option>选项2</option>\n  </suggestOptions>\n</askFollowupQuestion>\n\n' : ""}完整的使用示例请参考工具定义中的 useExamples。`,
+      content:
+        `❌ 工具调用失败：${toolName}\n\n错误原因：${error}\n\n` +
+        "请仔细阅读工具定义并重试，确保：\n" +
+        "1. 工具名称与注册定义完全一致\n" +
+        "2. 参数为结构化对象（JSON object）\n" +
+        "3. 提供所有必需参数，参数类型正确\n",
       type,
       partial: false,
     });
@@ -159,9 +161,9 @@ export class CompletionHandler {
         content: `警告：你是一个子任务代理，必须使用工具来完成任务。
 
 请注意：
-1. 如果任务已完成，必须使用 <completeTask> 标签返回结果（不是 completionResult）
-2. 如果需要更多信息，必须使用 <askFollowupQuestion> 标签提问
-3. 如果需要执行操作，必须调用相应的工具（如 <browserSearch>、<bash> 等）
+1. 如果任务已完成，必须调用 completeTask（不是 completionResult）
+2. 如果需要更多信息，必须调用 askFollowupQuestion
+3. 如果需要执行操作，必须调用相应工具（如 browserSearch、bash 等）
 4. 不要只输出普通文本消息
 
 请立即调用正确的工具。`,

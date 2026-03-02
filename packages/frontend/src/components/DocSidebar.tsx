@@ -14,6 +14,7 @@ import {
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { Streamdown } from "streamdown";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useWebSocketContext } from "../sdk/context/WebSocketContext";
 import { useTasks } from "../sdk/hooks";
 import type { DocType } from "../sdk/store/slices/docSlice";
@@ -88,6 +89,7 @@ const DocSidebar: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState("");
   const [shouldRender, setShouldRender] = useState(false);
+  const isDesktop = useMediaQuery("(min-width: 768px)");
 
   const hasAnyContent =
     (documents?.requirements?.content && documents.requirements.content.trim() !== "") ||
@@ -159,16 +161,34 @@ const DocSidebar: React.FC = () => {
         </button>
       )}
 
+      {/* Mobile Overlay */}
+      {!isDesktop && shouldRender && (
+        <div
+          className={`fixed inset-0 bg-black/20 z-40 transition-opacity duration-300 ${shouldShow ? "opacity-100" : "opacity-0"}`}
+          onClick={closeDoc}
+        />
+      )}
+
       {shouldRender && (
         <div
-          className={`
-            h-full flex flex-col border-l border-gray-200 bg-white shadow-xl z-10
-            transition-all duration-300 ease-in-out overflow-hidden
-            ${shouldShow ? "w-[450px]" : "w-0"}
-          `}
+          className={
+            isDesktop
+              ? `h-full flex flex-col border-l border-gray-200 bg-white shadow-xl z-10 transition-all duration-300 ease-in-out overflow-hidden ${shouldShow ? "w-[450px]" : "w-0"}`
+              : `fixed bottom-0 left-0 right-0 z-50 flex flex-col bg-white shadow-[0_-10px_40px_rgba(0,0,0,0.1)] rounded-t-2xl transition-transform duration-300 ease-in-out ${shouldShow ? "translate-y-0" : "translate-y-full"}`
+          }
+          style={!isDesktop ? { height: "85vh" } : undefined}
         >
-          <div className="w-[450px] h-full flex flex-col">
-            <div className="px-3 py-3 border-b border-gray-100 bg-white">
+          <div
+            className={`${isDesktop ? "w-[450px]" : "w-full"} h-full flex flex-col bg-white overflow-hidden ${!isDesktop ? "rounded-t-2xl" : ""}`}
+          >
+            {!isDesktop && (
+              <div className="w-full flex justify-center py-2.5 bg-white shrink-0">
+                <div className="w-12 h-1.5 bg-gray-200 rounded-full" />
+              </div>
+            )}
+            <div
+              className={`px-3 border-b border-gray-100 bg-white shrink-0 ${isDesktop ? "py-3" : "pb-3"}`}
+            >
               <div className="flex items-center justify-between gap-1.5 p-1 bg-gray-100/50 rounded-xl border border-gray-200">
                 <div className="flex items-center gap-0.5">
                   {tabs.map((tab) => (

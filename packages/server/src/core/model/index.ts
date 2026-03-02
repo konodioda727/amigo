@@ -1,9 +1,22 @@
-import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
-import { ChatOpenAI } from "@langchain/openai";
+import {
+  getProviderResolutionErrorMessage,
+  resolveProviderFromModelName,
+} from "./providerModelMap";
+import { GoogleGenAIProvider } from "./providers/googleGenAI";
+import { OpenAICompatibleProvider } from "./providers/openaiCompatible";
+import type { AmigoLlm, LlmFactory } from "./types";
 
-export type AmigoLlm = BaseChatModel;
-export type LlmFactory = () => AmigoLlm;
+export type {
+  AmigoLlm,
+  AmigoLlmProvider,
+  AmigoLlmStreamEvent,
+  AmigoLlmStreamOptions,
+  AmigoMessageContentPart,
+  AmigoMessageRole,
+  AmigoModelMessage,
+  AmigoToolDefinition,
+  LlmFactory,
+} from "./types";
 
 let injectedLlmFactory: LlmFactory | null = null;
 
@@ -13,23 +26,32 @@ const createDefaultLlm = (): AmigoLlm => {
   if (!apiKey) {
     throw new Error("MODEL_API_KEY environment variable is required");
   }
-  if (modelName.includes("gemini"))
-    return new ChatGoogleGenerativeAI({
-      model: modelName,
-      temperature: 0,
-      maxRetries: 2,
-      apiKey,
-    });
 
-  return new ChatOpenAI({
-    model: process.env.MODEL_NAME || "qwen3-coder",
-    streaming: true,
-    apiKey,
-    configuration: {
+  const temperature = Number(process.env.LLM_TEMPERATURE) || 0;
+  const provider = resolveProviderFromModelName(modelName);
+
+  if (!provider) {
+    throw new Error(getProviderResolutionErrorMessage(modelName));
+  }
+
+  if (provider === "google-genai") {
+    return new GoogleGenAIProvider({
+      model: modelName,
+      apiKey,
+      temperature,
+    });
+  }
+
+  if (provider === "openai-compatible") {
+    return new OpenAICompatibleProvider({
+      model: modelName,
+      apiKey,
       baseURL: process.env.MODEL_BASE_URL || "https://openrouter.ai/api/v1",
-    },
-    temperature: Number(process.env.LLM_TEMPERATURE) || 0,
-  });
+      temperature,
+    });
+  }
+
+  throw new Error(`Unsupported provider '${provider}' for model '${modelName}'.`);
 };
 
 export const setLlmFactory = (factory?: LlmFactory): void => {
