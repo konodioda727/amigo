@@ -38,9 +38,8 @@ export type ServerConfig = z.infer<typeof ServerConfigSchema>;
 export interface CustomToolDefinition {
   name: string;
   description: string;
-  whenToUse: string;
+  whenToUse?: string;
   params: CustomToolParam[];
-  useExamples: string[];
   invoke: (context: CustomToolInvokeContext) => Promise<{
     message: string;
     toolResult: unknown;

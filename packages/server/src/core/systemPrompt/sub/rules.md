@@ -18,7 +18,7 @@ RULES
 
 - Every response should include a tool call (unless waiting for a tool result)
 - Need info? -> `askFollowupQuestion`
-- Task done? -> `completeTask` (never `completionResult`)
+- Task done? -> `completeTask`
 - Never end with plain text only
 
 ## Important Notes

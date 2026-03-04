@@ -20,10 +20,29 @@ type FetchedSearchResult = {
 const SEARCH_PAGE_TIMEOUT_MS = 12000;
 const FETCH_PAGE_TIMEOUT_MS = 10000;
 const SEARCH_RESULT_WAIT_MS = 5000;
+const SEARCH_RSS_TIMEOUT_MS = 8000;
 const MAX_PAGE_CONTENT_LENGTH = 5000;
 const FETCH_CONCURRENCY = 4;
 const PAGE_SETTLE_WAIT_MS = 1500;
 const PAGE_EVALUATE_RETRY_COUNT = 2;
+const SEARCH_RESULT_LIMIT = 10;
+
+const GOV_QUERY_HINT_PATTERN =
+  /公务员|分数线|录取|最低|招录|招考|考试|公告|成绩|岗位|编制|国考|省考|事业单位|政府|政务|人社/;
+const FOREIGN_NOISE_PATTERN =
+  /\b(?:usd|eur|currency|convert(?:er)?|dollar|euro|taux|boursorama|xe|wise)\b/i;
+const EXTRA_KEYWORD_HINTS = [
+  "杭州",
+  "杭州市",
+  "公务员",
+  "考试",
+  "分数线",
+  "录取",
+  "最低",
+  "招录",
+  "国考",
+  "省考",
+] as const;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -32,41 +51,131 @@ const isExecutionContextDestroyedError = (error: unknown) => {
   return message.includes("Execution context was destroyed");
 };
 
+const decodeXmlEntities = (input: string) =>
+  input
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCodePoint(parseInt(code, 16)))
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+
+const stripTagsAndTrim = (input: string) =>
+  decodeXmlEntities(input)
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const extractTag = (xml: string, tagName: string) => {
+  const matched = xml.match(new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)</${tagName}>`, "i"));
+  if (!matched?.[1]) {
+    return "";
+  }
+  return stripTagsAndTrim(matched[1]);
+};
+
+const normalizeResultUrl = (raw: string) => {
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return "";
+    }
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+};
+
+const parseBingRss = (xml: string): SearchResult[] => {
+  const items = xml.match(/<item\b[\s\S]*?<\/item>/gi) || [];
+  const seen = new Set<string>();
+  const results: SearchResult[] = [];
+
+  for (const item of items) {
+    const title = extractTag(item, "title");
+    const url = normalizeResultUrl(extractTag(item, "link"));
+    const snippet = extractTag(item, "description");
+    if (!title || !url || seen.has(url)) {
+      continue;
+    }
+    seen.add(url);
+    results.push({ title, url, snippet });
+  }
+
+  return results;
+};
+
+const extractQueryKeywords = (query: string) => {
+  const normalized = query.toLowerCase();
+  const zhChunks = normalized.match(/[\u4e00-\u9fff]{2,}/g) || [];
+  const latinChunks = normalized.match(/[a-z]{2,}/g) || [];
+  const numericChunks = normalized.match(/\b\d{4}\b/g) || [];
+  const hinted = EXTRA_KEYWORD_HINTS.filter((hint) => normalized.includes(hint));
+
+  return [...new Set([...zhChunks, ...latinChunks, ...numericChunks, ...hinted])].slice(0, 20);
+};
+
+const computeRelevanceScore = (result: SearchResult, queryKeywords: string[]) => {
+  if (queryKeywords.length === 0) {
+    return 1;
+  }
+  const combined = `${result.title} ${result.snippet}`.toLowerCase();
+  let score = 0;
+  for (const keyword of queryKeywords) {
+    if (combined.includes(keyword)) {
+      score += 1;
+    }
+  }
+  return score;
+};
+
+const keepRelevantResults = (results: SearchResult[], query: string) => {
+  if (results.length === 0) {
+    return results;
+  }
+
+  const keywords = extractQueryKeywords(query);
+  if (keywords.length === 0) {
+    return results;
+  }
+
+  const scored = results.map((result) => ({
+    result,
+    score: computeRelevanceScore(result, keywords),
+  }));
+  const relevant = scored.filter((item) => item.score > 0).map((item) => item.result);
+
+  if (relevant.length >= Math.min(3, Math.ceil(results.length / 3))) {
+    return relevant;
+  }
+
+  return results;
+};
+
+const shouldFallbackToGovSearch = (query: string, results: SearchResult[]) => {
+  if (!GOV_QUERY_HINT_PATTERN.test(query)) {
+    return false;
+  }
+  if (results.length === 0) {
+    return true;
+  }
+
+  const top = results.slice(0, 5);
+  const keywords = extractQueryKeywords(query);
+  const relevantTopCount = top.filter((item) => computeRelevanceScore(item, keywords) > 0).length;
+  const noisyTopCount = top.filter((item) =>
+    FOREIGN_NOISE_PATTERN.test(`${item.title} ${item.snippet}`),
+  ).length;
+
+  return relevantTopCount <= 1 || noisyTopCount >= Math.ceil(top.length / 2);
+};
+
 export const BrowserSearch = createTool({
   name: "browserSearch",
   description: "使用浏览器搜索信息，并自动抓取搜索结果页面的正文内容。",
   whenToUse:
-    "当需要从互联网获取实时信息并查看搜索结果对应网页的实际内容时使用此工具。\n\n" +
-    "## 工具行为\n\n" +
-    "1. 使用 Bing 执行搜索\n" +
-    "2. 提取当前搜索结果页中的结果链接\n" +
-    "3. 自动逐个访问这些链接\n" +
-    "4. 返回每个网站的标题、链接、摘要和抓取到的正文内容（或失败原因）\n\n" +
-    "## 注意事项\n\n" +
-    "- 该工具只有搜索功能，不再支持单独传入 URL 导航\n" +
-    "- 会尝试抓取搜索结果页中识别到的全部标准结果\n" +
-    "- 某些网站可能有访问限制、反爬或需要登录，工具会返回失败原因\n" +
-    "- 单个页面正文会截断（默认最多5000字符）以控制返回体积\n" +
-    "- 页面加载超时时间为30秒\n" +
-    "- 可通过设置环境变量 BROWSER_HEADLESS=false 启用有头浏览器模式",
-
-  useExamples: [
-    `**示例 1 - 搜索并自动抓取所有结果页内容**
-
-用户请求：帮我查一下 React 19 新特性
-
-<browserSearch>
-  <query>React 19 新特性</query>
-</browserSearch>`,
-
-    `**示例 2 - 新闻查询**
-
-用户请求：今天 AI 领域有哪些重要新闻
-
-<browserSearch>
-  <query>今天 AI 重要新闻</query>
-</browserSearch>`,
-  ],
+    "需要获取互联网实时信息并抓取搜索结果页正文时使用。仅支持 query 搜索，不用于直接访问单个 URL。",
 
   params: [
     {
@@ -212,69 +321,170 @@ export const BrowserSearch = createTool({
       }
 
       const keyword = query.trim();
-      const searchUrl = `https://www.bing.com/search?q=${encodeURIComponent(keyword)}&setlang=zh-CN`;
+      const buildSearchUrl = (searchKeyword: string, extraParams?: Record<string, string>) => {
+        const searchParams = new URLSearchParams({
+          q: searchKeyword,
+          setlang: "zh-CN",
+          mkt: "zh-CN",
+          cc: "CN",
+          ensearch: "0",
+          ...(extraParams || {}),
+        });
+        return `https://cn.bing.com/search?${searchParams.toString()}`;
+      };
+
+      const searchViaRss = async (searchKeyword: string): Promise<SearchResult[]> => {
+        const rssUrl = buildSearchUrl(searchKeyword, { format: "rss" });
+        try {
+          const response = (await withAbort(
+            Promise.race([
+              fetch(rssUrl, {
+                headers: {
+                  accept: "application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
+                  "user-agent":
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+                },
+                signal,
+              }),
+              sleep(SEARCH_RSS_TIMEOUT_MS).then(() => {
+                throw new Error("RSS 搜索超时");
+              }),
+            ]),
+          )) as Response;
+
+          if (!response.ok) {
+            throw new Error(`RSS 搜索失败: HTTP ${response.status}`);
+          }
+
+          const xml = await withAbort(response.text());
+          const parsed = parseBingRss(xml).slice(0, SEARCH_RESULT_LIMIT);
+          logger.info(`[BrowserSearch] RSS 搜索命中 ${parsed.length} 条: ${searchKeyword}`);
+          return parsed;
+        } catch (error) {
+          logger.warn(
+            `[BrowserSearch] RSS 搜索失败，回退到页面抓取: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          return [];
+        }
+      };
+
+      const searchViaSerp = async (searchUrl: string): Promise<SearchResult[]> => {
+        let searchPage: Page | null = null;
+        try {
+          searchPage = await createTrackedPage();
+          await withAbort(searchPage.context().clearCookies());
+
+          await withAbort(
+            searchPage.goto(searchUrl, {
+              waitUntil: "domcontentloaded",
+              timeout: SEARCH_PAGE_TIMEOUT_MS,
+            }),
+          );
+
+          await withAbort(
+            searchPage
+              .waitForSelector("#b_results, .b_algo", { timeout: SEARCH_RESULT_WAIT_MS })
+              .catch(() => {
+                logger.warn("[BrowserSearch] 搜索结果加载超时");
+              }),
+          );
+
+          return await withAbort(
+            searchPage.evaluate(() => {
+              const results: Array<{ title: string; snippet: string; url: string }> = [];
+              const seenUrls = new Set<string>();
+
+              const normalizeUrl = (rawHref: string) => {
+                try {
+                  const parsed = new URL(rawHref, window.location.href);
+                  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+                    return "";
+                  }
+                  return parsed.toString();
+                } catch {
+                  return "";
+                }
+              };
+
+              // Bing 页面中很多模块也会出现 b_algo，优先只取主结果区的直接子项。
+              const primaryResultElements = Array.from(
+                document.querySelectorAll("#b_results > li.b_algo, #b_results > .b_algo"),
+              );
+              const fallbackResultElements = Array.from(
+                document.querySelectorAll("#b_results .b_algo"),
+              );
+              const resultElements =
+                primaryResultElements.length > 0 ? primaryResultElements : fallbackResultElements;
+
+              for (const element of resultElements) {
+                if (element.closest(".b_ad, .b_ans, .b_pole, #b_context, #b_topw, #b_bottomw")) {
+                  continue;
+                }
+
+                const titleEl = element.querySelector("h2 a[href], h3 a[href]");
+                const snippetEl = element.querySelector(".b_caption p, .b_algoSlug");
+
+                if (!titleEl) {
+                  continue;
+                }
+
+                // @ts-expect-error
+                const rawHref =
+                  titleEl.getAttribute("href") || (titleEl as HTMLAnchorElement).href || "";
+                const href = normalizeUrl(rawHref);
+                const title = titleEl.textContent?.trim() || "";
+                const snippet = snippetEl?.textContent?.trim() || "";
+
+                if (!title || !href || seenUrls.has(href)) {
+                  continue;
+                }
+
+                if (href.startsWith("javascript:")) {
+                  continue;
+                }
+
+                seenUrls.add(href);
+                results.push({ title, snippet, url: href });
+              }
+
+              return results;
+            }),
+          );
+        } finally {
+          await closeTrackedPage(searchPage);
+        }
+      };
+
+      let searchUrl = buildSearchUrl(keyword);
       logger.info(`[BrowserSearch] 搜索并抓取: ${keyword}`);
 
-      let searchPage: Page | null = null;
-      let searchResults: SearchResult[] = [];
-
-      try {
-        searchPage = await createTrackedPage();
-
-        await withAbort(
-          searchPage.goto(searchUrl, {
-            waitUntil: "domcontentloaded",
-            timeout: SEARCH_PAGE_TIMEOUT_MS,
-          }),
-        );
-
-        await withAbort(
-          searchPage
-            .waitForSelector("#b_results, .b_algo", { timeout: SEARCH_RESULT_WAIT_MS })
-            .catch(() => {
-              logger.warn("[BrowserSearch] 搜索结果加载超时");
-            }),
-        );
-
-        searchResults = await withAbort(
-          searchPage.evaluate(() => {
-            const results: Array<{ title: string; snippet: string; url: string }> = [];
-            const seenUrls = new Set<string>();
-
-            // @ts-expect-error
-            const resultElements = document.querySelectorAll(".b_algo");
-
-            for (const element of resultElements) {
-              const titleEl = element.querySelector("h2 a");
-              const snippetEl = element.querySelector(".b_caption p, .b_algoSlug");
-
-              if (!titleEl) {
-                continue;
-              }
-
-              // @ts-expect-error
-              const href = (titleEl as HTMLAnchorElement).href || "";
-              const title = titleEl.textContent?.trim() || "";
-              const snippet = snippetEl?.textContent?.trim() || "";
-
-              if (!title || !href || seenUrls.has(href)) {
-                continue;
-              }
-
-              if (href.startsWith("javascript:")) {
-                continue;
-              }
-
-              seenUrls.add(href);
-              results.push({ title, snippet, url: href });
-            }
-
-            return results;
-          }),
-        );
-      } finally {
-        await closeTrackedPage(searchPage);
+      let searchResults: SearchResult[] = await searchViaRss(keyword);
+      if (searchResults.length === 0) {
+        searchResults = await searchViaSerp(searchUrl);
       }
+
+      searchResults = keepRelevantResults(searchResults, keyword);
+
+      if (shouldFallbackToGovSearch(keyword, searchResults) && !keyword.includes("site:gov.cn")) {
+        const govKeyword = `${keyword} site:gov.cn`;
+        const govSearchUrl = buildSearchUrl(govKeyword);
+        logger.warn(`[BrowserSearch] 结果相关性较低，触发政务站点回退搜索: ${govKeyword}`);
+
+        let govResults = await searchViaRss(govKeyword);
+        if (govResults.length === 0) {
+          govResults = await searchViaSerp(govSearchUrl);
+        }
+        govResults = keepRelevantResults(govResults, keyword);
+
+        if (govResults.length > 0) {
+          searchResults = govResults;
+          searchUrl = govSearchUrl;
+        }
+      }
+
+      searchResults = searchResults.slice(0, SEARCH_RESULT_LIMIT);
 
       if (searchResults.length === 0) {
         const emptyContent = `搜索 "${keyword}" 未找到可抓取的结果。`;

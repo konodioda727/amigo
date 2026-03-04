@@ -9,7 +9,6 @@
 import type { MessageRendererMap } from "../../types/renderers";
 import { DefaultAlertRenderer } from "./DefaultAlertRenderer";
 import { DefaultAskFollowupQuestionRenderer } from "./DefaultAskFollowupQuestionRenderer";
-import { DefaultCompletionResultRenderer } from "./DefaultCompletionResultRenderer";
 import { DefaultErrorRenderer } from "./DefaultErrorRenderer";
 import { DefaultInterruptRenderer } from "./DefaultInterruptRenderer";
 import { DefaultMessageRenderer } from "./DefaultMessageRenderer";
@@ -46,7 +45,6 @@ export const defaultRenderers: MessageRendererMap = {
   message: (props) => <DefaultMessageRenderer {...props} />,
   tool: (props) => <DefaultToolRenderer {...props} />,
   userSendMessage: (props) => <DefaultUserMessageRenderer {...props} />,
-  completionResult: (props) => <DefaultCompletionResultRenderer {...props} />,
   askFollowupQuestion: (props) => <DefaultAskFollowupQuestionRenderer {...props} />,
   interrupt: (props) => <DefaultInterruptRenderer {...props} />,
   error: (props) => <DefaultErrorRenderer {...props} />,
@@ -55,7 +53,6 @@ export const defaultRenderers: MessageRendererMap = {
 
 export { DefaultAlertRenderer } from "./DefaultAlertRenderer";
 export { DefaultAskFollowupQuestionRenderer } from "./DefaultAskFollowupQuestionRenderer";
-export { DefaultCompletionResultRenderer } from "./DefaultCompletionResultRenderer";
 export { DefaultErrorRenderer } from "./DefaultErrorRenderer";
 export { DefaultInterruptRenderer } from "./DefaultInterruptRenderer";
 // Re-export individual renderers for direct use

@@ -124,9 +124,8 @@ server.start();
 
 - `name`
 - `description`
-- `whenToUse`
 - `params`
-- `useExamples`（建议使用 XML 片段）
+- `whenToUse`（可选）
 - `invoke({ params, context })`
 
 当前 `invoke` 签名（实际类型）：
@@ -147,7 +146,6 @@ import { defineTool, AmigoServerBuilder } from "@amigo-llm/server/sdk";
 const echoTool = defineTool({
   name: "echoText",
   description: "返回输入文本",
-  whenToUse: "当需要验证工具调用链路时使用",
   params: [
     {
       name: "text",
@@ -155,7 +153,6 @@ const echoTool = defineTool({
       description: "要回显的文本",
     },
   ],
-  useExamples: ["<echoText><text>Hello</text></echoText>"],
   async invoke({ params, context }) {
     context.postMessage?.({ type: "tool-progress", data: { stage: "running" } });
 

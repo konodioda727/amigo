@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 import type {
   AlertDisplayType,
   AskFollowupQuestionType,
-  CompletionResultType,
   DisplayMessageType,
   ErrorDisplayType,
   FrontendCommonMessageType,
@@ -28,7 +27,6 @@ export type ToolMessageRendererProps<T extends ToolNames> = MessageRendererProps
   FrontendToolMessageType<T>
 >;
 export type UserMessageRendererProps = MessageRendererProps<UserSendMessageDisplayType>;
-export type CompletionResultRendererProps = MessageRendererProps<CompletionResultType>;
 export type AskFollowupQuestionRendererProps = MessageRendererProps<AskFollowupQuestionType>;
 export type InterruptRendererProps = MessageRendererProps<InterruptDisplayType>;
 export type ErrorRendererProps = MessageRendererProps<ErrorDisplayType>;
@@ -48,7 +46,6 @@ export interface MessageRendererMap {
   message: MessageRenderer<FrontendCommonMessageType>;
   tool: MessageRenderer<FrontendToolMessageType<ToolNames>>;
   userSendMessage: MessageRenderer<UserSendMessageDisplayType>;
-  completionResult: MessageRenderer<CompletionResultType>;
   askFollowupQuestion: MessageRenderer<AskFollowupQuestionType>;
   interrupt: MessageRenderer<InterruptDisplayType>;
   error: MessageRenderer<ErrorDisplayType>;

@@ -5,7 +5,7 @@ TOOL USAGE
 ## Selection Priority
 
 ```
-Task complete? -> Use designated completion tool (`completionResult` for main, `completeTask` for sub)
+Task complete? -> Main: respond directly with final answer; Sub: call `completeTask`
 Need async task execution? -> executeTaskList (then wait for pushed updates)
 After executeTaskList starts -> tell user it is running asynchronously and they can close the page to wait
 Need user input? -> askFollowupQuestion
@@ -23,7 +23,7 @@ Otherwise -> Use appropriate functional tool
 ## Common Mistakes
 
 - Multiple tools in one response
-- Completing with plain text instead of the completion tool
+- Sub-task completing with plain text instead of calling `completeTask`
 - Using tool names or JSON parameters that do not match definitions
 
 ====

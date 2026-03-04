@@ -223,7 +223,7 @@ describe("Property 7: Task Management Integrity", () => {
           const task = state.tasks[taskId];
           expect(task.rawMessages).toEqual([]);
           expect(task.displayMessages).toEqual([]);
-          expect(task.isLoading).toBe(false);
+          expect(task.status).toBe("idle");
           expect(task.lastUpdateTime).toBeGreaterThan(0);
         }
 
@@ -271,30 +271,34 @@ describe("Property 7: Task Management Integrity", () => {
   });
 
   /**
-   * Property: Task loading state can be toggled
+   * Property: Task status can be toggled
    *
-   * Setting loading state should update the task's isLoading property.
+   * Setting task status should update the task's status property.
    */
-  test("Task loading state can be toggled", () => {
+  test("Task status can be toggled", () => {
     fc.assert(
-      fc.property(taskIdArb, fc.boolean(), (taskId, isLoading) => {
-        const store = createWebSocketStore({
-          url: "ws://localhost:10013",
-          autoConnect: false,
-        });
+      fc.property(
+        taskIdArb,
+        fc.constantFrom("streaming", "completed", "error"),
+        (taskId, status) => {
+          const store = createWebSocketStore({
+            url: "ws://localhost:10013",
+            autoConnect: false,
+          });
 
-        // Register task
-        store.getState().registerTask(taskId);
+          // Register task
+          store.getState().registerTask(taskId);
 
-        // Set loading state
-        store.getState().setLoading(taskId, isLoading);
+          // Set task status
+          store.getState().setTaskStatus(taskId, status);
 
-        // Verify loading state
-        const state = store.getState();
-        expect(state.tasks[taskId].isLoading).toBe(isLoading);
+          // Verify task status
+          const state = store.getState();
+          expect(state.tasks[taskId].status).toBe(status);
 
-        return true;
-      }),
+          return true;
+        },
+      ),
       { numRuns: 100 },
     );
   });

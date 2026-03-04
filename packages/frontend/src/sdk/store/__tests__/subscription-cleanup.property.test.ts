@@ -23,7 +23,6 @@ import { createWebSocketStore } from "../createWebSocketStore";
 const messageTypeArb = fc.constantFrom<SERVER_SEND_MESSAGE_NAME>(
   "message",
   "tool",
-  "completionResult",
   "error",
   "interrupt",
   "ack",

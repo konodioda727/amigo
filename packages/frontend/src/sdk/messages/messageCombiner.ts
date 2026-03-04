@@ -6,7 +6,7 @@ import type {
   USER_SEND_MESSAGE_NAME,
   WebSocketMessage,
 } from "@amigo-llm/types";
-import type { CompletionResultType, DisplayMessageType, FrontendCommonMessageType } from "./types";
+import type { DisplayMessageType, FrontendCommonMessageType } from "./types";
 import { DisplayMessageTypeNames } from "./types";
 
 type SupportedWebsocketMessage = WebSocketMessage<
@@ -96,51 +96,6 @@ const messageProcessor: MessageProcessor<"message"> = ({ msg, res, pendingThink 
     res.push(messageEntry);
   }
   return { handled: true, pendingThink: null };
-};
-
-const completionResultProcessor: MessageProcessor<"completionResult"> = ({ msg, res }) => {
-  if (msg.type !== "completionResult") return { handled: false };
-  const completionData = msg.data;
-
-  let conclusion = "";
-  try {
-    const parsed = JSON.parse(completionData.message || "");
-    const params = parsed?.params;
-    conclusion =
-      typeof params === "string" ? params : typeof params?.result === "string" ? params.result : "";
-  } catch (error) {
-    console.error("处理 completionResult 消息时出错:", error);
-  }
-
-  const updateTime = getStableUpdateTime(completionData.updateTime, res);
-  const isPartial = completionData.partial ?? false;
-
-  // 检查是否应该合并：type 相同、updateTime 相同、前一个消息 partial 为 true
-  const lastMessage = res.at(-1);
-  if (
-    lastMessage?.type === "completionResult" &&
-    lastMessage.updateTime === updateTime &&
-    (lastMessage as any).partial === true
-  ) {
-    // 合并消息：更新最后一条消息
-    res[res.length - 1] = {
-      type: "completionResult",
-      result: conclusion || lastMessage.result,
-      updateTime,
-      partial: isPartial,
-    } as any;
-  } else {
-    // 创建新消息
-    const completionEntry: CompletionResultType = {
-      result: conclusion,
-      updateTime,
-      type: "completionResult",
-      partial: isPartial,
-    } as any;
-    res.push(completionEntry);
-  }
-
-  return { handled: true };
 };
 
 const toolProcessor: MessageProcessor<"tool"> = ({ msg, res }) => {
@@ -290,7 +245,6 @@ const processorMap: Partial<
   think: thinkProcessor,
   message: messageProcessor,
   userSendMessage: userSendMessageProcessor,
-  completionResult: completionResultProcessor,
   tool: toolProcessor,
   askFollowupQuestion: askFollowupQuestionProcessor,
   interrupt: interruptProcessor,

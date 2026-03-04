@@ -1,7 +1,7 @@
 import { Loader2, MessageCircle, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useSendMessage, useTasks, useWebSocketContext } from "@/sdk";
+import { useSendMessage, useWebSocketContext } from "@/sdk";
 import { useSidebar } from "./Layout/index";
 
 const ConversationHistory = () => {
@@ -10,7 +10,7 @@ const ConversationHistory = () => {
   const { taskId: activeTaskId } = useParams<{ taskId: string }>();
   const { store } = useWebSocketContext();
   const taskHistories = store((state) => state.taskHistories);
-  const { mainTaskId } = useTasks();
+  const mainTaskId = store((state) => state.mainTaskId);
   const { sendDeleteTask } = useSendMessage();
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
 
@@ -50,7 +50,7 @@ const ConversationHistory = () => {
         return (
           <div
             key={history.taskId}
-            className={`relative group flex items-center gap-2.5 px-2 py-2 rounded-xl transition-all ${
+            className={`relative group flex items-center gap-2.5 px-2 py-2 rounded-xl transition-colors ${
               isActive
                 ? "bg-white shadow-sm border border-gray-100 text-gray-900"
                 : "text-gray-600 hover:bg-gray-200/40 hover:text-gray-900 border border-transparent"
@@ -80,7 +80,7 @@ const ConversationHistory = () => {
             <button
               type="button"
               onClick={(e) => handleDelete(history.taskId, e)}
-              className={`p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all shrink-0 ${
+              className={`p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors transition-opacity shrink-0 ${
                 isDeleting ? "opacity-100" : "opacity-0 group-hover:opacity-100"
               }`}
               aria-label={`删除对话: ${history.title}`}

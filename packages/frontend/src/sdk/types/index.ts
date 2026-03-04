@@ -14,7 +14,6 @@ export type {
 export type {
   AlertDisplayType,
   AskFollowupQuestionType,
-  CompletionResultType,
   DisplayMessageType,
   ErrorDisplayType,
   FrontendCommonMessageType,

@@ -158,7 +158,7 @@ ${taskListContext ? `\n**Task List 上下文：**\n${taskListContext}` : ""}
 1. 只完成当前任务，避免重新拆分
 2. 参考父任务文档中的要求与设计，并按协作契约执行
 3. 使用提供的工具
-4. 完成后使用 completionResult 返回结果`;
+4. 完成后使用 completeTask 返回结果`;
 };
 
 const getExistingSubTaskStatus = (
@@ -195,9 +195,7 @@ const startNewTask = ({
   parentConv,
   executionType,
   taskId,
-  runningTaskIds,
   completedTaskIds,
-  results,
 }: {
   taskItem: ReturnType<typeof parseChecklist>["items"][number];
   filePath: string;
@@ -207,11 +205,9 @@ const startNewTask = ({
   parentConv: NonNullable<ReturnType<typeof conversationRepository.load>>;
   executionType: TaskExecutionType;
   taskId: string;
-  runningTaskIds: Set<string>;
   completedTaskIds: Set<string>;
-  results: Array<Record<string, any>>;
 }) => {
-  return (async () => {
+  return (async (): Promise<TaskExecutionResult> => {
     const { description, lineNumber } = taskItem;
     let taskSucceeded = false;
     try {
@@ -291,16 +287,15 @@ const startNewTask = ({
       logger.error(`[ExecuteTaskList] 更新任务状态失败: ${e}`);
     }
 
-    results.push({
+    const id = getTaskId(cleanDescriptionForAgent);
+    if (id && taskSucceeded) completedTaskIds.add(id);
+
+    return {
       target: cleanDescription,
       success: taskSucceeded,
       summary,
       invalidTools: invalidTools.length > 0 ? invalidTools : undefined,
-    });
-
-    const id = getTaskId(cleanDescriptionForAgent);
-    if (id && taskSucceeded) completedTaskIds.add(id);
-    runningTaskIds.delete(taskKey);
+    };
   })();
 };
 
@@ -380,94 +375,117 @@ const getTaskPriority = (executionType: TaskExecutionType) => {
   return 2;
 };
 
+type TaskExecutionResult = {
+  target: string;
+  success: boolean;
+  summary: string;
+  invalidTools?: string[];
+};
+
+const isTaskReady = ({
+  item,
+  completedTaskIds,
+  runningTaskIds,
+}: {
+  item: ReturnType<typeof parseChecklist>["items"][number];
+  completedTaskIds: Set<string>;
+  runningTaskIds: Set<string>;
+}) => {
+  const id = getTaskId(item.description);
+  if (!id) return false;
+  if (item.completed) return false;
+  if (completedTaskIds.has(id)) return false;
+  if (runningTaskIds.has(id)) return false;
+  if (item.dependencies && item.dependencies.length > 0) {
+    return item.dependencies.every((depId) => completedTaskIds.has(depId));
+  }
+  return true;
+};
+
+const runWithConcurrency = async <T>(
+  tasks: T[],
+  worker: (task: T) => Promise<void>,
+  concurrency = CONCURRENCY_LIMIT,
+) => {
+  if (tasks.length === 0) return;
+  const workerCount = Math.max(1, Math.min(concurrency, tasks.length));
+  let nextIndex = 0;
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < tasks.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        const task = tasks[currentIndex];
+        if (task === undefined) continue;
+        await worker(task);
+      }
+    }),
+  );
+};
+
+const mergeInvalidTools = (left?: string[], right?: string[]) => {
+  const merged = new Set<string>([...(left || []), ...(right || [])]);
+  return merged.size > 0 ? Array.from(merged) : undefined;
+};
+
 const runTaskScheduler = async ({
   allTasks,
   runningTaskIds,
   completedTaskIds,
   getExecutionType,
-  onStartTask,
+  onRunTask,
 }: {
   allTasks: ReturnType<typeof parseChecklist>["items"];
   runningTaskIds: Set<string>;
   completedTaskIds: Set<string>;
   getExecutionType: (item: ReturnType<typeof parseChecklist>["items"][number]) => TaskExecutionType;
-  onStartTask: (taskItem: ReturnType<typeof parseChecklist>["items"][number]) => Promise<void>;
+  onRunTask: (
+    taskItem: ReturnType<typeof parseChecklist>["items"][number],
+  ) => Promise<TaskExecutionResult>;
 }) => {
-  return new Promise<void>((resolve) => {
-    const remainingTasks = [...allTasks];
-    let runningCount = 0;
+  const pendingTaskMap = new Map<string, ReturnType<typeof parseChecklist>["items"][number]>();
+  for (const item of allTasks) {
+    const id = getTaskId(item.description);
+    if (!id || item.completed || completedTaskIds.has(id)) continue;
+    pendingTaskMap.set(id, item);
+  }
 
-    const isReady = (item: ReturnType<typeof parseChecklist>["items"][number]) => {
-      const id = getTaskId(item.description);
-      if (!id) return false;
-      if (item.completed) return false;
-      if (completedTaskIds.has(id)) return false;
-      if (runningTaskIds.has(id)) return false;
-      if (item.dependencies && item.dependencies.length > 0) {
-        return item.dependencies.every((depId) => completedTaskIds.has(depId));
+  while (pendingTaskMap.size > 0) {
+    const readyTasks = Array.from(pendingTaskMap.values())
+      .filter((item) => isTaskReady({ item, completedTaskIds, runningTaskIds }))
+      .sort((a, b) => {
+        const priorityDiff =
+          getTaskPriority(getExecutionType(a)) - getTaskPriority(getExecutionType(b));
+        if (priorityDiff !== 0) return priorityDiff;
+        return (
+          (a.lineNumber ?? Number.POSITIVE_INFINITY) - (b.lineNumber ?? Number.POSITIVE_INFINITY)
+        );
+      });
+
+    if (readyTasks.length === 0) {
+      break;
+    }
+
+    await runWithConcurrency(readyTasks, async (taskItem) => {
+      const id = getTaskId(taskItem.description);
+      if (!id) return;
+      runningTaskIds.add(id);
+      try {
+        await onRunTask(taskItem);
+      } finally {
+        runningTaskIds.delete(id);
+        pendingTaskMap.delete(id);
       }
-      return true;
-    };
-
-    const maybeResolve = () => {
-      if (remainingTasks.length === 0 && runningCount === 0) {
-        resolve();
-      }
-    };
-
-    const runNext = () => {
-      let startedAnyTask = false;
-      while (runningCount < CONCURRENCY_LIMIT) {
-        let nextIndex = -1;
-        let bestPriority = Number.POSITIVE_INFINITY;
-        let bestLine = Number.POSITIVE_INFINITY;
-
-        for (let i = 0; i < remainingTasks.length; i += 1) {
-          const candidate = remainingTasks[i];
-          if (!candidate || !isReady(candidate)) continue;
-          const executionType = getExecutionType(candidate);
-          const priority = getTaskPriority(executionType);
-          const lineNumber = candidate.lineNumber ?? Number.POSITIVE_INFINITY;
-
-          if (priority < bestPriority || (priority === bestPriority && lineNumber < bestLine)) {
-            bestPriority = priority;
-            bestLine = lineNumber;
-            nextIndex = i;
-          }
-        }
-
-        if (nextIndex === -1) break;
-        const taskItem = remainingTasks.splice(nextIndex, 1)[0];
-        if (!taskItem) {
-          return;
-        }
-        const id = getTaskId(taskItem.description);
-        if (!id) continue;
-        runningTaskIds.add(id);
-        runningCount += 1;
-        startedAnyTask = true;
-        void onStartTask(taskItem).finally(() => {
-          runningCount -= 1;
-          runNext();
-          maybeResolve();
-        });
-      }
-      if (!startedAnyTask && runningCount === 0) {
-        resolve();
-        return;
-      }
-      maybeResolve();
-    };
-
-    runNext();
-  });
+    });
+  }
 };
 
 const buildExecutionMessage = ({
   results,
   pendingTasks,
 }: {
-  results: Array<Record<string, any>>;
+  results: TaskExecutionResult[];
   pendingTasks: ReturnType<typeof parseChecklist>["items"];
 }) => {
   const hasInvalidTools = results.some((r) => r.invalidTools);
@@ -519,25 +537,7 @@ export const ExecuteTaskList = createTool({
   name: "executeTaskList",
   description: "根据当前任务的 taskList.md 自动调度子 Agent 执行任务。支持任务进度追踪和中断恢复。",
   whenToUse:
-    "**工具性质：**\n" +
-    "这是一个任务执行工具，用于批量执行 taskList.md 中定义的任务。\n\n" +
-    "**适用场景：**\n" +
-    "1. **任务执行：** 在 taskList.md 创建并确认无误后，执行所有未完成的任务\n" +
-    "2. **继续执行：** 如果之前任务部分失败或中断，可以再次调用继续执行剩余任务\n\n" +
-    "**执行逻辑：**\n" +
-    "- 这是异步执行工具：触发后会在后台持续执行，并在结束后推送最终汇总消息\n" +
-    "- 仅在执行异常、任务卡住或用户明确要求进度快照时，再调用进度查询工具\n" +
-    "- 调用后请明确告知用户：任务已开始异步执行，可以关闭页面并耐心等待系统自动完成\n" +
-    "- 读取 taskList.md 获取未完成任务\n" +
-    "- 优先重试 failed 的任务，其次重开 running 的任务，最后执行新任务\n" +
-    "- 使用拓扑排序确保任务按依赖顺序执行（先执行入度为 0 的任务）\n" +
-    "- 将任务标记为 '(In Progress)' 并记录子任务 ID\n" +
-    "- 并发调度子 Agent 执行任务（默认并发数: 2）\n" +
-    "- 任务完成后移除 '(In Progress)' 标记并设为已完成\n" +
-    "- 自动更新任务状态和进度统计\n" +
-    "- 支持中断后继续执行",
-
-  useExamples: [`<executeTaskList></executeTaskList>`],
+    "在 taskList 已确认后启动异步批量执行时使用；也可用于中断/失败后的续跑。调用后应告知用户系统会后台推进并自动推送结果。",
 
   params: [],
 
@@ -588,7 +588,7 @@ export const ExecuteTaskList = createTool({
       activeTaskListExecutionMap.set(taskId as string, executionId);
       logger.info(`[ExecuteTaskList] 找到 ${pendingTasks.length} 个待执行任务，开始自动执行`);
 
-      const results: any[] = [];
+      const results: TaskExecutionResult[] = [];
       const runningTaskIds = new Set<string>();
       const completedTaskIds = collectCompletedTaskIds(parseResult.items);
       const allTasks = sortTasksTopologically(parseResult.items);
@@ -600,9 +600,9 @@ export const ExecuteTaskList = createTool({
             runningTaskIds,
             completedTaskIds,
             getExecutionType: (taskItem) => resolveExecutionType(parentConv, taskItem).type,
-            onStartTask: (taskItem) => {
+            onRunTask: async (taskItem) => {
               const { type: executionType } = resolveExecutionType(parentConv, taskItem);
-              return startNewTask({
+              const firstResult = await startNewTask({
                 taskItem,
                 filePath,
                 getToolByName,
@@ -611,10 +611,50 @@ export const ExecuteTaskList = createTool({
                 parentConv,
                 executionType,
                 taskId: taskId as string,
-                runningTaskIds,
                 completedTaskIds,
-                results,
               });
+
+              if (firstResult.success) {
+                results.push(firstResult);
+                return firstResult;
+              }
+
+              logger.warn(
+                `[ExecuteTaskList] 任务 "${firstResult.target}" 执行失败，立即进行一次重试`,
+              );
+
+              const retryResult = await startNewTask({
+                taskItem,
+                filePath,
+                getToolByName,
+                parentDocs,
+                taskListContent,
+                parentConv,
+                executionType: "failed",
+                taskId: taskId as string,
+                completedTaskIds,
+              });
+
+              const finalResult = retryResult.success
+                ? {
+                    ...retryResult,
+                    summary: `首次执行失败，立即重试后成功。\n${retryResult.summary}`,
+                    invalidTools: mergeInvalidTools(
+                      firstResult.invalidTools,
+                      retryResult.invalidTools,
+                    ),
+                  }
+                : {
+                    ...retryResult,
+                    summary: `首次执行失败：${firstResult.summary}\n重试后仍失败：${retryResult.summary}`,
+                    invalidTools: mergeInvalidTools(
+                      firstResult.invalidTools,
+                      retryResult.invalidTools,
+                    ),
+                  };
+
+              results.push(finalResult);
+              return finalResult;
             },
           });
 
@@ -623,7 +663,7 @@ export const ExecuteTaskList = createTool({
           postMessage?.(executionMsg);
           continueParentConversationIfNeeded(
             parentConv,
-            "executeTaskList 异步执行已完成，请基于最新 taskList 和执行结果继续推进任务；若全部完成请直接总结并调用 completionResult。",
+            "executeTaskList 异步执行已完成，请基于最新 taskList 和执行结果继续推进任务；若全部完成请直接总结给用户。",
           );
         } catch (error) {
           const errorMsg = `执行任务列表失败: ${error instanceof Error ? error.message : String(error)}`;

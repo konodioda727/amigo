@@ -85,9 +85,26 @@ export const ChatWindow: FC<ChatWindowProps> = ({
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
-  const pendingScrollToBottomOnTaskChangeRef = useRef(true);
   const forceScrollToBottomTimeoutRef = useRef<number | null>(null);
   const forceScrollToBottomUntilRef = useRef(0);
+  const isAtBottomRef = useRef(true);
+  const atBottomDebounceTimeoutRef = useRef<number | null>(null);
+  const ignoreAtBottomUntilRef = useRef(0);
+  const reloadAutoScrollTimeoutRef = useRef<number | null>(null);
+  const hasAppliedReloadAutoScrollRef = useRef(false);
+  const shouldAutoScrollOnReloadRef = useRef(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof performance === "undefined") return;
+    const navEntries = performance.getEntriesByType("navigation");
+    const nav = navEntries[0] as PerformanceNavigationTiming | undefined;
+    if (nav?.type) {
+      shouldAutoScrollOnReloadRef.current = nav.type === "reload";
+      return;
+    }
+    const legacyNav = (performance as Performance & { navigation?: { type?: number } }).navigation;
+    shouldAutoScrollOnReloadRef.current = legacyNav?.type === 1;
+  }, []);
 
   // Scroll to bottom
   const scrollToBottom = (behavior: "auto" | "smooth" = "smooth") => {
@@ -106,31 +123,15 @@ export const ChatWindow: FC<ChatWindowProps> = ({
     });
   };
 
-  // Reset scroll state when task changes
-  const prevTaskIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (taskId !== prevTaskIdRef.current) {
-      prevTaskIdRef.current = taskId;
-      setShowScrollButton(false);
-      pendingScrollToBottomOnTaskChangeRef.current = true;
+    ignoreAtBottomUntilRef.current = Date.now() + 450;
+    isAtBottomRef.current = true;
+    if (atBottomDebounceTimeoutRef.current !== null) {
+      window.clearTimeout(atBottomDebounceTimeoutRef.current);
+      atBottomDebounceTimeoutRef.current = null;
     }
+    setShowScrollButton(false);
   }, [taskId]);
-
-  // When a different task's messages arrive, snap to bottom once.
-  useEffect(() => {
-    if (!pendingScrollToBottomOnTaskChangeRef.current || messages.length === 0) return;
-
-    pendingScrollToBottomOnTaskChangeRef.current = false;
-    const frameId = window.requestAnimationFrame(() => {
-      virtuosoRef.current?.scrollToIndex({
-        index: messages.length - 1,
-        align: "end",
-        behavior: "auto",
-      });
-    });
-
-    return () => window.cancelAnimationFrame(frameId);
-  }, [taskId, messages]);
 
   useEffect(() => {
     if (messages.length === 0) return;
@@ -144,19 +145,43 @@ export const ChatWindow: FC<ChatWindowProps> = ({
   }, [messages]);
 
   useEffect(() => {
+    if (!shouldAutoScrollOnReloadRef.current) return;
+    if (hasAppliedReloadAutoScrollRef.current) return;
+    if (messages.length === 0) return;
+
+    hasAppliedReloadAutoScrollRef.current = true;
+    reloadAutoScrollTimeoutRef.current = window.setTimeout(() => {
+      forceScrollToBottomUntilRef.current = Date.now() + 800;
+      isAtBottomRef.current = true;
+      setShowScrollButton(false);
+      scrollToBottom("auto");
+      window.requestAnimationFrame(() => {
+        scrollToBottom("auto");
+      });
+      reloadAutoScrollTimeoutRef.current = null;
+    }, 320);
+  }, [messages.length]);
+
+  useEffect(() => {
     if (status !== "streaming") return;
     if (messages.length === 0) return;
-    if (showScrollButton) return;
+    if (!isAtBottomRef.current) return;
 
     const frameId = window.requestAnimationFrame(() => {
       scrollToBottom("auto");
     });
 
     return () => window.cancelAnimationFrame(frameId);
-  }, [status, messages.length, showScrollButton]);
+  }, [status, messages.length]);
 
   useEffect(() => {
     return () => {
+      if (atBottomDebounceTimeoutRef.current !== null) {
+        window.clearTimeout(atBottomDebounceTimeoutRef.current);
+      }
+      if (reloadAutoScrollTimeoutRef.current !== null) {
+        window.clearTimeout(reloadAutoScrollTimeoutRef.current);
+      }
       if (forceScrollToBottomTimeoutRef.current !== null) {
         window.clearTimeout(forceScrollToBottomTimeoutRef.current);
       }
@@ -228,16 +253,33 @@ export const ChatWindow: FC<ChatWindowProps> = ({
           )
         ) : (
           <Virtuoso
-            key={taskId || "__current-task__"}
             ref={virtuosoRef}
             className="w-full max-w-[1200px]"
-            style={{ height: "100%" }}
+            style={{ height: "100%", overflowAnchor: "none" }}
             data={messages}
+            defaultItemHeight={120}
+            increaseViewportBy={{ top: 600, bottom: 1000 }}
             atBottomThreshold={AT_BOTTOM_THRESHOLD_PX}
             computeItemKey={(index, message) => getMessageKey(message, index)}
             followOutput={(isAtBottom) => (status === "streaming" && isAtBottom ? "auto" : false)}
             atBottomStateChange={(isAtBottom) => {
-              setShowScrollButton(!isAtBottom);
+              isAtBottomRef.current = isAtBottom;
+
+              if (Date.now() < ignoreAtBottomUntilRef.current) {
+                return;
+              }
+
+              if (atBottomDebounceTimeoutRef.current !== null) {
+                window.clearTimeout(atBottomDebounceTimeoutRef.current);
+              }
+
+              atBottomDebounceTimeoutRef.current = window.setTimeout(() => {
+                const nextShowScrollButton = !isAtBottomRef.current;
+                setShowScrollButton((prev) =>
+                  prev === nextShowScrollButton ? prev : nextShowScrollButton,
+                );
+                atBottomDebounceTimeoutRef.current = null;
+              }, 120);
             }}
             context={{ shouldShowTyping }}
             components={virtuosoComponents}
@@ -267,6 +309,8 @@ export const ChatWindow: FC<ChatWindowProps> = ({
             if (forceScrollToBottomTimeoutRef.current !== null) {
               window.clearTimeout(forceScrollToBottomTimeoutRef.current);
             }
+            isAtBottomRef.current = true;
+            setShowScrollButton(false);
             forceScrollToBottomUntilRef.current = Date.now() + 1200;
             scrollToBottom("smooth");
             // Virtuoso may stop slightly above bottom when items are remeasured during smooth scroll.

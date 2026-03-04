@@ -37,7 +37,6 @@ const createMockTool = (name: string): ToolInterface<ToolNames> =>
     description: `测试工具: ${name}`,
     whenToUse: "用于测试目的",
     params: [{ name: "input", optional: false, description: "测试输入" }],
-    useExamples: [`<${name}><input>test</input></${name}>`],
     invoke: async () => ({ message: "成功", toolResult: {} }),
   }) as unknown as ToolInterface<ToolNames>;
 

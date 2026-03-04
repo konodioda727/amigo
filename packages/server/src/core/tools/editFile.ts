@@ -38,49 +38,7 @@ export const EditFile = createTool({
   description:
     "在沙箱中创建或修改文件。支持创建/覆盖写入，以及 patch 模式（按行替换或字符串查找替换）。",
   whenToUse:
-    "**工具性质：**\n" +
-    "这是一个文件编辑工具，用于在沙箱环境中创建和修改文件。\n\n" +
-    "**适用场景：**\n" +
-    "1. **创建新文件：** 使用 mode='create' 创建新文件（如果文件已存在则失败）\n" +
-    "2. **覆盖文件：** 使用 mode='overwrite' 完全覆盖文件内容\n" +
-    "3. **修改部分内容：** 使用 mode='patch' 修改文件的指定行范围，或按字符串查找替换\n\n" +
-    "**操作模式说明：**\n" +
-    "- `create`: 仅创建新文件，如果文件已存在则返回错误\n" +
-    "- `overwrite`: 覆盖写入，文件不存在则创建\n" +
-    "- `patch`: 支持两种方式：\n" +
-    "  - 行号 patch：提供 startLine、endLine、content\n" +
-    "  - 字符串 patch：提供 search、replace（可选 replaceAll）\n\n" +
-    "**注意事项：**\n" +
-    "- 文件路径相对于沙箱工作目录 /sandbox\n" +
-    "- 会自动创建不存在的父目录\n" +
-    "- 文件使用 UTF-8 编码",
-
-  useExamples: [
-    `<editFile>
-  <filePath>src/main.py</filePath>
-  <content>print("Hello, World!")</content>
-  <mode>create</mode>
-</editFile>`,
-    `<editFile>
-  <filePath>config.json</filePath>
-  <content>{"name": "test", "version": "1.0.0"}</content>
-  <mode>overwrite</mode>
-</editFile>`,
-    `<editFile>
-  <filePath>src/utils.py</filePath>
-  <content>def new_function():
-    return "patched"</content>
-  <mode>patch</mode>
-  <startLine>10</startLine>
-  <endLine>15</endLine>
-</editFile>`,
-    `<editFile>
-  <filePath>packages/server/src/core/model/index.ts</filePath>
-  <mode>patch</mode>
-  <search>API_KEY environment variable is required</search>
-  <replace>MODEL_API_KEY environment variable is required</replace>
-</editFile>`,
-  ],
+    "需要创建文件、覆盖文件或做局部修改（patch/search-replace）时使用。改动前先 readFile，改动后建议 runChecks 验证。",
 
   params: [
     {

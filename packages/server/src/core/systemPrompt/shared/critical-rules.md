@@ -9,8 +9,9 @@ You MUST follow these rules.
    - Wait for its result before the next action
 
 2. COMPLETION PROTOCOL
-   - When the task is complete, immediately use the designated completion tool
-   - Main task: `completionResult`; Sub-task: `completeTask`
+   - When the task is complete:
+     - Main task: provide the final answer directly in plain assistant message
+     - Sub-task: call `completeTask`
    - Do not call any other tools after completion
 
 3. BROWSER SEARCH DISCIPLINE

@@ -115,7 +115,7 @@ export function generateToolsPrompt(
       return [
         `【${tool.name}】`,
         `描述：${tool.description}`,
-        `适用场景：${tool.whenToUse}`,
+        tool.whenToUse ? `适用场景：${tool.whenToUse}` : "",
         paramsSection, // 插入参数说明部分
         "",
       ]

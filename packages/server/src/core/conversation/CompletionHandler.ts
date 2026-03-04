@@ -44,9 +44,6 @@ export class CompletionHandler {
 
     // 根据不同的工具类型处理完成逻辑
     switch (currentTool) {
-      case "completionResult":
-        return this.handleCompletionResult(conversation);
-
       case "completeTask":
         return this.handleCompleteTask(conversation);
 
@@ -87,32 +84,6 @@ export class CompletionHandler {
 
     conversation.status = "streaming";
     return true;
-  }
-
-  /**
-   * 处理 completionResult 工具
-   */
-  private handleCompletionResult(conversation: Conversation): boolean {
-    logger.info("\n对话已完成。");
-    conversation.status = "completed";
-
-    // 无论是主任务还是子任务，都需要广播 conversationOver
-    broadcaster.broadcast(conversation.id, {
-      type: "conversationOver",
-      data: {
-        reason: "completionResult",
-      },
-    });
-
-    if (conversation.type !== "main") {
-      // 子任务完成后直接返回 false，不需要等待用户输入
-      logger.info(`[CompletionHandler] 子任务 ${conversation.id} 已完成`);
-      return false;
-    }
-
-    // 主任务完成后，清空用户输入并停止循环
-    conversation.userInput = "";
-    return false;
   }
 
   /**
@@ -161,7 +132,7 @@ export class CompletionHandler {
         content: `警告：你是一个子任务代理，必须使用工具来完成任务。
 
 请注意：
-1. 如果任务已完成，必须调用 completeTask（不是 completionResult）
+1. 如果任务已完成，必须调用 completeTask
 2. 如果需要更多信息，必须调用 askFollowupQuestion
 3. 如果需要执行操作，必须调用相应工具（如 browserSearch、bash 等）
 4. 不要只输出普通文本消息

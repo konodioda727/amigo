@@ -204,12 +204,8 @@ function commandNameSlug(command: string): string {
 export const repoSearchTool = defineTool({
   name: "repoSearch",
   description: "在沙箱仓库中使用 ripgrep (rg) 搜索代码/文本，返回结构化匹配结果。",
-  whenToUse: "定位函数、错误信息、配置项和引用位置时使用。建议先搜索，再 readFile，再 editFile。",
-  useExamples: [
-    `<repoSearch><query>ConversationExecutor</query></repoSearch>`,
-    `<repoSearch><query>registerMessage\\(</query><glob><pattern>*.ts</pattern></glob></repoSearch>`,
-    `<repoSearch><query>MODEL_API_KEY environment variable is required</query><fixedStrings>true</fixedStrings></repoSearch>`,
-  ],
+  whenToUse:
+    "在仓库内定位代码、错误文本或配置引用时使用。推荐链路：repoSearch -> readFile -> editFile。",
   params: [
     { name: "query", optional: false, description: "搜索关键词（默认按正则）" },
     { name: "path", optional: true, description: "搜索路径（相对 /sandbox）" },
@@ -368,12 +364,7 @@ export const repoSearchTool = defineTool({
 export const runChecksTool = defineTool({
   name: "runChecks",
   description: "统一运行 lint/test/typecheck/build 等检查，返回结构化结果。",
-  whenToUse: "修改代码后做验证闭环时使用。优先 preset=quick；需要完整验证时用 all。",
-  useExamples: [
-    `<runChecks><preset>quick</preset></runChecks>`,
-    `<runChecks><preset>all</preset><workingDir>packages/server</workingDir></runChecks>`,
-    `<runChecks><commands><command>bun test</command><command>bun run build</command></commands></runChecks>`,
-  ],
+  whenToUse: "代码改动后做验证闭环时使用。默认 preset=quick，完整验证用 all 或自定义 commands。",
   params: [
     { name: "preset", optional: true, description: "quick/lint/test/typecheck/build/all" },
     { name: "workingDir", optional: true, description: "工作目录（相对 /sandbox）" },

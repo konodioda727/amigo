@@ -13,24 +13,7 @@ import { getTaskDocsPath } from "./utils";
 export const GetTaskListProgress = createTool({
   name: "getTaskListProgress",
   description: "获取当前任务的 taskList.md 进度统计。用于快速了解任务完成情况。",
-  whenToUse:
-    "**工具性质：**\n" +
-    "这是一个进度查询工具，用于获取任务列表的完成情况统计。\n\n" +
-    "**适用场景：**\n" +
-    "1. **进度检查：** 在执行阶段查看当前完成进度\n" +
-    "2. **完成判断：** 判断是否所有任务都已完成\n" +
-    "3. **状态报告：** 向用户报告当前工作进度\n\n" +
-    "**异步执行注意：**\n" +
-    "- `executeTaskList` 为异步任务，会自动推送进展和完成消息\n" +
-    "- 不要在短时间内反复调用本工具轮询；仅在用户明确要求、执行卡住或失败排障时使用\n\n" +
-    "**返回信息：**\n" +
-    "- 总任务数\n" +
-    "- 已完成任务数\n" +
-    "- 剩余任务数\n" +
-    "- 完成百分比\n" +
-    "- 待完成任务列表",
-
-  useExamples: [`<getTaskListProgress />`],
+  whenToUse: "需要查看 taskList 完成度快照或排查执行卡住/失败时使用。不要高频轮询。",
 
   params: [],
 

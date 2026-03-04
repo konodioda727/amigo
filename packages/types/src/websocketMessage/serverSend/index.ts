@@ -3,7 +3,6 @@ import { AckMessageSchema } from "./ack";
 import { AlertMessageSchema } from "./alert";
 import { AskFollowupQuestionSchema } from "./askFollowupQuestion";
 import { CommonMessageSchema } from "./common";
-import { CompletionResultMessageSchema } from "./completionResult";
 import { ConnectedSchema } from "./connected";
 import { ConversationOverSchema } from "./conversationOver";
 import { InterruptMessageSchema } from "./interrupt";
@@ -31,7 +30,6 @@ export const BASE_SERVER_MESSAGE_SCHEMAS = [
   CommonMessageSchema,
   ConnectedSchema,
   ToolMessageSchema,
-  CompletionResultMessageSchema,
   ThinkMessageSchema,
   AckMessageSchema,
   TaskHistoryMessageSchema,

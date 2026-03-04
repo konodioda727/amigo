@@ -3,7 +3,6 @@ import { AskFollowupQuestionSchema } from "./askFollowupQuestions";
 import { BashSchema } from "./bash";
 import { BrowserSearchSchema } from "./browserSearch";
 import { CompleteTaskSchema } from "./completeTask";
-import { CompletionResultSchema } from "./completionResult";
 import type { ToolExecutionContext } from "./context";
 import { EditFileSchema } from "./editFile";
 import { ReadFileSchema } from "./readFile";
@@ -18,7 +17,6 @@ export type { ToolExecutionContext } from "./context";
 
 export const toolSchemas = z.discriminatedUnion("name", [
   AskFollowupQuestionSchema,
-  CompletionResultSchema,
   CompleteTaskSchema,
   BrowserSearchSchema,
   CreateTaskDocsSchema,
@@ -62,9 +60,8 @@ export interface ToolParamDefinition<K> {
 export interface ToolInterface<K extends ToolNames | any> {
   name: K extends ToolNames ? K : string;
   description: string;
-  whenToUse: string;
+  whenToUse?: string;
   params: K extends ToolNames ? ToolParamDefinition<K>[] : ToolParamDefinition<string>[];
-  useExamples: string[];
 
   invoke: (props: {
     params: K extends ToolNames ? ToolParams<K> : any;

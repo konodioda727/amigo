@@ -190,7 +190,6 @@ describe("Property 5: Message Processing Order", () => {
           "message",
           "userSendMessage",
           "tool",
-          "completionResult",
           "askFollowupQuestion",
           "interrupt",
           "error",

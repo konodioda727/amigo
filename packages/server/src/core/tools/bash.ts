@@ -10,37 +10,7 @@ export const Bash = createTool({
   name: "bash",
   description: "在沙箱中执行 bash 命令。用于运行脚本、查看目录结构、执行程序等。",
   whenToUse:
-    "**工具性质：**\n" +
-    "这是一个命令执行工具，用于在沙箱环境中运行 bash 命令。\n\n" +
-    "**适用场景：**\n" +
-    "1. **查看目录结构：** 使用 ls、tree 等命令\n" +
-    "2. **运行程序：** 执行 Python、Node.js 等脚本\n" +
-    "3. **文件操作：** 复制、移动、删除文件\n" +
-    "4. **环境检查：** 查看环境变量、安装的软件等\n\n" +
-    "**安全限制：**\n" +
-    "- 命令在隔离的沙箱容器中执行\n" +
-    "- 工作目录默认为 /sandbox\n" +
-    "- 可以指定子目录作为工作目录\n\n" +
-    "**注意事项：**\n" +
-    "- 避免执行长时间运行的命令\n" +
-    "- 命令输出会被捕获并返回\n" +
-    "- 某些危险命令可能被限制",
-
-  useExamples: [
-    `<bash>
-  <command>ls -la</command>
-</bash>`,
-    `<bash>
-  <command>python main.py</command>
-  <workingDir>src</workingDir>
-</bash>`,
-    `<bash>
-  <command>tree -L 2</command>
-</bash>`,
-    `<bash>
-  <command>cat package.json | head -20</command>
-</bash>`,
-  ],
+    "需要在沙箱里执行命令（运行脚本、查看目录/环境、快速诊断）时使用。优先短命令并明确 workingDir。",
 
   params: [
     {

@@ -31,7 +31,7 @@ describe("CompletionHandler abort guard", () => {
 
     const shouldContinue = await handler.handleStreamCompletion(
       conversation,
-      "completionResult",
+      "message",
       false,
       null,
     );

@@ -11,29 +11,7 @@ import { DOC_TYPE_TO_FILENAME, getTaskDocsPath } from "./utils";
 export const ReadTaskDocs = createTool({
   name: "readTaskDocs",
   description: "读取当前任务的文档（requirements/design/taskList）。每个任务只有三个固定文档。",
-  whenToUse:
-    "**工具性质：**\n" +
-    "这是一个文档读取工具，用于获取已创建的任务文档内容。\n\n" +
-    "**适用场景：**\n" +
-    "1. **恢复工作流：** 读取已有文档以恢复中断的工作流程\n" +
-    "2. **阶段转换：** 在进入新阶段前读取前置文档\n" +
-    "3. **执行阶段：** 读取 taskList.md 获取待执行的任务\n" +
-    "4. **验证阶段：** 读取需求文档验证任务完成情况\n\n" +
-    "**读取选项：**\n" +
-    "- 指定 phase 读取单个文档\n" +
-    "- 使用 phase='all' 读取所有文档",
-
-  useExamples: [
-    `<readTaskDocs>
-  <phase>requirements</phase>
-</readTaskDocs>`,
-    `<readTaskDocs>
-  <phase>all</phase>
-</readTaskDocs>`,
-    `<readTaskDocs>
-  <phase>taskList</phase>
-</readTaskDocs>`,
-  ],
+  whenToUse: "需要读取 requirements/design/taskList 以恢复上下文、进入下一阶段或执行任务时使用。",
 
   params: [
     {

@@ -14,9 +14,7 @@
  *   .registerTool(defineTool({
  *     name: "my_tool",
  *     description: "My custom tool",
- *     whenToUse: "When needed",
  *     params: [{ name: "input", optional: false, description: "Input text" }],
- *     useExamples: ["<my_tool><input>test</input></my_tool>"],
  *     invoke: async ({ params }) => ({
  *       message: "Done",
  *       toolResult: params.input,

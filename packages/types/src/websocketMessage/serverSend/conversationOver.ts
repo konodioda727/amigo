@@ -8,7 +8,6 @@ export const ConversationOverSchema = z.object({
       .enum([
         "askFollowupQuestion",
         "createTaskDocs",
-        "completionResult",
         "completeTask",
         "interrupt",
         "error",

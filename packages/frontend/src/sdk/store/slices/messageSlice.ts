@@ -89,10 +89,6 @@ const inferTaskStatusFromHistory = (
       return "interrupted";
     }
 
-    if (msg.type === "completionResult") {
-      return "completed";
-    }
-
     if (msg.type === "error") {
       return "error";
     }
@@ -101,7 +97,7 @@ const inferTaskStatusFromHistory = (
       const reason = (msg.data as { reason?: string }).reason;
       if (reason === "interrupt") return "interrupted";
       if (reason === "error") return "error";
-      if (reason === "completionResult" || reason === "completeTask") return "completed";
+      if (reason === "completeTask") return "completed";
       return "idle";
     }
 

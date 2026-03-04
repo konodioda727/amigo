@@ -11,7 +11,12 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import type { ToolInterface, ToolNames, ToolParamDefinition } from "@amigo-llm/types";
+import type {
+  ToolExecutionContext,
+  ToolInterface,
+  ToolNames,
+  ToolParamDefinition,
+} from "@amigo-llm/types";
 import { defineMessage } from "@amigo-llm/types/src/message";
 import * as fc from "fast-check";
 import { z } from "zod";
@@ -47,7 +52,6 @@ function createTestTool(
     description: `测试工具: ${name}`,
     whenToUse: "用于测试目的",
     params,
-    useExamples: [`<${name}>${requiredParams.map((p) => `<${p}>value</${p}>`).join("")}</${name}>`],
     invoke: async ({ params: invokeParams }: { params: Record<string, unknown> }) => ({
       message: "成功",
       toolResult: { received: invokeParams },
@@ -56,23 +60,13 @@ function createTestTool(
 }
 
 /**
- * 生成工具调用的 XML 字符串
- */
-function generateToolXml(toolName: string, params: Record<string, string>): string {
-  const paramsXml = Object.entries(params)
-    .map(([key, value]) => `<${key}>${value}</${key}>`)
-    .join("");
-  return `<${toolName}>${paramsXml}</${toolName}>`;
-}
-
-/**
  * 创建一个测试用的 ToolExecutionContext
  */
-function createTestContext(): any {
+function createTestContext(): ToolExecutionContext {
   return {
     taskId: "test-task",
     parentId: null,
-    getSandbox: () => ({ workingDirectory: "/test" }),
+    getSandbox: async () => ({ workingDirectory: "/test" }),
     getToolByName: () => undefined,
     signal: undefined,
     postMessage: () => {},
@@ -108,10 +102,10 @@ describe("验证属性测试", () => {
           fc.asyncProperty(safeStringArb, async (value) => {
             const tool = createTestTool(TOOL_NAME, [PARAM_A]);
             const toolService = new ToolService([tool], []);
-            const xml = generateToolXml(TOOL_NAME, { [PARAM_A]: value });
 
-            const result = await toolService.parseAndExecute({
-              xmlParams: xml,
+            const result = await toolService.executeToolCall({
+              toolName: TOOL_NAME,
+              params: { [PARAM_A]: value },
               context: createTestContext(),
             });
 
@@ -127,13 +121,13 @@ describe("验证属性测试", () => {
           fc.asyncProperty(safeStringArb, safeStringArb, async (valueA, valueB) => {
             const tool = createTestTool(TOOL_NAME, [PARAM_A, PARAM_B]);
             const toolService = new ToolService([tool], []);
-            const xml = generateToolXml(TOOL_NAME, {
-              [PARAM_A]: valueA,
-              [PARAM_B]: valueB,
-            });
 
-            const result = await toolService.parseAndExecute({
-              xmlParams: xml,
+            const result = await toolService.executeToolCall({
+              toolName: TOOL_NAME,
+              params: {
+                [PARAM_A]: valueA,
+                [PARAM_B]: valueB,
+              },
               context: createTestContext(),
             });
 
@@ -149,13 +143,13 @@ describe("验证属性测试", () => {
           fc.asyncProperty(safeStringArb, safeStringArb, async (reqValue, optValue) => {
             const tool = createTestTool(TOOL_NAME, [PARAM_A], [OPTIONAL_PARAM]);
             const toolService = new ToolService([tool], []);
-            const xml = generateToolXml(TOOL_NAME, {
-              [PARAM_A]: reqValue,
-              [OPTIONAL_PARAM]: optValue,
-            });
 
-            const result = await toolService.parseAndExecute({
-              xmlParams: xml,
+            const result = await toolService.executeToolCall({
+              toolName: TOOL_NAME,
+              params: {
+                [PARAM_A]: reqValue,
+                [OPTIONAL_PARAM]: optValue,
+              },
               context: createTestContext(),
             });
 
@@ -171,10 +165,10 @@ describe("验证属性测试", () => {
           fc.asyncProperty(safeStringArb, async (value) => {
             const tool = createTestTool(TOOL_NAME, [PARAM_A], [OPTIONAL_PARAM]);
             const toolService = new ToolService([tool], []);
-            const xml = generateToolXml(TOOL_NAME, { [PARAM_A]: value });
 
-            const result = await toolService.parseAndExecute({
-              xmlParams: xml,
+            const result = await toolService.executeToolCall({
+              toolName: TOOL_NAME,
+              params: { [PARAM_A]: value },
               context: createTestContext(),
             });
 
@@ -192,10 +186,10 @@ describe("验证属性测试", () => {
           fc.asyncProperty(safeStringArb, async (value) => {
             const tool = createTestTool(TOOL_NAME, [PARAM_A, PARAM_B]);
             const toolService = new ToolService([tool], []);
-            const xml = generateToolXml(TOOL_NAME, { [PARAM_A]: value });
 
-            const result = await toolService.parseAndExecute({
-              xmlParams: xml,
+            const result = await toolService.executeToolCall({
+              toolName: TOOL_NAME,
+              params: { [PARAM_A]: value },
               context: createTestContext(),
             });
 
@@ -211,10 +205,10 @@ describe("验证属性测试", () => {
           fc.asyncProperty(safeStringArb, async (value) => {
             const tool = createTestTool(TOOL_NAME, [PARAM_A]);
             const toolService = new ToolService([tool], []);
-            const xml = generateToolXml("nonexistent_tool", { [PARAM_A]: value });
 
-            const result = await toolService.parseAndExecute({
-              xmlParams: xml,
+            const result = await toolService.executeToolCall({
+              toolName: "nonexistent_tool",
+              params: { [PARAM_A]: value },
               context: createTestContext(),
             });
 
@@ -232,10 +226,10 @@ describe("验证属性测试", () => {
           fc.asyncProperty(fc.integer({ min: 0, max: 10000 }).map(String), async (numericValue) => {
             const tool = createTestTool(TOOL_NAME, [PARAM_A]);
             const toolService = new ToolService([tool], []);
-            const xml = generateToolXml(TOOL_NAME, { [PARAM_A]: numericValue });
 
-            const result = await toolService.parseAndExecute({
-              xmlParams: xml,
+            const result = await toolService.executeToolCall({
+              toolName: TOOL_NAME,
+              params: { [PARAM_A]: numericValue },
               context: createTestContext(),
             });
 

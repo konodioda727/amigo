@@ -13,7 +13,7 @@
 
 import { describe, expect, test } from "bun:test";
 import * as fc from "fast-check";
-import { toKebabCase } from "../taskDocs";
+import { toKebabCase } from "../taskDocs/utils";
 
 // ============================================================================
 // 测试生成器 (Arbitraries)
@@ -46,11 +46,6 @@ const taskNameArb = fc.oneof(
  */
 const phaseArb = fc.constantFrom("requirements", "design", "taskList");
 
-/**
- * 生成有效的文档内容
- */
-const contentArb = fc.stringMatching(/^[a-zA-Z0-9\s\n#\-[\]]{10,100}$/);
-
 // ============================================================================
 // 辅助函数
 // ============================================================================
@@ -70,20 +65,6 @@ function isValidKebabCase(str: string): boolean {
   // 检查全小写（对于 ASCII 字母）
   if (str !== str.toLowerCase()) return false;
   return true;
-}
-
-/**
- * 验证文档路径格式是否正确
- */
-function isValidDocPath(path: string, taskName: string, phase: string): boolean {
-  const kebabName = toKebabCase(taskName);
-  const phaseToFile: Record<string, string> = {
-    requirements: "requirements.md",
-    design: "design.md",
-    taskList: "taskList.md",
-  };
-  const expectedPath = `docs/${kebabName}/${phaseToFile[phase]}`;
-  return path === expectedPath;
 }
 
 // ============================================================================

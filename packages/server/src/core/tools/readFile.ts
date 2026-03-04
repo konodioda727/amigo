@@ -9,36 +9,7 @@ import { createTool } from "./base";
 export const ReadFile = createTool({
   name: "readFile",
   description: "从沙箱中读取文件内容。支持读取整个文件或指定行范围。",
-  whenToUse:
-    "**工具性质：**\n" +
-    "这是一个文件读取工具，用于获取沙箱中文件的内容。\n\n" +
-    "**适用场景：**\n" +
-    "1. **查看文件内容：** 读取配置文件、代码文件等\n" +
-    "2. **检查执行结果：** 读取程序输出文件\n" +
-    "3. **部分读取：** 只读取文件的特定行范围\n\n" +
-    "**读取选项：**\n" +
-    "- 不指定行号：读取整个文件\n" +
-    "- 指定 startLine 和 endLine：读取指定行范围\n\n" +
-    "**注意事项：**\n" +
-    "- 文件路径相对于沙箱工作目录 /sandbox\n" +
-    "- 行号从 1 开始\n" +
-    "- 如果文件不存在会返回错误",
-
-  useExamples: [
-    `<readFile>
-  <filePath>src/main.py</filePath>
-</readFile>`,
-    `<readFile>
-  <filePath>config.json</filePath>
-  <startLine>1</startLine>
-  <endLine>10</endLine>
-</readFile>`,
-    `<readFile>
-  <filePath>logs/output.txt</filePath>
-  <startLine>100</startLine>
-  <endLine>150</endLine>
-</readFile>`,
-  ],
+  whenToUse: "需要查看文件内容或定位指定行时使用。通常在 editFile 前先 readFile 以确认上下文。",
 
   params: [
     {

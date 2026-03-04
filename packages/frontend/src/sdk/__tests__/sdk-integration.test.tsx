@@ -9,8 +9,8 @@ import "../provider/__tests__/setup";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
 import { ChatWindow } from "../components/ChatWindow";
-import { ConversationHistory } from "../components/ConversationHistory";
 import { MessageInput } from "../components/MessageInput";
+import { TaskRenderer } from "../components/TaskRenderer";
 import { useConnection } from "../hooks/useConnection";
 import { useMessages } from "../hooks/useMessages";
 import { useTasks } from "../hooks/useTasks";
@@ -119,9 +119,10 @@ describe("SDK Integration Tests", () => {
    * Validates that all SDK components work together:
    * 1. ChatWindow renders
    * 2. MessageInput renders
-   * 3. ConversationHistory renders
+   * 3. TaskRenderer renders
    */
   test("All SDK components render together", () => {
+    const taskId = "test-task-id";
     const { container } = render(
       <WebSocketProvider url="ws://localhost:10013" autoConnect={false}>
         <div>
@@ -131,8 +132,8 @@ describe("SDK Integration Tests", () => {
           <div data-testid="message-input">
             <MessageInput />
           </div>
-          <div data-testid="conversation-history">
-            <ConversationHistory />
+          <div data-testid="task-renderer">
+            <TaskRenderer taskId={taskId} />
           </div>
         </div>
       </WebSocketProvider>,
@@ -141,7 +142,7 @@ describe("SDK Integration Tests", () => {
     // Verify all components rendered
     expect(container.querySelector('[data-testid="chat-window"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="message-input"]')).not.toBeNull();
-    expect(container.querySelector('[data-testid="conversation-history"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="task-renderer"]')).not.toBeNull();
   });
 
   /**

@@ -16,7 +16,7 @@ export const handleStateChange: MessageHandler = (message, store) => {
         store.setTaskStatus(taskId, "interrupted");
       } else if (reason === "error") {
         store.setTaskStatus(taskId, "error");
-      } else if (reason === "completionResult") {
+      } else if (reason === "completeTask") {
         store.setTaskStatus(taskId, "completed");
       } else {
         // Default to idle for other reasons (askFollowupQuestion, etc.)

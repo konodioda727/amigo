@@ -8,7 +8,6 @@ import { AskFollowupQuestions } from "./askFollowupQuestions";
 import { Bash } from "./bash";
 import { BrowserSearch } from "./browserSearch";
 import { CompleteTask } from "./completeTask";
-import { CompletionResult } from "./completionResult";
 import { EditFile } from "./editFile";
 import { ReadFile } from "./readFile";
 import {
@@ -63,11 +62,14 @@ export class ToolService {
    * 生成供原生 Tool Call 使用的工具声明
    */
   public getToolDefinitions(): AmigoToolDefinition[] {
-    return this.getAllTools().map((tool) => ({
-      name: tool.name,
-      description: `${tool.description}\n\n${tool.whenToUse}`.trim(),
-      parameters: this.buildToolParametersSchema(tool),
-    }));
+    return this.getAllTools().map((tool) => {
+      const whenToUse = tool.whenToUse?.trim();
+      return {
+        name: tool.name,
+        description: [tool.description, whenToUse].filter(Boolean).join("\n\n"),
+        parameters: this.buildToolParametersSchema(tool),
+      };
+    });
   }
 
   /**
@@ -531,7 +533,6 @@ export class ToolService {
 
 export const MAIN_BASIC_TOOLS: ToolInterface<any>[] = [
   AskFollowupQuestions,
-  CompletionResult,
   CompleteTask,
   BrowserSearch,
   EditFile,
@@ -558,7 +559,6 @@ export const CUSTOMED_TOOLS: ToolInterface<any>[] = [];
 
 export {
   AskFollowupQuestions,
-  CompletionResult,
   CompleteTask,
   BrowserSearch,
   EditFile,

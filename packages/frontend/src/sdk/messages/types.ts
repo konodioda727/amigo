@@ -53,13 +53,6 @@ export interface AskFollowupQuestionType extends MessageType<"askFollowupQuestio
 }
 
 /**
- * completion 结果类型
- */
-export interface CompletionResultType extends MessageType<"completionResult"> {
-  result: string;
-}
-
-/**
  * 展示消息类型
  */
 export interface UserSendMessageDisplayType {
@@ -85,7 +78,6 @@ export interface AlertDisplayType extends MessageType<"alert"> {
 
 export type DisplayMessageType =
   | FrontendCommonMessageType
-  | CompletionResultType
   | FrontendToolMessageType<any>
   | AskFollowupQuestionType
   | UserSendMessageDisplayType
@@ -98,7 +90,6 @@ export type DisplayMessageType =
  */
 export const DisplayMessageTypeNames: WebSocketMessage<any>["type"][] = [
   "message",
-  "completionResult",
   "tool",
   "askFollowupQuestion",
   "error",

@@ -171,7 +171,7 @@ export class TaskOrchestrator {
     // 获取结果并返回子任务 ID
     return {
       subTaskId: subConversation.id,
-      result: this.getCompletionResult(subConversation),
+      result: this.getSubTaskResult(subConversation),
     };
   }
 
@@ -316,12 +316,36 @@ export class TaskOrchestrator {
   /**
    * 获取完成结果
    */
-  private getCompletionResult(conversation: Conversation): string {
+  private getSubTaskResult(conversation: Conversation): string {
     const messages = conversation.memory.messages;
 
     for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i]?.type === "completionResult" && messages[i]?.role === "assistant") {
-        return messages[i]?.content || "";
+      const message = messages[i];
+      if (message?.type !== "tool" || message?.role !== "assistant") {
+        continue;
+      }
+
+      try {
+        const parsed = JSON.parse(message.content || "") as {
+          toolName?: string;
+          params?: { result?: string };
+        };
+        if (parsed.toolName === "completeTask" && typeof parsed.params?.result === "string") {
+          return parsed.params.result;
+        }
+      } catch {
+        // ignore parse error and continue searching older tool messages
+      }
+    }
+
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i];
+      if (
+        message?.role === "assistant" &&
+        typeof message.content === "string" &&
+        message.content.trim()
+      ) {
+        return message.content;
       }
     }
 
