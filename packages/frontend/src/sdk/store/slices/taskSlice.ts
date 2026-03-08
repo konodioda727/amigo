@@ -52,6 +52,30 @@ export interface TaskSlice {
   ) => void;
 }
 
+const createInitialTaskState = (): TaskState => ({
+  rawMessages: [],
+  displayMessages: [],
+  status: "idle",
+  lastUpdateTime: Date.now(),
+});
+
+const mapSubTaskStatusToTaskStatus = (status?: string): TaskStatus => {
+  switch (status) {
+    case "running":
+      return "streaming";
+    case "waiting_user_input":
+      return "idle";
+    case "wait_review":
+      return "waiting_tool_call";
+    case "completed":
+      return "completed";
+    case "failed":
+      return "error";
+    default:
+      return "idle";
+  }
+};
+
 export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = (set, get) => ({
   tasks: {},
   activeTaskId: null,
@@ -71,12 +95,7 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
       set({
         tasks: {
           ...tasks,
-          [taskId]: {
-            rawMessages: [],
-            displayMessages: [],
-            status: "idle",
-            lastUpdateTime: Date.now(),
-          },
+          [taskId]: createInitialTaskState(),
         },
       } as any);
     }
@@ -166,9 +185,9 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
     set({ mainTaskId: taskId, activeTaskId: taskId } as any);
     get().registerTask(taskId);
 
-    // Close doc sidebar immediately when switching tasks
-    // It will be reopened by handleTaskHistory if the new task has docs
-    get().closeDoc();
+    // Clear doc state immediately when switching conversations.
+    // It will be repopulated by handleTaskHistory if the target conversation has docs.
+    get().resetDocState();
 
     if (socket && socket.readyState === WebSocket.OPEN && taskId) {
       socket.send(
@@ -194,12 +213,41 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
   },
 
   setTaskStatusMap: (taskId: string, subTasks: Record<string, any>) => {
-    const { taskStatusMaps } = get();
+    const { taskStatusMaps, tasks } = get();
+    const nextTasks = { ...tasks };
+    let hasTaskUpdates = false;
+
+    Object.values(subTasks).forEach((subTask: any) => {
+      const subTaskId = subTask?.subTaskId;
+      if (!subTaskId) return;
+
+      const mappedStatus = mapSubTaskStatusToTaskStatus(subTask?.status);
+      const existingTask = nextTasks[subTaskId];
+
+      if (!existingTask) {
+        nextTasks[subTaskId] = {
+          ...createInitialTaskState(),
+          status: mappedStatus,
+        };
+        hasTaskUpdates = true;
+        return;
+      }
+
+      if (existingTask.status !== mappedStatus) {
+        nextTasks[subTaskId] = {
+          ...existingTask,
+          status: mappedStatus,
+        };
+        hasTaskUpdates = true;
+      }
+    });
+
     set({
       taskStatusMaps: {
         ...taskStatusMaps,
         [taskId]: subTasks,
       },
+      ...(hasTaskUpdates ? { tasks: nextTasks } : {}),
     } as any);
   },
 
@@ -224,8 +272,8 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
       get().clearMessages(mainTaskId);
     }
 
-    // Close doc sidebar when creating new conversation
-    get().closeDoc();
+    // New conversation should not inherit docs from the previous one.
+    get().resetDocState();
 
     // Reset to empty state - server will create new task on first message
     set({ mainTaskId: "", activeTaskId: null, isCreatingConversation: false } as any);

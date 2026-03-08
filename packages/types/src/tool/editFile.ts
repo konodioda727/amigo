@@ -32,6 +32,13 @@ export const EditFileSchema = z.object({
       message: z.string().describe("操作结果消息"),
       linesWritten: z.number().optional().describe("写入的行数"),
       replacements: z.number().optional().describe("字符串替换模式下的替换次数"),
+      websocketOnly: z
+        .object({
+          beforeContent: z.string().optional().describe("修改前内容预览"),
+          afterContent: z.string().optional().describe("修改后内容预览"),
+        })
+        .optional()
+        .describe("仅通过 websocket 下发、不写入 original message 的前端预览数据"),
     })
     .describe("编辑文件的结果"),
 });

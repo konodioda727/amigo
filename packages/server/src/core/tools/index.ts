@@ -22,13 +22,35 @@ export class ToolService {
   private _availableTools: Record<string, ToolInterface<any>> = {};
   constructor(
     // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
-    private _baseTools: ToolInterface<any>[],
+    baseTools: ToolInterface<any>[],
     // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
-    private userDefinedTools: ToolInterface<any>[],
+    userDefinedTools: ToolInterface<any>[],
   ) {
+    this._baseTools = this.deduplicateTools(baseTools);
+    const baseToolNames = new Set(this._baseTools.map((tool) => tool.name));
+    this.userDefinedTools = this.deduplicateTools(userDefinedTools).filter(
+      (tool) => !baseToolNames.has(tool.name),
+    );
+
     this._baseTools.concat(this.userDefinedTools).forEach((tool) => {
       this._availableTools[tool.name] = tool;
     });
+  }
+
+  // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
+  private _baseTools: ToolInterface<any>[];
+  // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
+  private userDefinedTools: ToolInterface<any>[];
+
+  // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
+  private deduplicateTools(tools: ToolInterface<any>[]): ToolInterface<any>[] {
+    const uniqueTools = new Map<string, ToolInterface<any>>();
+    for (const tool of tools) {
+      if (!uniqueTools.has(tool.name)) {
+        uniqueTools.set(tool.name, tool);
+      }
+    }
+    return Array.from(uniqueTools.values());
   }
 
   get toolNames() {
@@ -175,7 +197,6 @@ export class ToolService {
     return {
       type: "object",
       properties,
-      additionalProperties: false,
       ...(required.length > 0 ? { required } : {}),
     };
   }
@@ -245,7 +266,6 @@ export class ToolService {
       return {
         type: "object",
         properties: {},
-        additionalProperties: false,
       };
     }
     return this.buildObjectSchemaFromParams(params);

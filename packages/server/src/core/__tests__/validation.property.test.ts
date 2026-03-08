@@ -239,6 +239,17 @@ describe("验证属性测试", () => {
           { numRuns: 100 },
         );
       });
+
+      test("重复工具名应只保留一份工具声明", () => {
+        const baseTool = createTestTool(TOOL_NAME, [PARAM_A]);
+        const duplicatedUserTool = createTestTool(TOOL_NAME, [PARAM_A, PARAM_B]);
+        const toolService = new ToolService([baseTool], [duplicatedUserTool]);
+
+        const definitions = toolService.getToolDefinitions();
+
+        expect(definitions).toHaveLength(1);
+        expect(definitions[0]?.name).toBe(TOOL_NAME);
+      });
     });
   });
 

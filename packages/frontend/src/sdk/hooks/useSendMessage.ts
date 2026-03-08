@@ -3,6 +3,9 @@ import { useCallback } from "react";
 import { useWebSocketContext } from "../context/WebSocketContext";
 import type { UseSendMessageReturn } from "../types/hooks";
 
+const getConfirmOptimisticStatus = (toolName?: string): "idle" | "streaming" =>
+  toolName === "completeTask" ? "idle" : "streaming";
+
 /**
  * Hook to send messages to the WebSocket server.
  * Provides functions to send user messages, interrupts, resume, load task, and create task commands.
@@ -151,6 +154,7 @@ export function useSendMessage(): UseSendMessageReturn {
   const sendConfirm = useCallback(
     (taskId: string) => {
       const state = store.getState();
+      const pendingToolName = state.tasks[taskId]?.pendingToolCall?.toolName;
 
       state.sendMessage(taskId, {
         type: "confirm",
@@ -159,8 +163,7 @@ export function useSendMessage(): UseSendMessageReturn {
         },
       });
 
-      // 设置为 streaming 状态，使其可以被打断
-      state.setTaskStatus(taskId, "streaming");
+      state.setTaskStatus(taskId, getConfirmOptimisticStatus(pendingToolName));
       state.setPendingToolCall(taskId, undefined);
     },
     [store],
@@ -238,3 +241,5 @@ export function useSendMessage(): UseSendMessageReturn {
     sendUpdateAutoApproveTools,
   };
 }
+
+export { getConfirmOptimisticStatus };

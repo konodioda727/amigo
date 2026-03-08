@@ -1,5 +1,3 @@
-import type { Page } from "playwright";
-import { browserManager } from "@/utils/browserManager";
 import { logger } from "@/utils/logger";
 import { createTool } from "./base";
 
@@ -17,41 +15,18 @@ type FetchedSearchResult = {
   error?: string;
 };
 
-const SEARCH_PAGE_TIMEOUT_MS = 12000;
-const FETCH_PAGE_TIMEOUT_MS = 10000;
-const SEARCH_RESULT_WAIT_MS = 5000;
-const SEARCH_RSS_TIMEOUT_MS = 8000;
+const SEARCH_ENGINE = "google" as const;
+const SEARCH_API_TIMEOUT_MS = 8000;
+const SEARCH_HTTP_TIMEOUT_MS = 10000;
+const FETCH_HTTP_TIMEOUT_MS = 9000;
 const MAX_PAGE_CONTENT_LENGTH = 5000;
+const MIN_HTTP_CONTENT_LENGTH = 120;
 const FETCH_CONCURRENCY = 4;
-const PAGE_SETTLE_WAIT_MS = 1500;
-const PAGE_EVALUATE_RETRY_COUNT = 2;
 const SEARCH_RESULT_LIMIT = 10;
-
-const GOV_QUERY_HINT_PATTERN =
-  /公务员|分数线|录取|最低|招录|招考|考试|公告|成绩|岗位|编制|国考|省考|事业单位|政府|政务|人社/;
-const FOREIGN_NOISE_PATTERN =
-  /\b(?:usd|eur|currency|convert(?:er)?|dollar|euro|taux|boursorama|xe|wise)\b/i;
-const EXTRA_KEYWORD_HINTS = [
-  "杭州",
-  "杭州市",
-  "公务员",
-  "考试",
-  "分数线",
-  "录取",
-  "最低",
-  "招录",
-  "国考",
-  "省考",
-] as const;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const isExecutionContextDestroyedError = (error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.includes("Execution context was destroyed");
-};
-
-const decodeXmlEntities = (input: string) =>
+const decodeHtmlEntities = (input: string) =>
   input
     .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
     .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCodePoint(parseInt(code, 16)))
@@ -59,23 +34,16 @@ const decodeXmlEntities = (input: string) =>
     .replace(/&apos;/g, "'")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&");
 
 const stripTagsAndTrim = (input: string) =>
-  decodeXmlEntities(input)
+  decodeHtmlEntities(input)
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 
-const extractTag = (xml: string, tagName: string) => {
-  const matched = xml.match(new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)</${tagName}>`, "i"));
-  if (!matched?.[1]) {
-    return "";
-  }
-  return stripTagsAndTrim(matched[1]);
-};
-
-const normalizeResultUrl = (raw: string) => {
+const normalizeUrl = (raw: string) => {
   try {
     const parsed = new URL(raw);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
@@ -87,93 +55,182 @@ const normalizeResultUrl = (raw: string) => {
   }
 };
 
-const parseBingRss = (xml: string): SearchResult[] => {
-  const items = xml.match(/<item\b[\s\S]*?<\/item>/gi) || [];
-  const seen = new Set<string>();
-  const results: SearchResult[] = [];
-
-  for (const item of items) {
-    const title = extractTag(item, "title");
-    const url = normalizeResultUrl(extractTag(item, "link"));
-    const snippet = extractTag(item, "description");
-    if (!title || !url || seen.has(url)) {
-      continue;
-    }
-    seen.add(url);
-    results.push({ title, url, snippet });
-  }
-
-  return results;
+const buildGoogleSearchUrl = (keyword: string) => {
+  const searchParams = new URLSearchParams({
+    q: keyword,
+    hl: "zh-CN",
+    gl: "us",
+    num: String(SEARCH_RESULT_LIMIT),
+    pws: "0",
+    safe: "off",
+  });
+  return `https://www.google.com/search?${searchParams.toString()}`;
 };
 
 const extractQueryKeywords = (query: string) => {
   const normalized = query.toLowerCase();
   const zhChunks = normalized.match(/[\u4e00-\u9fff]{2,}/g) || [];
   const latinChunks = normalized.match(/[a-z]{2,}/g) || [];
-  const numericChunks = normalized.match(/\b\d{4}\b/g) || [];
-  const hinted = EXTRA_KEYWORD_HINTS.filter((hint) => normalized.includes(hint));
-
-  return [...new Set([...zhChunks, ...latinChunks, ...numericChunks, ...hinted])].slice(0, 20);
+  const numericChunks = normalized.match(/\b\d{2,}\b/g) || [];
+  return [...new Set([...zhChunks, ...latinChunks, ...numericChunks])].slice(0, 20);
 };
 
-const computeRelevanceScore = (result: SearchResult, queryKeywords: string[]) => {
-  if (queryKeywords.length === 0) {
-    return 1;
-  }
-  const combined = `${result.title} ${result.snippet}`.toLowerCase();
-  let score = 0;
-  for (const keyword of queryKeywords) {
-    if (combined.includes(keyword)) {
-      score += 1;
-    }
-  }
-  return score;
-};
-
-const keepRelevantResults = (results: SearchResult[], query: string) => {
-  if (results.length === 0) {
-    return results;
-  }
-
+const rankResultsByQuery = (results: SearchResult[], query: string) => {
   const keywords = extractQueryKeywords(query);
   if (keywords.length === 0) {
     return results;
   }
 
-  const scored = results.map((result) => ({
-    result,
-    score: computeRelevanceScore(result, keywords),
-  }));
-  const relevant = scored.filter((item) => item.score > 0).map((item) => item.result);
+  return results
+    .map((result, index) => {
+      const haystack = `${result.title} ${result.snippet}`.toLowerCase();
+      const score = keywords.reduce((total, keyword) => {
+        return total + (haystack.includes(keyword) ? 1 : 0);
+      }, 0);
+      return { result, score, index };
+    })
+    .sort((a, b) => {
+      if (b.score !== a.score) {
+        return b.score - a.score;
+      }
+      return a.index - b.index;
+    })
+    .map((item) => item.result);
+};
 
-  if (relevant.length >= Math.min(3, Math.ceil(results.length / 3))) {
-    return relevant;
+const dedupeResults = (results: SearchResult[]) => {
+  const seen = new Set<string>();
+  const deduped: SearchResult[] = [];
+  for (const result of results) {
+    const normalized = normalizeUrl(result.url);
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    deduped.push({ ...result, url: normalized });
+  }
+  return deduped;
+};
+
+const readOptionalEnv = (name: string) => {
+  const value = process.env[name]?.trim();
+  return value ? value : "";
+};
+
+const extractTextFromHtml = (html: string) => {
+  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const title = stripTagsAndTrim(titleMatch?.[1] || "");
+
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  const contentSource = bodyMatch?.[1] || html;
+
+  const cleaned = contentSource
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, " ")
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, " ")
+    .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, " ");
+
+  const content = stripTagsAndTrim(cleaned).slice(0, MAX_PAGE_CONTENT_LENGTH);
+  return { title, content };
+};
+
+const extractSerperResults = (payload: unknown): SearchResult[] => {
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+
+  const record = payload as Record<string, unknown>;
+  if (!Array.isArray(record.organic)) {
+    return [];
+  }
+
+  return record.organic
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+
+      const row = item as Record<string, unknown>;
+      const title = typeof row.title === "string" ? row.title.trim() : "";
+      const snippet = typeof row.snippet === "string" ? row.snippet.trim() : "";
+      const url = typeof row.link === "string" ? row.link.trim() : "";
+
+      if (!title || !url) {
+        return null;
+      }
+
+      return { title, snippet, url };
+    })
+    .filter((item): item is SearchResult => Boolean(item));
+};
+
+const extractGoogleResultUrl = (rawHref: string) => {
+  try {
+    const href = decodeHtmlEntities(rawHref.trim());
+    if (!href) {
+      return "";
+    }
+
+    if (href.startsWith("http://") || href.startsWith("https://")) {
+      const parsed = new URL(href);
+      if (/(^|\.)google\./i.test(parsed.hostname) && parsed.pathname.startsWith("/search")) {
+        return "";
+      }
+      return parsed.toString();
+    }
+
+    const parsed = new URL(href, "https://www.google.com");
+    if (parsed.pathname !== "/url") {
+      return "";
+    }
+
+    const target = parsed.searchParams.get("q") || parsed.searchParams.get("url") || "";
+    return normalizeUrl(target);
+  } catch {
+    return "";
+  }
+};
+
+const parseGoogleSearchHtml = (html: string): SearchResult[] => {
+  const seen = new Set<string>();
+  const results: SearchResult[] = [];
+  const anchorPattern = /<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+
+  let match: RegExpExecArray | null = anchorPattern.exec(html);
+  while (match) {
+    const href = match[1] || "";
+    const anchorInnerHtml = match[2] || "";
+
+    const titleMatch = anchorInnerHtml.match(/<h3[^>]*>([\s\S]*?)<\/h3>/i);
+    const title = stripTagsAndTrim(titleMatch?.[1] || "");
+    const url = extractGoogleResultUrl(href);
+
+    if (!title || !url || seen.has(url)) {
+      match = anchorPattern.exec(html);
+      continue;
+    }
+
+    const afterAnchor = html.slice(anchorPattern.lastIndex, anchorPattern.lastIndex + 1200);
+    const snippetMatch = afterAnchor.match(
+      /<(?:div|span)[^>]*class="[^"]*(?:VwiC3b|s3v9rd|MUxGbd|aCOpRe|yXK7lf)[^"]*"[^>]*>([\s\S]*?)<\/(?:div|span)>/i,
+    );
+    const snippet = stripTagsAndTrim(snippetMatch?.[1] || "");
+
+    seen.add(url);
+    results.push({ title, snippet, url });
+
+    if (results.length >= SEARCH_RESULT_LIMIT) {
+      break;
+    }
+
+    match = anchorPattern.exec(html);
   }
 
   return results;
 };
 
-const shouldFallbackToGovSearch = (query: string, results: SearchResult[]) => {
-  if (!GOV_QUERY_HINT_PATTERN.test(query)) {
-    return false;
-  }
-  if (results.length === 0) {
-    return true;
-  }
-
-  const top = results.slice(0, 5);
-  const keywords = extractQueryKeywords(query);
-  const relevantTopCount = top.filter((item) => computeRelevanceScore(item, keywords) > 0).length;
-  const noisyTopCount = top.filter((item) =>
-    FOREIGN_NOISE_PATTERN.test(`${item.title} ${item.snippet}`),
-  ).length;
-
-  return relevantTopCount <= 1 || noisyTopCount >= Math.ceil(top.length / 2);
-};
-
 export const BrowserSearch = createTool({
   name: "browserSearch",
-  description: "使用浏览器搜索信息，并自动抓取搜索结果页面的正文内容。",
+  description: "使用 Google 搜索信息，并自动抓取搜索结果页面正文（纯 HTTP，无浏览器回退）。",
   whenToUse:
     "需要获取互联网实时信息并抓取搜索结果页正文时使用。仅支持 query 搜索，不用于直接访问单个 URL。",
 
@@ -181,14 +238,14 @@ export const BrowserSearch = createTool({
     {
       name: "query",
       optional: false,
-      description: "搜索关键词。工具会自动搜索并抓取搜索结果页面内容。",
+      description:
+        "搜索关键词。工具会优先走 Google API（若配置），否则走 Google HTML 解析，再抓取结果页面正文。",
     },
   ],
 
   async invoke({ params, context }) {
     const { query } = params;
     const { signal } = context;
-    const activePages = new Set<Page>();
 
     const createAbortError = () => {
       const abortError = new Error("操作已取消");
@@ -219,101 +276,173 @@ export const BrowserSearch = createTool({
       });
     };
 
-    const trackPage = (page: Page) => {
-      activePages.add(page);
-      return page;
-    };
+    const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string) =>
+      Promise.race([
+        promise,
+        sleep(timeoutMs).then(() => {
+          throw new Error(timeoutMessage);
+        }),
+      ]);
 
-    const createTrackedPage = async () => trackPage(await withAbort(browserManager.getPage()));
+    const searchViaSerper = async (keyword: string): Promise<SearchResult[]> => {
+      const apiKey = readOptionalEnv("SERPER_API_KEY");
+      if (!apiKey) {
+        return [];
+      }
 
-    const optimizePageForScrape = async (page: Page) => {
       try {
-        await page.route("**/*", (route) => {
-          const resourceType = route.request().resourceType();
-          if (resourceType === "image" || resourceType === "media" || resourceType === "font") {
-            return route.abort();
-          }
-          return route.continue();
-        });
+        const response = (await withAbort(
+          withTimeout(
+            fetch("https://google.serper.dev/search", {
+              method: "POST",
+              headers: {
+                "x-api-key": apiKey,
+                "content-type": "application/json",
+              },
+              body: JSON.stringify({
+                q: keyword,
+                num: SEARCH_RESULT_LIMIT,
+                hl: "zh-cn",
+                gl: "us",
+              }),
+              signal,
+            }),
+            SEARCH_API_TIMEOUT_MS,
+            "SERPER 搜索超时",
+          ),
+        )) as Response;
+
+        if (!response.ok) {
+          throw new Error(`SERPER 搜索失败: HTTP ${response.status}`);
+        }
+
+        const json = await withAbort(response.json());
+        const parsed = dedupeResults(extractSerperResults(json)).slice(0, SEARCH_RESULT_LIMIT);
+        logger.info(`[BrowserSearch] SERPER 搜索命中 ${parsed.length} 条: ${keyword}`);
+        return parsed;
       } catch (error) {
-        logger.debug("[BrowserSearch] 注册资源拦截失败（可忽略）:", error);
+        logger.warn(
+          `[BrowserSearch] SERPER 搜索失败，回退 Google HTML 解析: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        return [];
       }
     };
 
-    const closeTrackedPage = async (page: Page | null | undefined) => {
-      if (!page) {
-        return;
-      }
-      activePages.delete(page);
+    const searchViaGoogleHtml = async (searchUrl: string): Promise<SearchResult[]> => {
       try {
-        await page.close();
+        const response = (await withAbort(
+          withTimeout(
+            fetch(searchUrl, {
+              headers: {
+                accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+                "user-agent":
+                  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+              },
+              signal,
+            }),
+            SEARCH_HTTP_TIMEOUT_MS,
+            "Google 搜索页请求超时",
+          ),
+        )) as Response;
+
+        if (!response.ok) {
+          throw new Error(`Google 搜索页请求失败: HTTP ${response.status}`);
+        }
+
+        const html = await withAbort(response.text());
+        const parsed = dedupeResults(parseGoogleSearchHtml(html)).slice(0, SEARCH_RESULT_LIMIT);
+        logger.info(`[BrowserSearch] Google HTML 解析命中 ${parsed.length} 条`);
+        return parsed;
       } catch (error) {
-        logger.debug("[BrowserSearch] 关闭页面失败（可忽略）:", error);
+        logger.warn(
+          `[BrowserSearch] Google HTML 解析失败: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        return [];
       }
     };
 
-    const waitForPageToSettle = async (page: Page) => {
-      await withAbort(page.waitForLoadState("domcontentloaded", { timeout: 3000 }).catch(() => {}));
-      await withAbort(
-        page.waitForLoadState("load", { timeout: PAGE_SETTLE_WAIT_MS }).catch(() => {}),
-      );
-      await withAbort(
-        page.waitForLoadState("networkidle", { timeout: PAGE_SETTLE_WAIT_MS }).catch(() => {}),
-      );
-      await withAbort(page.waitForTimeout(200));
+    const fetchViaHttp = async (
+      result: SearchResult,
+    ): Promise<{ title: string; content: string; url: string } | null> => {
+      try {
+        const response = (await withAbort(
+          withTimeout(
+            fetch(result.url, {
+              headers: {
+                accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+                "user-agent":
+                  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+              },
+              signal,
+            }),
+            FETCH_HTTP_TIMEOUT_MS,
+            "HTTP 抓取超时",
+          ),
+        )) as Response;
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const html = await withAbort(response.text());
+        const { title, content } = extractTextFromHtml(html);
+        if (!content || content.length < MIN_HTTP_CONTENT_LENGTH) {
+          return null;
+        }
+
+        return {
+          title: title || result.title,
+          content,
+          url: normalizeUrl(response.url) || result.url,
+        };
+      } catch (error) {
+        logger.debug(
+          `[BrowserSearch] HTTP 抓取失败: ${result.url} (${error instanceof Error ? error.message : String(error)})`,
+        );
+        return null;
+      }
     };
 
-    const extractPageData = async (page: Page) =>
-      withAbort(
-        page.evaluate((maxLength) => {
-          // @ts-expect-error
-          const removableNodes = document.querySelectorAll("script, style, noscript");
-          // @ts-expect-error
-          removableNodes.forEach((node) => {
-            node.remove();
-          });
+    const fetchSingleResult = async (result: SearchResult): Promise<FetchedSearchResult> => {
+      assertNotAborted();
+      try {
+        logger.info(`[BrowserSearch] 抓取结果页: ${result.url}`);
 
-          // @ts-expect-error
-          const pageTitle = document.title?.trim() || "";
-
-          const contentCandidates = [
-            // @ts-expect-error
-            document.querySelector("main")?.textContent,
-            // @ts-expect-error
-            document.querySelector("article")?.textContent,
-            // @ts-expect-error
-            document.querySelector("[role='main']")?.textContent,
-            // @ts-expect-error
-            document.body?.innerText,
-            // @ts-expect-error
-            document.body?.textContent,
-          ];
-
-          const rawContent = contentCandidates.find(
-            (value) => typeof value === "string" && value.trim().length > 0,
-          );
-
-          const content = String(rawContent || "")
-            .replace(/\s+/g, " ")
-            .trim()
-            .substring(0, maxLength);
-
+        const httpData = await fetchViaHttp(result);
+        if (httpData) {
           return {
-            title: pageTitle,
-            content,
+            title: httpData.title,
+            url: httpData.url,
+            snippet: result.snippet || undefined,
+            content: httpData.content,
           };
-        }, MAX_PAGE_CONTENT_LENGTH),
-      );
+        }
 
-    const onAbortClosePages = () => {
-      for (const page of activePages) {
-        void page.close().catch((error: unknown) => {
-          logger.debug("[BrowserSearch] 中断时关闭页面失败（可忽略）:", error);
-        });
+        return {
+          title: result.title,
+          url: result.url,
+          snippet: result.snippet || undefined,
+          error: "HTTP 抓取失败或正文内容过短",
+        };
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          throw error;
+        }
+
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.warn(`[BrowserSearch] 抓取失败: ${result.url} - ${errorMessage}`);
+        return {
+          title: result.title,
+          url: result.url,
+          snippet: result.snippet || undefined,
+          error: errorMessage,
+        };
       }
-      activePages.clear();
     };
-    signal?.addEventListener("abort", onAbortClosePages, { once: true });
 
     try {
       if (!query?.trim()) {
@@ -321,175 +450,24 @@ export const BrowserSearch = createTool({
       }
 
       const keyword = query.trim();
-      const buildSearchUrl = (searchKeyword: string, extraParams?: Record<string, string>) => {
-        const searchParams = new URLSearchParams({
-          q: searchKeyword,
-          setlang: "zh-CN",
-          mkt: "zh-CN",
-          cc: "CN",
-          ensearch: "0",
-          ...(extraParams || {}),
-        });
-        return `https://cn.bing.com/search?${searchParams.toString()}`;
-      };
+      const searchUrl = buildGoogleSearchUrl(keyword);
 
-      const searchViaRss = async (searchKeyword: string): Promise<SearchResult[]> => {
-        const rssUrl = buildSearchUrl(searchKeyword, { format: "rss" });
-        try {
-          const response = (await withAbort(
-            Promise.race([
-              fetch(rssUrl, {
-                headers: {
-                  accept: "application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
-                  "user-agent":
-                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-                },
-                signal,
-              }),
-              sleep(SEARCH_RSS_TIMEOUT_MS).then(() => {
-                throw new Error("RSS 搜索超时");
-              }),
-            ]),
-          )) as Response;
+      logger.info(`[BrowserSearch] 使用 ${SEARCH_ENGINE} 搜索并抓取（无浏览器回退）: ${keyword}`);
 
-          if (!response.ok) {
-            throw new Error(`RSS 搜索失败: HTTP ${response.status}`);
-          }
-
-          const xml = await withAbort(response.text());
-          const parsed = parseBingRss(xml).slice(0, SEARCH_RESULT_LIMIT);
-          logger.info(`[BrowserSearch] RSS 搜索命中 ${parsed.length} 条: ${searchKeyword}`);
-          return parsed;
-        } catch (error) {
-          logger.warn(
-            `[BrowserSearch] RSS 搜索失败，回退到页面抓取: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-          return [];
-        }
-      };
-
-      const searchViaSerp = async (searchUrl: string): Promise<SearchResult[]> => {
-        let searchPage: Page | null = null;
-        try {
-          searchPage = await createTrackedPage();
-          await withAbort(searchPage.context().clearCookies());
-
-          await withAbort(
-            searchPage.goto(searchUrl, {
-              waitUntil: "domcontentloaded",
-              timeout: SEARCH_PAGE_TIMEOUT_MS,
-            }),
-          );
-
-          await withAbort(
-            searchPage
-              .waitForSelector("#b_results, .b_algo", { timeout: SEARCH_RESULT_WAIT_MS })
-              .catch(() => {
-                logger.warn("[BrowserSearch] 搜索结果加载超时");
-              }),
-          );
-
-          return await withAbort(
-            searchPage.evaluate(() => {
-              const results: Array<{ title: string; snippet: string; url: string }> = [];
-              const seenUrls = new Set<string>();
-
-              const normalizeUrl = (rawHref: string) => {
-                try {
-                  const parsed = new URL(rawHref, window.location.href);
-                  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-                    return "";
-                  }
-                  return parsed.toString();
-                } catch {
-                  return "";
-                }
-              };
-
-              // Bing 页面中很多模块也会出现 b_algo，优先只取主结果区的直接子项。
-              const primaryResultElements = Array.from(
-                document.querySelectorAll("#b_results > li.b_algo, #b_results > .b_algo"),
-              );
-              const fallbackResultElements = Array.from(
-                document.querySelectorAll("#b_results .b_algo"),
-              );
-              const resultElements =
-                primaryResultElements.length > 0 ? primaryResultElements : fallbackResultElements;
-
-              for (const element of resultElements) {
-                if (element.closest(".b_ad, .b_ans, .b_pole, #b_context, #b_topw, #b_bottomw")) {
-                  continue;
-                }
-
-                const titleEl = element.querySelector("h2 a[href], h3 a[href]");
-                const snippetEl = element.querySelector(".b_caption p, .b_algoSlug");
-
-                if (!titleEl) {
-                  continue;
-                }
-
-                // @ts-expect-error
-                const rawHref =
-                  titleEl.getAttribute("href") || (titleEl as HTMLAnchorElement).href || "";
-                const href = normalizeUrl(rawHref);
-                const title = titleEl.textContent?.trim() || "";
-                const snippet = snippetEl?.textContent?.trim() || "";
-
-                if (!title || !href || seenUrls.has(href)) {
-                  continue;
-                }
-
-                if (href.startsWith("javascript:")) {
-                  continue;
-                }
-
-                seenUrls.add(href);
-                results.push({ title, snippet, url: href });
-              }
-
-              return results;
-            }),
-          );
-        } finally {
-          await closeTrackedPage(searchPage);
-        }
-      };
-
-      let searchUrl = buildSearchUrl(keyword);
-      logger.info(`[BrowserSearch] 搜索并抓取: ${keyword}`);
-
-      let searchResults: SearchResult[] = await searchViaRss(keyword);
+      let searchResults = await searchViaSerper(keyword);
       if (searchResults.length === 0) {
-        searchResults = await searchViaSerp(searchUrl);
+        searchResults = await searchViaGoogleHtml(searchUrl);
       }
 
-      searchResults = keepRelevantResults(searchResults, keyword);
-
-      if (shouldFallbackToGovSearch(keyword, searchResults) && !keyword.includes("site:gov.cn")) {
-        const govKeyword = `${keyword} site:gov.cn`;
-        const govSearchUrl = buildSearchUrl(govKeyword);
-        logger.warn(`[BrowserSearch] 结果相关性较低，触发政务站点回退搜索: ${govKeyword}`);
-
-        let govResults = await searchViaRss(govKeyword);
-        if (govResults.length === 0) {
-          govResults = await searchViaSerp(govSearchUrl);
-        }
-        govResults = keepRelevantResults(govResults, keyword);
-
-        if (govResults.length > 0) {
-          searchResults = govResults;
-          searchUrl = govSearchUrl;
-        }
-      }
-
-      searchResults = searchResults.slice(0, SEARCH_RESULT_LIMIT);
+      searchResults = rankResultsByQuery(dedupeResults(searchResults), keyword).slice(
+        0,
+        SEARCH_RESULT_LIMIT,
+      );
 
       if (searchResults.length === 0) {
         const emptyContent = `搜索 "${keyword}" 未找到可抓取的结果。`;
         return {
-          message: `浏览器搜索完成，但没有可抓取的搜索结果。关键词: ${keyword}`,
+          message: `Google 搜索完成，但没有可抓取的搜索结果。关键词: ${keyword}`,
           toolResult: {
             content: emptyContent,
             url: searchUrl,
@@ -498,75 +476,6 @@ export const BrowserSearch = createTool({
           },
         };
       }
-
-      const fetchSingleResult = async (result: SearchResult): Promise<FetchedSearchResult> => {
-        assertNotAborted();
-        let page: Page | null = null;
-        try {
-          logger.info(`[BrowserSearch] 抓取结果页: ${result.url}`);
-          page = await createTrackedPage();
-          await optimizePageForScrape(page);
-
-          await withAbort(
-            page.goto(result.url, {
-              waitUntil: "domcontentloaded",
-              timeout: FETCH_PAGE_TIMEOUT_MS,
-            }),
-          );
-          await waitForPageToSettle(page);
-
-          let pageData: { title: string; content: string } | null = null;
-          let lastEvaluateError: unknown = null;
-          for (let attempt = 0; attempt <= PAGE_EVALUATE_RETRY_COUNT; attempt++) {
-            try {
-              pageData = await extractPageData(page);
-              break;
-            } catch (error) {
-              lastEvaluateError = error;
-              if (
-                !isExecutionContextDestroyedError(error) ||
-                attempt === PAGE_EVALUATE_RETRY_COUNT
-              ) {
-                throw error;
-              }
-              logger.debug(
-                `[BrowserSearch] 页面抓取遇到导航抖动，重试 evaluate（${attempt + 1}/${PAGE_EVALUATE_RETRY_COUNT + 1}）: ${result.url}`,
-              );
-              await waitForPageToSettle(page);
-              await sleep(150);
-            }
-          }
-
-          if (!pageData) {
-            throw lastEvaluateError instanceof Error
-              ? lastEvaluateError
-              : new Error("页面内容提取失败");
-          }
-
-          const finalUrl = page.url() || result.url;
-          return {
-            title: pageData.title || result.title,
-            url: finalUrl,
-            snippet: result.snippet || undefined,
-            content: pageData.content || "",
-          };
-        } catch (error) {
-          if (error instanceof Error && error.name === "AbortError") {
-            throw error;
-          }
-
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          logger.warn(`[BrowserSearch] 抓取失败: ${result.url} - ${errorMessage}`);
-          return {
-            title: result.title,
-            url: page?.url() || result.url,
-            snippet: result.snippet || undefined,
-            error: errorMessage,
-          };
-        } finally {
-          await closeTrackedPage(page);
-        }
-      };
 
       const fetchedResults = new Array<FetchedSearchResult>(searchResults.length);
       let nextIndex = 0;
@@ -590,14 +499,12 @@ export const BrowserSearch = createTool({
         }),
       );
 
-      const content = `抓取网页内容完成。\n`;
-
       return {
-        message: `网页搜索并抓取完成。`,
+        message: "网页搜索并抓取完成。",
         toolResult: {
-          content,
+          content: "抓取网页内容完成。\n",
           url: searchUrl,
-          title: `搜索并抓取 - ${keyword}`,
+          title: `Google 搜索并抓取 - ${keyword}`,
           results: fetchedResults.filter(Boolean),
         },
       };
@@ -611,11 +518,6 @@ export const BrowserSearch = createTool({
           content: `错误: ${errorMessage}`,
         },
       };
-    } finally {
-      signal?.removeEventListener("abort", onAbortClosePages);
-      for (const page of [...activePages]) {
-        await closeTrackedPage(page);
-      }
     }
   },
 });

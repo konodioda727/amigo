@@ -51,7 +51,6 @@ SPEC MODE WORKFLOW (SERIOUS TASKS ONLY)
 ## Transition Rules
 - Complete current phase documentation before proceeding
 - Each phase must read previous phase documents
-- Use `updateTodolist` only if needed; prefer `taskList` as execution status source
 
 ## Resuming Interrupted Workflows
 When resuming an existing task:

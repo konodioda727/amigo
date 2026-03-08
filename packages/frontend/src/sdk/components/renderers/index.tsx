@@ -12,6 +12,7 @@ import { DefaultAskFollowupQuestionRenderer } from "./DefaultAskFollowupQuestion
 import { DefaultErrorRenderer } from "./DefaultErrorRenderer";
 import { DefaultInterruptRenderer } from "./DefaultInterruptRenderer";
 import { DefaultMessageRenderer } from "./DefaultMessageRenderer";
+import { DefaultThinkRenderer } from "./DefaultThinkRenderer";
 import { DefaultToolRenderer } from "./DefaultToolRenderer";
 import { DefaultUserMessageRenderer } from "./DefaultUserMessageRenderer";
 
@@ -43,6 +44,7 @@ import { DefaultUserMessageRenderer } from "./DefaultUserMessageRenderer";
  */
 export const defaultRenderers: MessageRendererMap = {
   message: (props) => <DefaultMessageRenderer {...props} />,
+  think: (props) => <DefaultThinkRenderer {...props} />,
   tool: (props) => <DefaultToolRenderer {...props} />,
   userSendMessage: (props) => <DefaultUserMessageRenderer {...props} />,
   askFollowupQuestion: (props) => <DefaultAskFollowupQuestionRenderer {...props} />,
@@ -57,6 +59,7 @@ export { DefaultErrorRenderer } from "./DefaultErrorRenderer";
 export { DefaultInterruptRenderer } from "./DefaultInterruptRenderer";
 // Re-export individual renderers for direct use
 export { DefaultMessageRenderer } from "./DefaultMessageRenderer";
+export { DefaultThinkRenderer } from "./DefaultThinkRenderer";
 export { DefaultToolRenderer } from "./DefaultToolRenderer";
 export { DefaultUserMessageRenderer } from "./DefaultUserMessageRenderer";
 

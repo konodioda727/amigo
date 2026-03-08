@@ -6,7 +6,11 @@ import type {
   USER_SEND_MESSAGE_NAME,
   WebSocketMessage,
 } from "@amigo-llm/types";
-import type { DisplayMessageType, FrontendCommonMessageType } from "./types";
+import type {
+  DisplayMessageType,
+  FrontendCommonMessageType,
+  FrontendThinkMessageType,
+} from "./types";
 import { DisplayMessageTypeNames } from "./types";
 
 type SupportedWebsocketMessage = WebSocketMessage<
@@ -34,35 +38,41 @@ const getStableUpdateTime = (candidate: unknown, res: DisplayMessageType[]): num
 type MessageProcessor<T extends SERVER_SEND_MESSAGE_NAME | USER_SEND_MESSAGE_NAME> = (params: {
   msg: WebSocketMessage<T>;
   res: DisplayMessageType[];
-  pendingThink: WebSocketMessage<"think"> | null;
-}) => { handled: boolean; pendingThink?: WebSocketMessage<"think"> | null };
+}) => { handled: boolean };
 
 const thinkProcessor: MessageProcessor<"think"> = ({ msg: thinkMsg, res }) => {
   if (thinkMsg.type !== "think") return { handled: false };
   const thinkData = thinkMsg.data;
-  const thinkEntry: FrontendCommonMessageType = {
-    message: "",
+  const updateTime = getStableUpdateTime(thinkData.updateTime, res);
+  const isPartial = thinkData.partial ?? false;
+
+  const thinkEntry: FrontendThinkMessageType = {
+    type: "think",
     think: thinkData.message ?? "",
-    updateTime: getStableUpdateTime(thinkData.updateTime, res),
-    type: "message",
-  };
+    updateTime,
+    partial: isPartial,
+  } as any;
+
   const lastMessage = res.at(-1);
-  if (isFrontendCommonMessage(lastMessage) && lastMessage.updateTime === thinkEntry.updateTime) {
+  const shouldMerge =
+    lastMessage?.type === "think" &&
+    lastMessage.updateTime === updateTime &&
+    (lastMessage as any).partial === true;
+
+  if (shouldMerge) {
     res[res.length - 1] = {
       ...lastMessage,
-      think: thinkEntry.think ?? lastMessage.think,
-    };
+      ...thinkEntry,
+    } as any;
   } else {
     res.push(thinkEntry);
   }
-  return { handled: true, pendingThink: thinkMsg };
+  return { handled: true };
 };
 
-const messageProcessor: MessageProcessor<"message"> = ({ msg, res, pendingThink }) => {
+const messageProcessor: MessageProcessor<"message"> = ({ msg, res }) => {
   if (msg.type !== "message") return { handled: false };
-  const messageData = msg.data as WebSocketMessage<"message">["data"] & {
-    think?: string;
-  };
+  const messageData = msg.data as WebSocketMessage<"message">["data"];
   const updateTime = getStableUpdateTime(messageData.updateTime, res);
   const isPartial = messageData.partial ?? false;
 
@@ -72,12 +82,6 @@ const messageProcessor: MessageProcessor<"message"> = ({ msg, res, pendingThink 
     type: "message",
     partial: isPartial,
   } as any;
-
-  if (messageData.think) {
-    messageEntry.think = messageData.think;
-  } else if (pendingThink?.data?.message) {
-    messageEntry.think = pendingThink.data.message;
-  }
 
   const lastMessage = res.at(-1);
   // 合并条件：type 相同、updateTime 相同、前一个消息 partial 为 true
@@ -90,40 +94,39 @@ const messageProcessor: MessageProcessor<"message"> = ({ msg, res, pendingThink 
     res[res.length - 1] = {
       ...lastMessage,
       ...messageEntry,
-      think: messageEntry.think ?? lastMessage.think,
-    };
+    } as any;
   } else {
     res.push(messageEntry);
   }
-  return { handled: true, pendingThink: null };
+  return { handled: true };
 };
 
 const toolProcessor: MessageProcessor<"tool"> = ({ msg, res }) => {
   if (msg.type !== "tool") return { handled: false };
   // 解析 tool 消息，结构化为 DisplayMessageType
-  const parsed = JSON.parse(msg.data.message) as TransportToolContent<any> & { error?: string };
-  const { toolName, params, result, error } = parsed;
+  const parsed = JSON.parse(msg.data.message) as TransportToolContent<any> & {
+    toolCallId?: string;
+    error?: string;
+  };
+  const { toolName, params, result, error, toolCallId } = parsed;
   const updateTime = getStableUpdateTime(msg.data.updateTime, res);
   const isPartial = msg.data.partial ?? false;
 
-  // 查找是否已经有相同 toolName 和 updateTime 的 tool（用于合并 partial 消息）
-  const lastMessage = res.at(-1);
-  const shouldMerge =
-    lastMessage?.type === "tool" &&
-    lastMessage.toolName === toolName &&
-    lastMessage.updateTime === updateTime &&
-    (lastMessage as any).partial === true;
+  const existingIndex = findMatchingToolMessageIndex(res, toolName, toolCallId, updateTime);
+  const existingMessage = existingIndex >= 0 ? res[existingIndex] : undefined;
+  const shouldMerge = existingMessage?.type === "tool";
 
-  if (shouldMerge && lastMessage?.type === "tool") {
-    // 合并消息：更新最后一条 tool 消息
-    res[res.length - 1] = {
+  if (shouldMerge && existingMessage?.type === "tool") {
+    // 合并同一次工具调用的 partial/final 消息，即便中间夹了其它消息。
+    res[existingIndex] = {
       type: "tool",
-      toolName: lastMessage.toolName,
-      params: (params as unknown as ToolParams<any>) || lastMessage.params,
+      toolName: existingMessage.toolName,
+      params: (params as unknown as ToolParams<any>) || existingMessage.params,
       toolOutput: result as unknown as ToolResult<any>,
-      error: error,
+      toolCallId: toolCallId || existingMessage.toolCallId,
+      error,
       hasError: !!error,
-      updateTime: lastMessage.updateTime,
+      updateTime: existingMessage.updateTime,
       partial: isPartial,
     } as any;
   } else {
@@ -133,7 +136,8 @@ const toolProcessor: MessageProcessor<"tool"> = ({ msg, res }) => {
       toolName,
       params: params as unknown as ToolParams<any>,
       toolOutput: result as unknown as ToolResult<any>,
-      error: error,
+      toolCallId,
+      error,
       hasError: !!error,
       updateTime,
       partial: isPartial,
@@ -143,10 +147,10 @@ const toolProcessor: MessageProcessor<"tool"> = ({ msg, res }) => {
   return { handled: true };
 };
 
-const defaultProcessor: MessageProcessor<any> = ({ msg, res, pendingThink }) => {
+const defaultProcessor: MessageProcessor<any> = ({ msg, res }) => {
   if (!DisplayMessageTypeNames.includes(msg.type)) return { handled: false };
   res.push(msg as unknown as DisplayMessageType);
-  return { handled: true, pendingThink };
+  return { handled: true };
 };
 
 const userSendMessageProcessor: MessageProcessor<"userSendMessage"> = ({ msg, res }) => {
@@ -254,7 +258,6 @@ const processorMap: Partial<
 
 export const combineMessages = (messages: SupportedWebsocketMessage[]): DisplayMessageType[] => {
   const res: DisplayMessageType[] = [];
-  let pendingThink: WebSocketMessage<"think"> | null = null;
 
   for (const msg of messages) {
     // 特殊处理 taskHistory - 递归展开历史消息
@@ -268,10 +271,7 @@ export const combineMessages = (messages: SupportedWebsocketMessage[]): DisplayM
     }
 
     const processor = processorMap[msg.type] ?? defaultProcessor;
-    const { handled, pendingThink: newPendingThink } = processor({ msg, res, pendingThink });
-    if (handled) {
-      pendingThink = newPendingThink ?? pendingThink;
-    }
+    processor({ msg, res });
   }
 
   // 后处理：为 askFollowupQuestion 设置 disabled 和 selectedOption
@@ -317,4 +317,34 @@ const isFrontendCommonMessage = (
   value: DisplayMessageType | undefined,
 ): value is FrontendCommonMessageType => {
   return value?.type === "message";
+};
+
+const findMatchingToolMessageIndex = (
+  messages: DisplayMessageType[],
+  toolName: string,
+  toolCallId: string | undefined,
+  updateTime: number,
+): number => {
+  if (toolCallId) {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i];
+      if (message.type === "tool" && message.toolCallId === toolCallId) {
+        return i;
+      }
+    }
+  }
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (
+      message.type === "tool" &&
+      message.toolName === toolName &&
+      message.updateTime === updateTime &&
+      message.partial === true
+    ) {
+      return i;
+    }
+  }
+
+  return -1;
 };

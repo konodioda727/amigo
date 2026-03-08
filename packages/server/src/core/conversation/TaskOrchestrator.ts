@@ -9,6 +9,7 @@ import { getLlm } from "../model";
 import type { Conversation } from "./Conversation";
 import { ConversationExecutor } from "./ConversationExecutor";
 import { conversationRepository } from "./ConversationRepository";
+import { extractCompletedSubTaskResult } from "./subTaskResult";
 import { broadcaster } from "./WebSocketBroadcaster";
 
 export interface SubTaskParams {
@@ -20,6 +21,39 @@ export interface SubTaskParams {
   taskDescription?: string; // 可选：用于 SubTaskManager 记录状态
   subTaskId?: string; // 可选：复用已有子任务会话
 }
+
+export const resolveObservedSubTaskStatus = ({
+  currentStatus,
+  pendingToolName,
+  lastSyncedStatus,
+  hasObservedActiveState,
+}: {
+  currentStatus: string;
+  pendingToolName?: string;
+  lastSyncedStatus: "running" | "waiting_user_input" | "wait_review" | null;
+  hasObservedActiveState: boolean;
+}): "running" | "waiting_user_input" | "wait_review" | null => {
+  const isWaitingCompleteTaskReview =
+    currentStatus === "waiting_tool_confirmation" && pendingToolName === "completeTask";
+
+  if (isWaitingCompleteTaskReview) {
+    return "wait_review";
+  }
+
+  if (currentStatus === "waiting_tool_confirmation" && lastSyncedStatus === "wait_review") {
+    return "wait_review";
+  }
+
+  if (currentStatus === "streaming" || currentStatus === "tool_executing") {
+    return "running";
+  }
+
+  if (hasObservedActiveState && currentStatus === "idle") {
+    return "waiting_user_input";
+  }
+
+  return null;
+};
 
 /**
  * 任务编排器 - 管理父子任务关系和子任务执行
@@ -107,7 +141,7 @@ export class TaskOrchestrator {
     }
 
     let hasObservedActiveState = false;
-    let lastSyncedStatus: "running" | "waiting_user_input" | null = taskDescription
+    let lastSyncedStatus: "running" | "waiting_user_input" | "wait_review" | null = taskDescription
       ? "running"
       : null;
 
@@ -115,7 +149,7 @@ export class TaskOrchestrator {
     await pWaitFor(
       () => {
         const currentStatus = subConversation.status;
-
+        const pendingToolName = subConversation.pendingToolCall?.toolName;
         const isSubTaskActive = [
           "streaming",
           "waiting_tool_confirmation",
@@ -127,20 +161,18 @@ export class TaskOrchestrator {
         }
 
         if (taskDescription) {
-          if (isSubTaskActive && lastSyncedStatus !== "running") {
+          const observedStatus = resolveObservedSubTaskStatus({
+            currentStatus,
+            pendingToolName,
+            lastSyncedStatus,
+            hasObservedActiveState,
+          });
+
+          if (observedStatus && lastSyncedStatus !== observedStatus) {
             parentConversation.updateSubTaskStatus(taskDescription, {
-              status: "running",
+              status: observedStatus,
             });
-            lastSyncedStatus = "running";
-          } else if (
-            hasObservedActiveState &&
-            currentStatus === "idle" &&
-            lastSyncedStatus !== "waiting_user_input"
-          ) {
-            parentConversation.updateSubTaskStatus(taskDescription, {
-              status: "waiting_user_input",
-            });
-            lastSyncedStatus = "waiting_user_input";
+            lastSyncedStatus = observedStatus;
           }
         }
 
@@ -317,36 +349,9 @@ export class TaskOrchestrator {
    * 获取完成结果
    */
   private getSubTaskResult(conversation: Conversation): string {
-    const messages = conversation.memory.messages;
-
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const message = messages[i];
-      if (message?.type !== "tool" || message?.role !== "assistant") {
-        continue;
-      }
-
-      try {
-        const parsed = JSON.parse(message.content || "") as {
-          toolName?: string;
-          params?: { result?: string };
-        };
-        if (parsed.toolName === "completeTask" && typeof parsed.params?.result === "string") {
-          return parsed.params.result;
-        }
-      } catch {
-        // ignore parse error and continue searching older tool messages
-      }
-    }
-
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const message = messages[i];
-      if (
-        message?.role === "assistant" &&
-        typeof message.content === "string" &&
-        message.content.trim()
-      ) {
-        return message.content;
-      }
+    const result = extractCompletedSubTaskResult(conversation);
+    if (result) {
+      return result;
     }
 
     const lastMessage = conversation.memory.lastMessage;

@@ -97,23 +97,171 @@ const toOpenAITools = (tools?: AmigoToolDefinition[]) => {
   }));
 };
 
-const extractTextDelta = (deltaContent: unknown): string => {
+const REASONING_PART_TYPES = new Set(["reasoning", "reasoning_text", "thinking", "thought"]);
+const TEXT_PART_TYPES = new Set(["text", "output_text"]);
+
+const asRecord = (value: unknown): Record<string, unknown> | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+};
+
+const extractLooseText = (value: unknown): string => {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => extractLooseText(item)).join("");
+  }
+
+  const record = asRecord(value);
+  if (!record) {
+    return "";
+  }
+
+  const directTextFields = ["text", "content", "value", "output_text", "reasoning_text"] as const;
+  for (const field of directTextFields) {
+    if (typeof record[field] === "string") {
+      return record[field] as string;
+    }
+  }
+
+  const nestedFields = [
+    "text",
+    "content",
+    "value",
+    "output_text",
+    "reasoning",
+    "reasoning_content",
+    "summary",
+  ] as const;
+
+  return nestedFields.map((field) => extractLooseText(record[field])).join("");
+};
+
+const extractContentDeltas = (deltaContent: unknown): { text: string; reasoning: string } => {
   if (typeof deltaContent === "string") {
-    return deltaContent;
+    return { text: deltaContent, reasoning: "" };
   }
 
-  if (Array.isArray(deltaContent)) {
-    return deltaContent
-      .map((part) => {
-        if (!part || typeof part !== "object") return "";
-        const record = part as Record<string, unknown>;
-        return typeof record.text === "string" ? record.text : "";
-      })
-      .filter(Boolean)
-      .join("");
+  const parts = Array.isArray(deltaContent) ? deltaContent : [deltaContent];
+  let text = "";
+  let reasoning = "";
+
+  for (const part of parts) {
+    const record = asRecord(part);
+    if (!record) {
+      continue;
+    }
+
+    const partType = typeof record.type === "string" ? record.type.toLowerCase() : "";
+    const chunk = extractLooseText(
+      record.text ??
+        record.content ??
+        record.value ??
+        record.output_text ??
+        record.reasoning_text ??
+        "",
+    );
+    if (!chunk) {
+      continue;
+    }
+
+    const markedReasoning = record.thought === true || record.reasoning === true;
+    if (
+      markedReasoning ||
+      REASONING_PART_TYPES.has(partType) ||
+      partType.includes("reasoning") ||
+      partType.includes("thought")
+    ) {
+      reasoning += chunk;
+      continue;
+    }
+
+    if (!partType || TEXT_PART_TYPES.has(partType)) {
+      text += chunk;
+      continue;
+    }
+
+    text += chunk;
   }
 
-  return "";
+  return { text, reasoning };
+};
+
+const extractReasoningFromDelta = (
+  delta?: {
+    reasoning_content?: unknown;
+    reasoning?: unknown;
+  } | null,
+): string => {
+  if (!delta) {
+    return "";
+  }
+  const reasoningContent = extractLooseText(delta.reasoning_content);
+  const reasoning = extractLooseText(delta.reasoning);
+  if (!reasoningContent) {
+    return reasoning;
+  }
+  if (!reasoning) {
+    return reasoningContent;
+  }
+  if (reasoningContent.includes(reasoning)) {
+    return reasoningContent;
+  }
+  if (reasoning.includes(reasoningContent)) {
+    return reasoning;
+  }
+  return `${reasoningContent}${reasoning}`;
+};
+
+const extractTextFallback = (value: unknown): string => {
+  return extractLooseText(value);
+};
+
+const concatIfMissing = (base: string, extra: string): string => {
+  if (!extra) {
+    return base;
+  }
+  if (!base) {
+    return extra;
+  }
+  if (base.includes(extra)) {
+    return base;
+  }
+  if (extra.includes(base)) {
+    return extra;
+  }
+  return `${base}${extra}`;
+};
+
+const extractTextDelta = (
+  choice:
+    | {
+        delta?: {
+          content?: unknown;
+          reasoning_content?: unknown;
+          reasoning?: unknown;
+        };
+        text?: string;
+      }
+    | null
+    | undefined,
+): { text: string; reasoning: string } => {
+  if (!choice) {
+    return { text: "", reasoning: "" };
+  }
+
+  const contentDeltas = extractContentDeltas(choice.delta?.content);
+  const textFallback = choice.delta?.content === undefined ? extractTextFallback(choice.text) : "";
+  const reasoningFromDelta = extractReasoningFromDelta(choice.delta);
+
+  return {
+    text: concatIfMissing(contentDeltas.text, textFallback),
+    reasoning: concatIfMissing(contentDeltas.reasoning, reasoningFromDelta),
+  };
 };
 
 const parseToolArguments = (argumentsText: string): Record<string, unknown> => {
@@ -127,8 +275,166 @@ const parseToolArguments = (argumentsText: string): Record<string, unknown> => {
       ? (parsed as Record<string, unknown>)
       : {};
   } catch {
+    return parsePartialToolArguments(argumentsText);
+  }
+};
+
+const parseJsonObject = (text: string): Record<string, unknown> | null => {
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+const getLastSignificantChar = (text: string): string | undefined => {
+  for (let i = text.length - 1; i >= 0; i--) {
+    const ch = text[i];
+    if (ch !== " " && ch !== "\n" && ch !== "\r" && ch !== "\t") {
+      return ch;
+    }
+  }
+  return undefined;
+};
+
+const stripTrailingComma = (text: string): string => {
+  let result = text;
+  while (true) {
+    const trimmed = result.replace(/\s+$/, "");
+    if (!trimmed.endsWith(",")) {
+      return result;
+    }
+    result = trimmed.slice(0, -1);
+  }
+};
+
+const repairJsonFragment = (raw: string): string => {
+  const stack: Array<"{" | "[" | '"'> = [];
+  let out = "";
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+
+    if (inString) {
+      out += ch;
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = false;
+        if (stack[stack.length - 1] === '"') {
+          stack.pop();
+        }
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      stack.push('"');
+      out += ch;
+      continue;
+    }
+
+    if (ch === "{") {
+      stack.push("{");
+      out += ch;
+      continue;
+    }
+
+    if (ch === "[") {
+      stack.push("[");
+      out += ch;
+      continue;
+    }
+
+    if (ch === "}") {
+      if (stack[stack.length - 1] === "{") {
+        out = stripTrailingComma(out);
+        stack.pop();
+        out += ch;
+      }
+      continue;
+    }
+
+    if (ch === "]") {
+      if (stack[stack.length - 1] === "[") {
+        out = stripTrailingComma(out);
+        stack.pop();
+        out += ch;
+      }
+      continue;
+    }
+
+    if (ch === ",") {
+      const prev = getLastSignificantChar(out);
+      if (!prev || prev === "{" || prev === "[" || prev === "," || prev === ":") {
+        continue;
+      }
+      out += ch;
+      continue;
+    }
+
+    out += ch;
+  }
+
+  while (stack.length > 0) {
+    const symbol = stack.pop();
+    if (symbol === '"') {
+      out += '"';
+      continue;
+    }
+    out = stripTrailingComma(out);
+    out += symbol === "{" ? "}" : "]";
+  }
+
+  return stripTrailingComma(out).trim();
+};
+
+const parsePartialToolArguments = (argumentsText: string): Record<string, unknown> => {
+  const text = argumentsText.trim();
+  if (!text) {
     return {};
   }
+
+  const start = text.indexOf("{");
+  if (start === -1) {
+    return {};
+  }
+  const fragment = text.slice(start);
+
+  const direct = parseJsonObject(fragment);
+  if (direct) {
+    return direct;
+  }
+
+  const repaired = repairJsonFragment(fragment);
+  const repairedParsed = parseJsonObject(repaired);
+  if (repairedParsed) {
+    return repairedParsed;
+  }
+
+  const maxBackoff = Math.min(fragment.length, 1024);
+  for (let cut = 1; cut <= maxBackoff; cut++) {
+    const candidate = fragment.slice(0, fragment.length - cut);
+    const parsed = parseJsonObject(repairJsonFragment(candidate));
+    if (parsed) {
+      return parsed;
+    }
+  }
+
+  return {};
 };
 
 export class OpenAICompatibleProvider implements AmigoLlm {
@@ -204,6 +510,8 @@ export class OpenAICompatibleProvider implements AmigoLlm {
             choices?: Array<{
               delta?: {
                 content?: unknown;
+                reasoning_content?: unknown;
+                reasoning?: unknown;
                 tool_calls?: OpenAIStreamToolCallDelta[];
               };
               finish_reason?: string | null;
@@ -216,12 +524,17 @@ export class OpenAICompatibleProvider implements AmigoLlm {
             continue;
           }
 
-          const deltaContent = firstChoice.delta?.content ?? firstChoice.text;
-          const text = extractTextDelta(deltaContent);
+          const { text, reasoning } = extractTextDelta(firstChoice);
           if (text) {
             yield {
               type: "text_delta",
               text,
+            };
+          }
+          if (reasoning) {
+            yield {
+              type: "reasoning_delta",
+              text: reasoning,
             };
           }
 
@@ -251,6 +564,7 @@ export class OpenAICompatibleProvider implements AmigoLlm {
                 toolCallId: existing.id,
                 name: existing.name,
                 argumentsText: delta.function?.arguments,
+                partialArguments: parsePartialToolArguments(existing.argumentsText),
               };
             }
           }

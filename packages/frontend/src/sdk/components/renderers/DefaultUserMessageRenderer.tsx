@@ -1,4 +1,4 @@
-import { FileText, Image as ImageIcon, Loader2, Music, Video } from "lucide-react";
+import { Check, Copy, FileText, Image as ImageIcon, Loader2, Music, Video } from "lucide-react";
 import type React from "react";
 import { useState } from "react";
 import type { UserMessageRendererProps } from "../../types/renderers";
@@ -11,6 +11,7 @@ export const DefaultUserMessageRenderer: React.FC<UserMessageRendererProps> = ({
   const isPending = message.status === "pending";
   const attachments = message.attachments ?? [];
   const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const getAttachmentIcon = (kind: string) => {
     if (kind === "image") return <ImageIcon className="w-3.5 h-3.5" />;
@@ -19,9 +20,17 @@ export const DefaultUserMessageRenderer: React.FC<UserMessageRendererProps> = ({
     return <FileText className="w-3.5 h-3.5" />;
   };
 
+  const handleCopy = () => {
+    if (message.message) {
+      navigator.clipboard.writeText(message.message);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
   return (
     <>
-      <div className="chat chat-end">
+      <div className="chat chat-end group">
         <div
           className={`
             chat-bubble 
@@ -82,11 +91,23 @@ export const DefaultUserMessageRenderer: React.FC<UserMessageRendererProps> = ({
             </div>
           )}
         </div>
-        {message.updateTime && (
-          <div className="chat-footer opacity-50">
-            {new Date(message.updateTime).toLocaleTimeString()}
-          </div>
-        )}
+        <div className="chat-footer opacity-50 mt-1 flex gap-2 items-center min-h-[24px]">
+          {message.message && (
+            <button
+              onClick={handleCopy}
+              className="p-1 rounded-md hover:bg-black/5 text-neutral-500 opacity-0 group-hover:opacity-100 transition-all duration-200"
+              title="复制"
+              aria-label="复制消息"
+            >
+              {copied ? (
+                <Check className="w-3.5 h-3.5 text-green-600" />
+              ) : (
+                <Copy className="w-3.5 h-3.5" />
+              )}
+            </button>
+          )}
+          {message.updateTime && <span>{new Date(message.updateTime).toLocaleTimeString()}</span>}
+        </div>
       </div>
 
       <ImagePreviewModal image={previewImage} onClose={() => setPreviewImage(null)} />

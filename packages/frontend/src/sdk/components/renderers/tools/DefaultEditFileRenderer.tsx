@@ -1,93 +1,143 @@
-import { CheckCircle, ChevronDown, ChevronRight, FileEdit, XCircle } from "lucide-react";
+import { FileEdit } from "lucide-react";
 import type React from "react";
-import { useState } from "react";
 import type { ToolMessageRendererProps } from "../../../types/renderers";
+import { ToolAccordion } from "./ToolAccordion";
+
+const getDiffSections = (beforeText: string, afterText: string) => {
+  const beforeLines = beforeText.split("\n");
+  const afterLines = afterText.split("\n");
+
+  let prefix = 0;
+  while (
+    prefix < beforeLines.length &&
+    prefix < afterLines.length &&
+    beforeLines[prefix] === afterLines[prefix]
+  ) {
+    prefix += 1;
+  }
+
+  let suffix = 0;
+  while (
+    suffix < beforeLines.length - prefix &&
+    suffix < afterLines.length - prefix &&
+    beforeLines[beforeLines.length - 1 - suffix] === afterLines[afterLines.length - 1 - suffix]
+  ) {
+    suffix += 1;
+  }
+
+  return {
+    removed: beforeLines.slice(prefix, beforeLines.length - suffix),
+    added: afterLines.slice(prefix, afterLines.length - suffix),
+    beforeContext: beforeLines.slice(Math.max(0, prefix - 2), prefix),
+    afterContext: afterLines.slice(afterLines.length - suffix, afterLines.length).slice(0, 2),
+  };
+};
+
+const DiffLine: React.FC<{
+  prefix: "+" | "-" | " ";
+  line: string;
+  tone: "add" | "remove" | "context";
+}> = ({ prefix, line, tone }) => {
+  const toneClass =
+    tone === "add"
+      ? "bg-emerald-50 text-emerald-800"
+      : tone === "remove"
+        ? "bg-rose-50 text-rose-800"
+        : "bg-neutral-50 text-neutral-500";
+
+  return (
+    <div className={`font-mono text-xs whitespace-pre-wrap break-all px-2 py-1 ${toneClass}`}>
+      <span className="mr-2 select-none opacity-70">{prefix}</span>
+      <span>{line || " "}</span>
+    </div>
+  );
+};
+
+const getPreviewContent = (message: ToolMessageRendererProps<"editFile">["message"]) => {
+  const beforeFromResult = message.toolOutput?.websocketOnly?.beforeContent;
+  const afterFromResult = message.toolOutput?.websocketOnly?.afterContent;
+  const mode = message.params.mode ?? "overwrite";
+
+  if (beforeFromResult !== undefined || afterFromResult !== undefined) {
+    return {
+      beforeText: beforeFromResult ?? "",
+      afterText: afterFromResult ?? "",
+      source: "result" as const,
+    };
+  }
+
+  if (typeof message.params.content === "string") {
+    return {
+      beforeText: "",
+      afterText: message.params.content,
+      source: "params" as const,
+    };
+  }
+
+  if (mode === "patch" && typeof message.params.replace === "string") {
+    return {
+      beforeText: "",
+      afterText: message.params.replace,
+      source: "params" as const,
+    };
+  }
+
+  return {
+    beforeText: "",
+    afterText: "",
+    source: "none" as const,
+  };
+};
+
+export const EditFileResultBody: React.FC<ToolMessageRendererProps<"editFile">> = ({ message }) => {
+  const { beforeText, afterText, source } = getPreviewContent(message);
+  const hasDiff = beforeText !== afterText;
+
+  if (source === "none") {
+    return null;
+  }
+
+  if (!hasDiff) {
+    return <div className="text-sm text-neutral-600">文件已成功编辑，内容未产生可展示的差异。</div>;
+  }
+
+  const diff = getDiffSections(beforeText, afterText);
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-neutral-200">
+      {diff.beforeContext.map((line) => (
+        <DiffLine key={`ctx-before-${line}`} prefix=" " line={line} tone="context" />
+      ))}
+      {diff.removed.map((line) => (
+        <DiffLine key={`removed-${line}`} prefix="-" line={line} tone="remove" />
+      ))}
+      {diff.added.map((line) => (
+        <DiffLine key={`added-${line}`} prefix="+" line={line} tone="add" />
+      ))}
+      {diff.afterContext.map((line) => (
+        <DiffLine key={`ctx-after-${line}`} prefix=" " line={line} tone="context" />
+      ))}
+    </div>
+  );
+};
 
 export const DefaultEditFileRenderer: React.FC<ToolMessageRendererProps<"editFile">> = ({
   message,
 }) => {
-  const { params, toolOutput, error, hasError } = message;
-  const { filePath, content, mode = "overwrite", startLine, endLine } = params;
-  const [isExpanded, setIsExpanded] = useState(false);
+  const { params, toolOutput, error, hasError, partial } = message;
+  const hasPreview = getPreviewContent(message).source !== "none";
+  const isCompleted = !!toolOutput;
+  const isLoading = partial !== undefined ? partial : !isCompleted;
 
-  const fileName = filePath ? filePath.split("/").pop() || filePath : "";
   return (
-    <div className="my-2 border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm max-w-3xl">
-      {/* Header */}
-      <div
-        className="px-3 py-2 flex items-center justify-between gap-2 cursor-pointer hover:bg-gray-50 transition-colors"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        <div className="flex items-center gap-2 overflow-hidden">
-          {isExpanded ? (
-            <ChevronDown className="w-4 h-4 text-gray-500" />
-          ) : (
-            <ChevronRight className="w-4 h-4 text-gray-500" />
-          )}
-          <FileEdit className="w-4 h-4 text-gray-500 flex-shrink-0" />
-          <span className="font-semibold text-sm text-gray-900">Edit File</span>
-          <div className="w-px h-4 bg-gray-200 m-0" />
-          <span className="font-mono text-xs truncate text-gray-500" title={filePath}>
-            {isExpanded ? filePath : fileName}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          {mode === "patch" ? (
-            <span className="px-2 py-0.5 border border-yellow-200 rounded-full text-[10px] font-medium bg-yellow-50 text-yellow-700">
-              Patch
-            </span>
-          ) : mode === "create" ? (
-            <span className="px-2 py-0.5 border border-green-200 rounded-full text-[10px] font-medium bg-green-50 text-green-700">
-              Create
-            </span>
-          ) : (
-            <span className="px-2 py-0.5 border border-blue-200 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700">
-              Overwrite
-            </span>
-          )}
-          {hasError && <XCircle className="w-4 h-4 text-red-500" />}
-          {!hasError && toolOutput && <CheckCircle className="w-4 h-4 text-green-500" />}
-        </div>
-      </div>
-
-      {/* Content */}
-      {isExpanded && (
-        <div className="p-3 bg-white border-t border-gray-200 animate-in fade-in slide-in-from-top-1 duration-200">
-          {/* Patch Info */}
-          {mode === "patch" && (startLine !== undefined || endLine !== undefined) && (
-            <div className="text-xs text-gray-500 mb-2 font-medium font-mono bg-gray-50 p-1.5 rounded-lg border border-gray-200">
-              Range: Line {startLine ?? "?"} - {endLine ?? "?"}
-            </div>
-          )}
-
-          <div className="relative">
-            <div className="absolute top-0 right-0 p-1">
-              <div className="px-1.5 py-0.5 border border-gray-200 rounded text-[8px] font-medium bg-white text-gray-400">
-                CONTENT
-              </div>
-            </div>
-            <pre className="bg-gray-50 rounded-xl p-3 text-xs font-mono overflow-x-auto max-h-60 custom-scrollbar whitespace-pre text-gray-700 border border-gray-200">
-              {content}
-            </pre>
-          </div>
-
-          {/* Error or Result Message */}
-          {hasError && error && (
-            <div className="mt-2 text-xs text-red-600 font-medium bg-red-50 p-2 rounded-xl border border-red-100 flex items-start gap-2">
-              <XCircle className="w-3 h-3 mt-0.5 flex-shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {toolOutput?.message && !hasError && (
-            <div className="mt-2 text-xs text-green-600 font-medium bg-green-50 p-2 rounded-xl border border-green-100">
-              {toolOutput.message}
-              {toolOutput.linesWritten !== undefined &&
-                ` (${toolOutput.linesWritten} lines written)`}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+    <ToolAccordion
+      icon={<FileEdit size={14} />}
+      title={`编辑文件: ${params.filePath}`}
+      isLoading={isLoading}
+      hasError={hasError}
+      error={error}
+    >
+      {(isCompleted || hasPreview) && <EditFileResultBody message={message} isLatest={false} />}
+    </ToolAccordion>
   );
 };

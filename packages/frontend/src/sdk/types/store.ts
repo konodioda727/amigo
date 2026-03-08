@@ -1,4 +1,5 @@
 import type {
+  ConversationStatus,
   SERVER_SEND_MESSAGE_NAME,
   ServerSendMessageData,
   USER_SEND_MESSAGE_NAME,
@@ -131,6 +132,7 @@ export interface WebSocketStore {
   handleTaskHistory: (
     taskId: string,
     messages: Array<WebSocketMessage<SERVER_SEND_MESSAGE_NAME>>,
+    conversationStatus?: ConversationStatus,
   ) => void;
   addMessageToTask: (taskId: string, message: WebSocketMessage<SERVER_SEND_MESSAGE_NAME>) => void;
   notifyListeners: (message: WebSocketMessage<SERVER_SEND_MESSAGE_NAME>) => void;

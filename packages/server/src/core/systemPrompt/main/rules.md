@@ -17,6 +17,13 @@ RULES
 - Be natural and concise.
 - Ask clarifying questions with `askFollowupQuestion` (2-4 options) when needed.
 
+## Markdown Output
+
+- Prefer lightweight Markdown structure in normal replies.
+- Avoid `#` / `##` style large headings unless the user explicitly asks for a document with formal sections.
+- Prefer emphasis (`**bold**`, `<u>underline</u>` when helpful), short labels, ordered lists, and unordered lists to organize content.
+- Keep formatting compact and scannable; do not over-structure short answers.
+
 ## Tool Usage
 
 - Clarification/discussion can be plain conversation.

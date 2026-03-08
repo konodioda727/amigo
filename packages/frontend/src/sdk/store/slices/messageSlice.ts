@@ -1,4 +1,5 @@
 import type {
+  ConversationStatus,
   SERVER_SEND_MESSAGE_NAME,
   ServerSendMessageData,
   USER_SEND_MESSAGE_NAME,
@@ -9,7 +10,7 @@ import { toast } from "@/utils/toast";
 import { combineMessages } from "../../messages/messageCombiner";
 import { getMessageHandler } from "../messageHandlers";
 import type { WebSocketStore } from "../websocket";
-import type { DocType } from "./docSlice";
+import { createEmptyDocuments, type DocType } from "./docSlice";
 
 const checkAndExtractDoc = (
   message: WebSocketMessage<any>,
@@ -110,6 +111,35 @@ const inferTaskStatusFromHistory = (
   return "idle";
 };
 
+const mapConversationStatusToTaskStatus = (
+  conversationStatus?: ConversationStatus,
+):
+  | "streaming"
+  | "interrupted"
+  | "completed"
+  | "error"
+  | "waiting_tool_call"
+  | "idle"
+  | undefined => {
+  switch (conversationStatus) {
+    case "streaming":
+    case "tool_executing":
+      return "streaming";
+    case "waiting_tool_confirmation":
+      return "waiting_tool_call";
+    case "aborted":
+      return "interrupted";
+    case "completed":
+      return "completed";
+    case "error":
+      return "error";
+    case "idle":
+      return "idle";
+    default:
+      return undefined;
+  }
+};
+
 const findLatestDocs = (messages: WebSocketMessage<any>[]): DocsResult => {
   const docs: DocCollection = {};
   let lastEdited: DocType | null = null;
@@ -168,6 +198,7 @@ export interface MessageSlice {
   handleTaskHistory: (
     taskId: string,
     messages: Array<WebSocketMessage<SERVER_SEND_MESSAGE_NAME>>,
+    conversationStatus?: ConversationStatus,
   ) => void;
   addMessageToTask: (taskId: string, message: WebSocketMessage<SERVER_SEND_MESSAGE_NAME>) => void;
   notifyListeners: (message: WebSocketMessage<SERVER_SEND_MESSAGE_NAME>) => void;
@@ -184,17 +215,6 @@ export const createMessageSlice: StateCreator<WebSocketStore, [], [], MessageSli
     const isFirstConversationMessage =
       (!taskId || taskId.trim() === "") &&
       (message.type === "userSendMessage" || message.type === "createTask");
-
-    // Debug logging
-    console.log("[MessageSlice] sendMessage called:", {
-      hasSocket: !!socket,
-      readyState: socket?.readyState,
-      readyStateString: socket
-        ? ["CONNECTING", "OPEN", "CLOSING", "CLOSED"][socket.readyState]
-        : "NO_SOCKET",
-      taskId,
-      messageType: message.type,
-    });
 
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       const stateStr = socket
@@ -336,7 +356,7 @@ export const createMessageSlice: StateCreator<WebSocketStore, [], [], MessageSli
     });
   },
 
-  handleTaskHistory: (taskId, messages) => {
+  handleTaskHistory: (taskId, messages, conversationStatus) => {
     const task = get().tasks[taskId];
 
     if (!task) {
@@ -347,14 +367,11 @@ export const createMessageSlice: StateCreator<WebSocketStore, [], [], MessageSli
     const latestTask = get().tasks[taskId];
 
     if (taskId === get().mainTaskId) {
-      // Reset doc state and close sidebar when switching tasks
+      // Reset doc state before hydrating docs from the current conversation history.
       get().setDocState({
         isOpen: false,
-        documents: {
-          requirements: { content: null, title: "Requirements" },
-          design: { content: null, title: "Design" },
-          taskList: { content: null, title: "Task List" },
-        },
+        activeDoc: "taskList",
+        documents: createEmptyDocuments(),
       });
 
       const foundDocs = findLatestDocs(messages);
@@ -371,10 +388,23 @@ export const createMessageSlice: StateCreator<WebSocketStore, [], [], MessageSli
       }
     }
 
+    const explicitStatus = mapConversationStatusToTaskStatus(conversationStatus);
+
     // Check if the last message is waiting_tool_call
     const lastMessage = messages[messages.length - 1];
-    if (lastMessage && lastMessage.type === "waiting_tool_call") {
-      console.log("[handleTaskHistory] Found waiting_tool_call in history");
+    if (explicitStatus === "waiting_tool_call") {
+      get().setTaskStatus(taskId, "waiting_tool_call");
+
+      const fallback = extractPendingToolCallFromMessages(messages);
+      if (fallback) {
+        get().setPendingToolCall(taskId, fallback);
+      } else {
+        get().setPendingToolCall(taskId, undefined);
+      }
+    } else if (explicitStatus) {
+      get().setTaskStatus(taskId, explicitStatus);
+      get().setPendingToolCall(taskId, undefined);
+    } else if (lastMessage && lastMessage.type === "waiting_tool_call") {
       get().setTaskStatus(taskId, "waiting_tool_call");
 
       const waitingToolCallData = lastMessage.data as {
@@ -399,10 +429,6 @@ export const createMessageSlice: StateCreator<WebSocketStore, [], [], MessageSli
         get().setPendingToolCall(taskId, {
           toolName: pendingToolName,
           params: pendingParams,
-        });
-        console.log("[handleTaskHistory] Set pending tool call from history:", {
-          toolName: pendingToolName,
-          hasParams: pendingParams !== undefined,
         });
       } else {
         get().setPendingToolCall(taskId, undefined);

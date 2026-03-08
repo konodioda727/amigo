@@ -27,6 +27,7 @@ export interface PendingToolCall {
   params: unknown;
   toolCallId?: string;
   type: ChatMessage["type"];
+  updateTime?: number;
 }
 
 /**
@@ -34,7 +35,7 @@ export interface PendingToolCall {
  */
 export interface SubTaskStatus {
   subTaskId?: string;
-  status: "idle" | "running" | "waiting_user_input" | "completed" | "failed";
+  status: "idle" | "running" | "waiting_user_input" | "wait_review" | "completed" | "failed";
   description?: string;
   startedAt?: string;
   completedAt?: string;

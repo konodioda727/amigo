@@ -42,7 +42,6 @@ export interface WebSocketProviderProps {
  *   url="ws://localhost:10013"
  *   autoConnect={true}
  *   reconnect={true}
- *   onConnect={() => console.log('Connected')}
  * >
  *   <App />
  * </WebSocketProvider>

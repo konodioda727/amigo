@@ -30,6 +30,10 @@ export type AmigoLlmProvider = "openai-compatible" | "google-genai" | (string & 
 
 export type AmigoLlmStreamEvent =
   | {
+      type: "reasoning_delta";
+      text: string;
+    }
+  | {
       type: "text_delta";
       text: string;
     }
@@ -38,6 +42,7 @@ export type AmigoLlmStreamEvent =
       toolCallId?: string;
       name?: string;
       argumentsText?: string;
+      partialArguments?: Record<string, unknown>;
     }
   | {
       type: "tool_call_done";

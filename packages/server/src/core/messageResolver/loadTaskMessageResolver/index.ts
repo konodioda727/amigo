@@ -45,6 +45,7 @@ export class LoadTaskMessageResolver extends BaseMessageResolver<"loadTask"> {
           taskId,
           toolName: this.conversation.pendingToolCall.toolName,
           params: this.conversation.pendingToolCall.params,
+          updateTime: this.conversation.pendingToolCall.updateTime,
         },
       });
     }

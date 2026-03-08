@@ -1,3 +1,4 @@
+import { createServer } from "node:net";
 import { PassThrough } from "node:stream";
 import Docker from "dockerode";
 import { logger } from "@/utils/logger";
@@ -11,14 +12,55 @@ try {
 }
 
 const isLocal = process.platform === "darwin";
+const EDITOR_CONTAINER_PORT = 13337;
+const EDITOR_CONTAINER_PORT_KEY = `${EDITOR_CONTAINER_PORT}/tcp`;
+const EDITOR_START_TIMEOUT_MS = 15_000;
+const EDITOR_OPEN_FILE_COMMAND_PATH = "/tmp/amigo/open-file.json";
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const shellQuote = (value: string): string => `'${value.replace(/'/g, `'"'"'`)}'`;
+
+const findAvailableHostPort = async (): Promise<number> =>
+  new Promise((resolve, reject) => {
+    const server = createServer();
+
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close(() => reject(new Error("无法分配可用端口")));
+        return;
+      }
+
+      const { port } = address;
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(port);
+      });
+    });
+  });
 
 /**
  * 沙箱容器
  */
 export class Sandbox {
   private container: Docker.Container | null = null;
+  private editorHostPort: number | null = null;
+  private editorStarted = false;
+  private editorStartPromise: Promise<number> | null = null;
 
   constructor(private imageName: string = "ai_sandbox") {}
+
+  attachToExistingContainer(container: Docker.Container, editorHostPort: number | null): void {
+    this.container = container;
+    this.editorHostPort = editorHostPort;
+    this.editorStarted = false;
+    this.editorStartPromise = null;
+  }
 
   /**
    * 在容器中执行命令
@@ -136,6 +178,7 @@ export class Sandbox {
 
     try {
       logger.info(`[Sandbox] Creating container with image: ${this.imageName}`);
+      this.editorHostPort = await findAvailableHostPort();
 
       // 添加标签以便后续识别和清理
       const labels: Record<string, string> = {
@@ -153,8 +196,19 @@ export class Sandbox {
         Labels: labels,
         HostConfig: {
           Runtime: isLocal ? "runc" : "runsc",
-          AutoRemove: true,
+          AutoRemove: false,
           Memory: 512 * 1024 * 1024, // 512MB
+          PortBindings: {
+            [EDITOR_CONTAINER_PORT_KEY]: [
+              {
+                HostIp: "127.0.0.1",
+                HostPort: String(this.editorHostPort),
+              },
+            ],
+          },
+        },
+        ExposedPorts: {
+          [EDITOR_CONTAINER_PORT_KEY]: {},
         },
         WorkingDir: "/sandbox",
       });
@@ -195,6 +249,10 @@ export class Sandbox {
 
       this.container = null;
     }
+
+    this.editorStarted = false;
+    this.editorStartPromise = null;
+    this.editorHostPort = null;
   }
 
   /**
@@ -202,6 +260,106 @@ export class Sandbox {
    */
   isRunning(): boolean {
     return this.container !== null;
+  }
+
+  getEditorHostPort(): number | null {
+    return this.editorHostPort;
+  }
+
+  async queueEditorOpenFile(filePath: string, line?: number, column?: number): Promise<void> {
+    if (!this.container) {
+      throw new Error("沙箱未运行，无法下发编辑器打开文件指令");
+    }
+
+    const normalizedPath = filePath.replace(/^(\.\/|\/)+/, "");
+    const payload = JSON.stringify({
+      nonce: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      path: `/sandbox/${normalizedPath}`,
+      ...(typeof line === "number" ? { line } : {}),
+      ...(typeof column === "number" ? { column } : {}),
+    });
+    const encodedPayload = Buffer.from(payload, "utf8").toString("base64");
+
+    await this.runCommand(
+      [
+        "mkdir -p /tmp/amigo",
+        `printf '%s' ${shellQuote(encodedPayload)} | base64 -d > ${shellQuote(EDITOR_OPEN_FILE_COMMAND_PATH)}`,
+      ].join("\n"),
+    );
+  }
+
+  async ensureEditorRunning(): Promise<number> {
+    if (!this.container) {
+      throw new Error("沙箱未运行，无法启动编辑器");
+    }
+
+    if (!this.editorHostPort) {
+      throw new Error("编辑器端口未初始化");
+    }
+
+    if (this.editorStarted) {
+      const isReachable = await this.isEditorReachable();
+      if (isReachable) {
+        return this.editorHostPort;
+      }
+      this.editorStarted = false;
+    }
+
+    if (!this.editorStartPromise) {
+      this.editorStartPromise = this.startEditorProcess()
+        .then(async () => {
+          await this.waitForEditorReady();
+          this.editorStarted = true;
+          return this.editorHostPort!;
+        })
+        .finally(() => {
+          this.editorStartPromise = null;
+        });
+    }
+
+    return this.editorStartPromise;
+  }
+
+  private async startEditorProcess(): Promise<void> {
+    const command = [
+      "if ! command -v code-server >/dev/null 2>&1; then",
+      "  echo '__AMIGO_CODE_SERVER_MISSING__';",
+      "  exit 127;",
+      "fi",
+      "mkdir -p /tmp/amigo",
+      `nohup code-server --auth none --bind-addr 0.0.0.0:${EDITOR_CONTAINER_PORT} --disable-telemetry --disable-update-check /sandbox >/tmp/amigo/code-server.log 2>&1 &`,
+    ].join("\n");
+
+    const output = (await this.runCommand(command)) || "";
+    if (output.includes("__AMIGO_CODE_SERVER_MISSING__")) {
+      throw new Error("sandbox 镜像中未安装 code-server");
+    }
+  }
+
+  private async waitForEditorReady(): Promise<void> {
+    const deadline = Date.now() + EDITOR_START_TIMEOUT_MS;
+
+    while (Date.now() < deadline) {
+      if (await this.isEditorReachable()) {
+        return;
+      }
+      await sleep(300);
+    }
+
+    throw new Error("code-server 启动超时");
+  }
+
+  private async isEditorReachable(): Promise<boolean> {
+    if (!this.editorHostPort) {
+      return false;
+    }
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${this.editorHostPort}/healthz`);
+      return response.ok;
+    } catch {
+      return false;
+    }
   }
 }
 

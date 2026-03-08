@@ -4,6 +4,7 @@ import type { MessageHandler } from "./index";
 export const handleStateChange: MessageHandler = (message, store) => {
   const messageData = message.data as any;
   const taskId = messageData.taskId || store.mainTaskId;
+  let shouldSkipDisplay = false;
 
   store.setCreatingConversation(false);
 
@@ -43,8 +44,9 @@ export const handleStateChange: MessageHandler = (message, store) => {
           toast.info(messageData.message);
           break;
       }
+      shouldSkipDisplay = !!messageData.toastOnly;
       break;
   }
 
-  return false; // 继续添加到 displayMessages
+  return shouldSkipDisplay;
 };

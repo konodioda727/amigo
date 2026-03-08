@@ -26,7 +26,14 @@ export interface MessageType<T extends WebSocketMessage<any>["type"]> {
  */
 export interface FrontendCommonMessageType extends MessageType<"message"> {
   message: string;
-  think?: string;
+}
+
+/**
+ * 思考消息类型
+ */
+export interface FrontendThinkMessageType extends MessageType<"think"> {
+  think: string;
+  partial?: boolean;
 }
 
 /**
@@ -36,8 +43,10 @@ export interface FrontendToolMessageType<T extends ToolNames> extends MessageTyp
   toolName: T;
   params: ToolParams<T>;
   toolOutput?: ToolResult<T>;
+  toolCallId?: string;
   error?: string;
   hasError?: boolean;
+  partial?: boolean;
 }
 
 /**
@@ -72,12 +81,14 @@ export interface ErrorDisplayType extends MessageType<"error"> {
 export interface AlertDisplayType extends MessageType<"alert"> {
   data: {
     message: string;
-    severity: "info" | "warning" | "error";
+    severity: "info" | "warning" | "error" | "success";
+    toastOnly?: boolean;
   };
 }
 
 export type DisplayMessageType =
   | FrontendCommonMessageType
+  | FrontendThinkMessageType
   | FrontendToolMessageType<any>
   | AskFollowupQuestionType
   | UserSendMessageDisplayType
@@ -90,6 +101,7 @@ export type DisplayMessageType =
  */
 export const DisplayMessageTypeNames: WebSocketMessage<any>["type"][] = [
   "message",
+  "think",
   "tool",
   "askFollowupQuestion",
   "error",

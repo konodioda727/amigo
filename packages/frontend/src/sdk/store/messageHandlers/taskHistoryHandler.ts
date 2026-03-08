@@ -4,9 +4,10 @@ export const handleTaskHistory: MessageHandler = (message, store) => {
   const messageData = message.data as any;
   const taskId = messageData.taskId || store.mainTaskId;
   const historyMessages = messageData.messages || [];
+  const conversationStatus = messageData.conversationStatus;
 
   // taskHistory 包含完整的历史记录，应该替换而不是追加
-  store.handleTaskHistory(taskId, historyMessages);
+  store.handleTaskHistory(taskId, historyMessages, conversationStatus);
 
   return true; // taskHistory 已处理，不需要添加到 rawMessages
 };

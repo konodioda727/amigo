@@ -6,6 +6,7 @@ import type {
   DisplayMessageType,
   ErrorDisplayType,
   FrontendCommonMessageType,
+  FrontendThinkMessageType,
   FrontendToolMessageType,
   InterruptDisplayType,
   UserSendMessageDisplayType,
@@ -23,6 +24,7 @@ export interface MessageRendererProps<T extends DisplayMessageType> {
  * Specific renderer prop types
  */
 export type CommonMessageRendererProps = MessageRendererProps<FrontendCommonMessageType>;
+export type ThinkRendererProps = MessageRendererProps<FrontendThinkMessageType>;
 export type ToolMessageRendererProps<T extends ToolNames> = MessageRendererProps<
   FrontendToolMessageType<T>
 >;
@@ -44,6 +46,7 @@ export type MessageRenderer<T extends DisplayMessageType> = (
  */
 export interface MessageRendererMap {
   message: MessageRenderer<FrontendCommonMessageType>;
+  think: MessageRenderer<FrontendThinkMessageType>;
   tool: MessageRenderer<FrontendToolMessageType<ToolNames>>;
   userSendMessage: MessageRenderer<UserSendMessageDisplayType>;
   askFollowupQuestion: MessageRenderer<AskFollowupQuestionType>;

@@ -21,7 +21,7 @@
   "scripts": {
     "test": "bun test",
     "build": "bun run build:js && bun run build:types",
-    "build:js": "bun build ./src/index.ts ./src/sdk.ts --outdir ./dist --target='bun' --external playwright --external playwright-core --external electron",
+    "build:js": "bun build ./src/index.ts ./src/sdk.ts --outdir ./dist --target='bun'",
     "build:types": "tsc -p ./tsconfig.declarations.json",
     "start": "bun run src/index.ts --watch"
   },
@@ -30,13 +30,9 @@
   "license": "ISC",
   "dependencies": {
     "@amigo-llm/types": "workspace:*",
-    "chromium-bidi": "^11.0.1",
     "dockerode": "^4.0.9",
     "dotenv": "^17.2.3",
-    "electron": "^39.2.4",
     "p-wait-for": "^6.0.0",
-    "playwright": "^1.57.0",
-    "tar-stream": "^3.1.7",
     "uuid": "^13.0.0",
     "zod": "^4.1.13"
   },

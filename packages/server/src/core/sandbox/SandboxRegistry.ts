@@ -1,5 +1,19 @@
+import Docker from "dockerode";
 import { logger } from "@/utils/logger";
 import { Sandbox } from "./index";
+
+const EDITOR_CONTAINER_PORT_KEY = "13337/tcp";
+
+const extractEditorHostPort = (ports: Docker.PortMap | undefined): number | null => {
+  const bindings = ports?.[EDITOR_CONTAINER_PORT_KEY];
+  const hostPort = bindings?.[0]?.HostPort;
+  if (!hostPort) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(hostPort, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
 /**
  * Sandbox 注册表 - 管理 sandbox 生命周期
@@ -8,6 +22,47 @@ import { Sandbox } from "./index";
 export class SandboxRegistry {
   private sandboxes = new Map<string, Sandbox>();
   private refCounts = new Map<string, number>();
+  private docker = new Docker();
+
+  private async recoverExistingSandbox(
+    parentId: string,
+    imageName?: string,
+  ): Promise<Sandbox | null> {
+    const containers = await this.docker.listContainers({
+      all: true,
+      filters: {
+        label: ["amigo.managed=true", "amigo.type=sandbox", `amigo.taskId=${parentId}`],
+      },
+    });
+
+    if (containers.length === 0) {
+      return null;
+    }
+
+    const selected = containers.sort((a, b) => (b.Created || 0) - (a.Created || 0))[0];
+    if (!selected?.Id) {
+      return null;
+    }
+
+    const container = this.docker.getContainer(selected.Id);
+    const inspectResult = await container.inspect();
+
+    if (!inspectResult.State?.Running) {
+      logger.info(`[SandboxRegistry] 恢复已停止的 sandbox 容器: ${parentId}`);
+      await container.start();
+    } else {
+      logger.info(`[SandboxRegistry] 恢复运行中的 sandbox 容器: ${parentId}`);
+    }
+
+    const sandbox = new Sandbox(imageName);
+    sandbox.attachToExistingContainer(
+      container,
+      extractEditorHostPort(inspectResult.NetworkSettings?.Ports),
+    );
+    this.sandboxes.set(parentId, sandbox);
+    this.refCounts.set(parentId, 0);
+    return sandbox;
+  }
 
   /**
    * 获取或创建 sandbox
@@ -20,6 +75,10 @@ export class SandboxRegistry {
     );
 
     let sandbox = this.sandboxes.get(parentId);
+
+    if (!sandbox) {
+      sandbox = await this.recoverExistingSandbox(parentId, imageName);
+    }
 
     if (!sandbox) {
       logger.info(`[SandboxRegistry] No existing sandbox, creating new one for: ${parentId}`);

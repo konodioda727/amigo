@@ -9,9 +9,22 @@ export interface DocState {
   documents: Record<DocType, { content: string | null; title: string | null }>;
 }
 
+export const createEmptyDocuments = (): DocState["documents"] => ({
+  requirements: { content: null, title: "Requirements" },
+  design: { content: null, title: "Design" },
+  taskList: { content: null, title: "Task List" },
+});
+
+export const createInitialDocState = (): DocState => ({
+  isOpen: false,
+  activeDoc: "taskList",
+  documents: createEmptyDocuments(),
+});
+
 export interface DocSlice {
   docState: DocState;
   setDocState: (state: Partial<DocState>) => void;
+  resetDocState: () => void;
   toggleDoc: () => void;
   openDoc: () => void;
   closeDoc: () => void;
@@ -21,15 +34,7 @@ export interface DocSlice {
 }
 
 export const createDocSlice: StateCreator<WebSocketStore, [], [], DocSlice> = (set, get) => ({
-  docState: {
-    isOpen: false,
-    activeDoc: "taskList",
-    documents: {
-      requirements: { content: null, title: "Requirements" },
-      design: { content: null, title: "Design" },
-      taskList: { content: null, title: "Task List" },
-    },
-  },
+  docState: createInitialDocState(),
 
   setDocState: (state) => {
     set({
@@ -37,6 +42,12 @@ export const createDocSlice: StateCreator<WebSocketStore, [], [], DocSlice> = (s
         ...get().docState,
         ...state,
       },
+    });
+  },
+
+  resetDocState: () => {
+    set({
+      docState: createInitialDocState(),
     });
   },
 

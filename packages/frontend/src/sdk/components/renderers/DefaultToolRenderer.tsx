@@ -1,16 +1,19 @@
 import type { ToolNames } from "@amigo-llm/types";
-import { AlertCircle } from "lucide-react";
+import { Settings } from "lucide-react";
 import type React from "react";
 import type { ToolMessageRendererProps } from "../../types/renderers";
 import { DefaultBashRenderer } from "./tools/DefaultBashRenderer";
 import { DefaultBrowserSearchRenderer } from "./tools/DefaultBrowserSearchRenderer";
 import { DefaultCompleteTaskRenderer } from "./tools/DefaultCompleteTaskRenderer";
+import { DefaultCreateDesignDocRenderer } from "./tools/DefaultCreateDesignDocRenderer";
 import { DefaultCreateTaskDocsRenderer } from "./tools/DefaultCreateTaskDocsRenderer";
 import { DefaultEditFileRenderer } from "./tools/DefaultEditFileRenderer";
 import { DefaultExecuteTaskListRenderer } from "./tools/DefaultExecuteTaskListRenderer";
 import { DefaultGetTaskListProgressRenderer } from "./tools/DefaultGetTaskListProgressRenderer";
+import { DefaultReadDesignDocRenderer } from "./tools/DefaultReadDesignDocRenderer";
 import { DefaultReadFileRenderer } from "./tools/DefaultReadFileRenderer";
 import { DefaultReadTaskDocsRenderer } from "./tools/DefaultReadTaskDocsRenderer";
+import { ToolAccordion } from "./tools/ToolAccordion";
 
 // Tool-specific renderer map
 const toolRendererMap: {
@@ -39,47 +42,28 @@ const toolRendererMap: {
  * Generic tool renderer for tools without custom renderers
  */
 const GenericToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> = ({ message }) => {
-  const paramsStr = JSON.stringify(message.params, null, 2);
+  const { toolName, params, toolOutput, error, hasError, partial } = message;
+  const paramsStr = JSON.stringify(params, null, 2);
+  const isCompleted = !!toolOutput;
+  const isLoading = partial !== undefined ? partial : !isCompleted;
 
-  // If there's an error, use system message style
-  if (message.error) {
-    return (
-      <div className="flex justify-center w-full mb-3">
-        <div className="flex items-center gap-2 px-3 py-2 bg-error/10 rounded-lg text-error text-xs max-w-[80%]">
-          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" aria-label="错误" />
-          <span className="whitespace-pre-wrap">
-            工具调用失败：{message.toolName} - {message.error}
-          </span>
-          {message.updateTime && (
-            <span className="opacity-50 ml-1">
-              {new Date(message.updateTime).toLocaleTimeString()}
-            </span>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // Normal tool call as system message
   return (
-    <div className="mb-4 max-w-[80%]">
-      <div className="chat chat-start">
-        <div className="chat-bubble bg-neutral-100 text-neutral-900 rounded-xl px-4 py-3">
-          <div className="font-semibold text-sm mb-2">工具: {message.toolName}</div>
-          <div className="text-xs whitespace-pre-wrap opacity-70">{paramsStr}</div>
-          {message.toolOutput && (
-            <div className="mt-2 text-xs text-success">
-              输出: {JSON.stringify(message.toolOutput)}
-            </div>
-          )}
-          {message.updateTime && (
-            <div className="text-xs opacity-50 mt-2">
-              {new Date(message.updateTime).toLocaleTimeString()}
-            </div>
-          )}
-        </div>
+    <ToolAccordion
+      icon={<Settings size={14} />}
+      title={`执行: ${toolName}`}
+      isLoading={isLoading}
+      hasError={hasError}
+      error={error}
+    >
+      <div className="font-mono text-xs whitespace-pre-wrap break-all bg-neutral-100 p-2 rounded">
+        {paramsStr}
       </div>
-    </div>
+      {isCompleted && (
+        <div className="mt-1 text-xs text-green-600 break-all">
+          输出: {JSON.stringify(toolOutput)}
+        </div>
+      )}
+    </ToolAccordion>
   );
 };
 
@@ -89,6 +73,23 @@ const GenericToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> = ({ me
  */
 export const DefaultToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> = (props) => {
   const { message } = props;
+
+  if (message.toolName === "editDesignDoc") {
+    return (
+      <DefaultCreateDesignDocRenderer
+        {...(props as unknown as React.ComponentProps<typeof DefaultCreateDesignDocRenderer>)}
+      />
+    );
+  }
+
+  if (message.toolName === "readDesignDoc") {
+    return (
+      <DefaultReadDesignDocRenderer
+        {...(props as unknown as React.ComponentProps<typeof DefaultReadDesignDocRenderer>)}
+      />
+    );
+  }
+
   const CustomRenderer = toolRendererMap[message.toolName as ToolNames];
 
   if (CustomRenderer) {

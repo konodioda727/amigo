@@ -9,6 +9,16 @@ function escapeShellContent(content: string): string {
   return Buffer.from(content, "utf-8").toString("base64");
 }
 
+function previewContent(content: string | undefined, maxChars = 12000): string | undefined {
+  if (content === undefined) {
+    return undefined;
+  }
+  if (content.length <= maxChars) {
+    return content;
+  }
+  return `${content.slice(0, maxChars)}\n...（已截断，共 ${content.length} 字符）`;
+}
+
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
@@ -27,6 +37,115 @@ function toBoolean(value: unknown, defaultValue: boolean): boolean {
     }
   }
   return defaultValue;
+}
+
+export interface EditFileWebsocketOnly {
+  beforeContent?: string;
+  afterContent?: string;
+}
+
+export interface EditFilePreview {
+  websocketOnly?: EditFileWebsocketOnly;
+}
+
+function buildEditFileWebsocketOnly(
+  beforeContent: string | undefined,
+  afterContent: string | undefined,
+): EditFileWebsocketOnly | undefined {
+  const preview = {
+    beforeContent: previewContent(beforeContent),
+    afterContent: previewContent(afterContent),
+  };
+
+  if (preview.beforeContent === undefined && preview.afterContent === undefined) {
+    return undefined;
+  }
+
+  return preview;
+}
+
+export const normalizeEditFilePath = (filePath: string): string =>
+  filePath.replace(/^(\.\/|\/)+/, "");
+
+export async function buildEditFilePreview(
+  sandbox: Sandbox,
+  params: {
+    filePath: string;
+    content?: string;
+    mode?: string;
+    startLine?: number;
+    endLine?: number;
+    search?: string;
+    replace?: string;
+    replaceAll?: boolean;
+  },
+): Promise<EditFilePreview> {
+  const cleanPath = normalizeEditFilePath(params.filePath);
+  const mode = params.mode || "overwrite";
+  const existsResult = await sandbox.runCommand(
+    `test -f ${shellQuote(cleanPath)} && echo "exists" || echo "not_found"`,
+  );
+  const fileExists = !!existsResult?.includes("exists");
+  const originalContent = fileExists
+    ? (await sandbox.runCommand(`cat ${shellQuote(cleanPath)}`)) || ""
+    : undefined;
+
+  if (mode === "patch") {
+    if (originalContent === undefined) {
+      return {};
+    }
+
+    const hasLinePatch = params.startLine !== undefined || params.endLine !== undefined;
+    const hasSearchReplace = params.search !== undefined || params.replace !== undefined;
+
+    if (
+      hasLinePatch &&
+      params.startLine !== undefined &&
+      params.endLine !== undefined &&
+      typeof params.content === "string"
+    ) {
+      const lines = originalContent.split("\n");
+      const start = Math.max(1, Number(params.startLine)) - 1;
+      const end = Math.min(lines.length, Number(params.endLine));
+      const newLines = params.content.split("\n");
+      const updated = [...lines.slice(0, start), ...newLines, ...lines.slice(end)].join("\n");
+      return {
+        websocketOnly: buildEditFileWebsocketOnly(originalContent, updated),
+      };
+    }
+
+    if (hasSearchReplace && typeof params.search === "string" && params.replace !== undefined) {
+      const replaceText = String(params.replace);
+      const replaceAllFlag = toBoolean(params.replaceAll, false);
+      let updatedContent = originalContent;
+
+      if (replaceAllFlag) {
+        updatedContent = originalContent.split(params.search).join(replaceText);
+      } else {
+        const index = originalContent.indexOf(params.search);
+        if (index >= 0) {
+          updatedContent =
+            originalContent.slice(0, index) +
+            replaceText +
+            originalContent.slice(index + params.search.length);
+        }
+      }
+
+      return {
+        websocketOnly: buildEditFileWebsocketOnly(originalContent, updatedContent),
+      };
+    }
+
+    return {};
+  }
+
+  if (typeof params.content === "string") {
+    return {
+      websocketOnly: buildEditFileWebsocketOnly(originalContent, params.content),
+    };
+  }
+
+  return {};
 }
 
 /**
@@ -114,7 +233,7 @@ export const EditFile = createTool({
       };
     }
 
-    const cleanPath = filePath.replace(/^(\.\/|\/)+/, "");
+    const cleanPath = normalizeEditFilePath(filePath);
 
     try {
       logger.info(`[EditFile] Calling context.getSandbox()...`);
@@ -209,7 +328,13 @@ export const EditFile = createTool({
 
           return {
             message: successMsg,
-            toolResult: { success: true, filePath: cleanPath, message: successMsg, linesWritten },
+            toolResult: {
+              success: true,
+              filePath: cleanPath,
+              message: successMsg,
+              linesWritten,
+              websocketOnly: buildEditFileWebsocketOnly(originalContent, resultLines.join("\n")),
+            },
           };
         }
 
@@ -283,6 +408,7 @@ export const EditFile = createTool({
               message: successMsg,
               replacements,
               linesWritten: updatedContent.split("\n").length,
+              websocketOnly: buildEditFileWebsocketOnly(originalContent, updatedContent),
             },
           };
         }
@@ -301,6 +427,14 @@ export const EditFile = createTool({
           message: errorMsg,
           toolResult: { success: false, filePath: cleanPath, message: errorMsg },
         };
+      }
+
+      let originalContent: string | undefined;
+      const existingResult = await sandbox.runCommand(
+        `test -f ${shellQuote(cleanPath)} && echo "exists" || echo "not_found"`,
+      );
+      if (existingResult?.includes("exists")) {
+        originalContent = (await sandbox.runCommand(`cat ${shellQuote(cleanPath)}`)) || "";
       }
 
       const base64Content = escapeShellContent(content);
@@ -323,7 +457,13 @@ export const EditFile = createTool({
 
       return {
         message: successMsg,
-        toolResult: { success: true, filePath: cleanPath, message: successMsg, linesWritten },
+        toolResult: {
+          success: true,
+          filePath: cleanPath,
+          message: successMsg,
+          linesWritten,
+          websocketOnly: buildEditFileWebsocketOnly(originalContent, content),
+        },
       };
     } catch (error) {
       const errorMsg = `编辑文件失败: ${error instanceof Error ? error.message : String(error)}`;

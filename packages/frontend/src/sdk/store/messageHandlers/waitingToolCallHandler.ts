@@ -39,12 +39,6 @@ export const handleWaitingToolCall: MessageHandler = (
     params?: any;
   };
 
-  console.log("[waitingToolCallHandler] Received waiting_tool_call message:", {
-    taskId,
-    toolName,
-    hasParams: params !== undefined,
-  });
-
   // Use registerTask instead of ensureTask to maintain consistency
   store.registerTask(taskId);
 
@@ -72,15 +66,6 @@ export const handleWaitingToolCall: MessageHandler = (
   } else {
     store.setPendingToolCall(taskId, undefined);
   }
-
-  // Log final task state
-  const finalTask = store.tasks[taskId];
-  console.log("[waitingToolCallHandler] Final task state:", {
-    status: finalTask?.status,
-    hasPendingToolCall: !!finalTask?.pendingToolCall,
-    pendingToolName: finalTask?.pendingToolCall?.toolName,
-    hasPendingParams: finalTask?.pendingToolCall?.params !== undefined,
-  });
 
   return true;
 };

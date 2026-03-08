@@ -24,10 +24,5 @@ export function handleTaskDeleted(
   if (store.mainTaskId === taskId) {
     store.mainTaskId = "";
   }
-
-  console.log(
-    `[taskDeletedHandler] Deleted task ${taskId} and ${deletedSubTaskIds.length} subtasks`,
-  );
-
   return false;
 }

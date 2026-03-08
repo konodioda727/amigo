@@ -36,6 +36,7 @@ export const changeCurrentTaskId = async (
         data: {
           messages: data.messages,
           taskId,
+          conversationStatus: conversation.status,
         },
       });
     }
@@ -47,6 +48,7 @@ export const changeCurrentTaskId = async (
       data: {
         messages: [],
         taskId,
+        conversationStatus: conversation.status,
       },
     });
   }

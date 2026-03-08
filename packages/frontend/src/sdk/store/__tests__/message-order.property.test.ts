@@ -333,4 +333,57 @@ describe("Property 5: Message Processing Order", () => {
       { numRuns: 100 },
     );
   });
+
+  test("Tool partial and final messages merge by toolCallId even when separated", () => {
+    const messages: WebSocketMessage<SERVER_SEND_MESSAGE_NAME>[] = [
+      {
+        type: "tool",
+        data: {
+          message: JSON.stringify({
+            toolName: "completeTask",
+            toolCallId: "call-1",
+            params: { summary: "done", result: "result" },
+          }),
+          partial: true,
+          updateTime: 1000,
+          taskId: "task-1",
+        },
+      },
+      {
+        type: "message",
+        data: {
+          message: "intermediate",
+          partial: false,
+          updateTime: 1001,
+          taskId: "task-1",
+        },
+      },
+      {
+        type: "tool",
+        data: {
+          message: JSON.stringify({
+            toolName: "completeTask",
+            toolCallId: "call-1",
+            params: { summary: "done", result: "result" },
+            result: "final result",
+          }),
+          partial: false,
+          updateTime: 1000,
+          taskId: "task-1",
+        },
+      },
+    ];
+
+    const combined = combineMessages(messages as any);
+    const toolMessages = combined.filter((message) => message.type === "tool");
+
+    expect(toolMessages).toHaveLength(1);
+    expect(toolMessages[0]).toMatchObject({
+      type: "tool",
+      toolName: "completeTask",
+      toolCallId: "call-1",
+      partial: false,
+      toolOutput: "final result",
+    });
+  });
 });

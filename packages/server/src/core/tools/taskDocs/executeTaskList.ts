@@ -12,11 +12,11 @@ import {
 } from "@/core/templates/checklistParser"; // 导入拓扑排序函数
 import { logger } from "@/utils/logger";
 import { createTool } from "../base";
+import { buildDependencyResultContext } from "./dependencyContext";
 import { getTaskDocsPath, parseToolsFromDescription } from "./utils";
 
 const CONCURRENCY_LIMIT = 2;
 const DOC_TRUNCATE_LIMIT = 4000;
-const TASK_LIST_CONTEXT_RADIUS = 4;
 const FORBIDDEN_SUB_TASK_TOOLS = [
   "createTaskDocs",
   "readTaskDocs",
@@ -51,19 +51,6 @@ const trimDoc = (content: string, limit = DOC_TRUNCATE_LIMIT) => {
 
 const formatDocSection = (title: string, content: string) =>
   `### ${title}\n${content ? trimDoc(content) : "无"}`;
-
-const getTaskListContext = (taskListContent: string, lineNumber: number) => {
-  if (!taskListContent.trim()) return "";
-  const lines = taskListContent.split("\n");
-  const start = Math.max(0, lineNumber - TASK_LIST_CONTEXT_RADIUS);
-  const end = Math.min(lines.length - 1, lineNumber + TASK_LIST_CONTEXT_RADIUS);
-  if (lines.length === 0 || start > end) return "";
-  return lines
-    .slice(start, end + 1)
-    .map((line, index) => `${start + index + 1}. ${line}`)
-    .join("\n")
-    .trim();
-};
 
 const updateTaskListStatus = (
   filePath: string,
@@ -120,22 +107,17 @@ const buildSubAgentPrompt = ({
   cleanDescription,
   availableTools,
   forbiddenTools,
+  dependencyResults,
   parentDocs,
   taskItem,
-  taskListContext,
 }: {
   cleanDescription: string;
   availableTools: ToolInterface<any>[];
   forbiddenTools: string[];
+  dependencyResults: string;
   parentDocs: { requirements: string; design: string; taskList: string };
   taskItem: ReturnType<typeof parseChecklist>["items"][number];
-  taskListContext: string;
 }) => {
-  const dependencyText =
-    taskItem.dependencies.length > 0
-      ? taskItem.dependencies.map((dep) => `Task ${dep}`).join(", ")
-      : "无";
-
   const docsBlock = [
     formatDocSection("Requirements", parentDocs.requirements),
     formatDocSection("Design", parentDocs.design),
@@ -145,12 +127,11 @@ const buildSubAgentPrompt = ({
   return `你是一个专业的任务执行代理。
 **任务目标：** ${cleanDescription}
 **任务条目（父任务 taskList 原文）：** ${taskItem.rawLine?.trim() || cleanDescription}
-**依赖任务：** ${dependencyText}
 **可用工具：** ${availableTools.length > 0 ? availableTools.map((t) => t.name).join(", ") : "基础工具"}
 ${forbiddenTools.length > 0 ? `\n⚠️ **警告：** 任务描述中请求了禁止的工具：${forbiddenTools.join(", ")}。子任务不允许再次分配任务。\n` : ""}
 **父任务文档（必须阅读并参考）：**
 ${docsBlock}
-${taskListContext ? `\n**Task List 上下文：**\n${taskListContext}` : ""}
+${dependencyResults ? `\n**依赖任务 completeTask 结果（必须参考）：**\n${dependencyResults}` : ""}
 **协作约束：**
 - 必须遵循 design.md 中的 "SubTask Collaboration Contract"（过程文档位置、命名规范、输入输出、交接规范）。
 - 主任务是协作规范唯一来源；若有冲突，以父任务文档与当前 taskList 条目为准。
@@ -169,7 +150,7 @@ const getExistingSubTaskStatus = (
   return parentConv.memory.subTasks[taskKey] || parentConv.memory.subTasks[description];
 };
 
-type TaskExecutionType = "failed" | "running" | "new";
+type TaskExecutionType = "failed" | "running" | "new" | "wait_review";
 
 const resolveExecutionType = (
   parentConv: NonNullable<ReturnType<typeof conversationRepository.load>>,
@@ -183,6 +164,7 @@ const resolveExecutionType = (
 
   if (status?.status === "failed") return { type: "failed" as const, status };
   if (status?.status === "running") return { type: "running" as const, status };
+  if (status?.status === "wait_review") return { type: "wait_review" as const, status };
   return { type: "new" as const, status };
 };
 
@@ -196,6 +178,7 @@ const startNewTask = ({
   executionType,
   taskId,
   completedTaskIds,
+  allTasks,
 }: {
   taskItem: ReturnType<typeof parseChecklist>["items"][number];
   filePath: string;
@@ -206,6 +189,7 @@ const startNewTask = ({
   executionType: TaskExecutionType;
   taskId: string;
   completedTaskIds: Set<string>;
+  allTasks: ReturnType<typeof parseChecklist>["items"];
 }) => {
   return (async (): Promise<TaskExecutionResult> => {
     const { description, lineNumber } = taskItem;
@@ -249,14 +233,17 @@ const startNewTask = ({
       );
     }
 
-    const taskListContext = getTaskListContext(taskListContent, lineNumber);
+    const dependencyResults = buildDependencyResultContext({
+      dependencies: taskItem.dependencies,
+      parentConversation: parentConv,
+    });
     const subAgentPrompt = buildSubAgentPrompt({
       cleanDescription,
       availableTools,
       forbiddenTools,
+      dependencyResults,
       parentDocs,
       taskItem,
-      taskListContext,
     });
 
     let summary: string;
@@ -348,7 +335,7 @@ const validateTaskListFormat = (items: ReturnType<typeof parseChecklist>["items"
   const duplicateDetails =
     duplicatedIds.length > 0 ? `\n重复的 Task ID: ${duplicatedIds.join(", ")}` : "";
 
-  return `taskList 格式错误：请确保每条任务使用 "Task X.Y:" 格式，并且 ID 唯一。\n${invalidItems.length > 0 ? `以下行缺少 Task ID：\n${invalidDetails}` : ""}${duplicateDetails}\n示例：- [ ] Task 1.1: 描述 [tools: editFile, deps: 1.0]`;
+  return `taskList 格式错误：请确保每条任务使用 "Task X.Y:" 格式，并且 ID 唯一。\n${invalidItems.length > 0 ? `以下行缺少 Task ID：\n${invalidDetails}` : ""}${duplicateDetails}\n示例：- [ ] Task 1.1: 描述 [tools: editFile] [deps: Task 1.0]`;
 };
 
 const getParentConversation = (taskId: string) => {
@@ -372,6 +359,7 @@ const collectCompletedTaskIds = (items: ReturnType<typeof parseChecklist>["items
 const getTaskPriority = (executionType: TaskExecutionType) => {
   if (executionType === "failed") return 0;
   if (executionType === "running") return 1;
+  if (executionType === "wait_review") return 3;
   return 2;
 };
 
@@ -424,11 +412,6 @@ const runWithConcurrency = async <T>(
   );
 };
 
-const mergeInvalidTools = (left?: string[], right?: string[]) => {
-  const merged = new Set<string>([...(left || []), ...(right || [])]);
-  return merged.size > 0 ? Array.from(merged) : undefined;
-};
-
 const runTaskScheduler = async ({
   allTasks,
   runningTaskIds,
@@ -453,7 +436,12 @@ const runTaskScheduler = async ({
 
   while (pendingTaskMap.size > 0) {
     const readyTasks = Array.from(pendingTaskMap.values())
-      .filter((item) => isTaskReady({ item, completedTaskIds, runningTaskIds }))
+      .filter((item) => {
+        if (!isTaskReady({ item, completedTaskIds, runningTaskIds })) {
+          return false;
+        }
+        return getExecutionType(item) !== "wait_review";
+      })
       .sort((a, b) => {
         const priorityDiff =
           getTaskPriority(getExecutionType(a)) - getTaskPriority(getExecutionType(b));
@@ -502,7 +490,7 @@ const buildExecutionMessage = ({
   }
 
   if (blockedCount > 0) {
-    warningMessage += `\n⚠️ 警告：有 ${blockedCount} 个任务因依赖未满足或配置错误未被执行。`;
+    warningMessage += `\n⚠️ 警告：有 ${blockedCount} 个任务未被执行（可能处于待审核、依赖未满足或配置错误）。`;
   }
 
   return `✅ 自动执行完成（成功 ${successCount}/${pendingTasks.length}，失败 ${failedCount}）${warningMessage}\n\n${results
@@ -522,10 +510,28 @@ const continueParentConversationIfNeeded = (
   if (parentConv.status !== "idle") return;
 
   parentConv.isAborted = false;
+  parentConv.memory.addMessage({
+    role: "user",
+    content: reason,
+    type: "userSendMessage",
+    partial: false,
+  });
   parentConv.userInput = reason;
 
   const executor = taskOrchestrator.getExecutor(parentConv.id);
   void executor.execute(parentConv);
+};
+
+const appendInternalExecutionSummary = (
+  parentConv: NonNullable<ReturnType<typeof conversationRepository.load>>,
+  summary: string,
+) => {
+  parentConv.memory.addMessage({
+    role: "system",
+    content: `executeTaskList 异步执行结果（内部上下文，请据此继续推进主任务）:\n\n${summary}`,
+    type: "system",
+    partial: false,
+  });
 };
 
 /**
@@ -542,7 +548,7 @@ export const ExecuteTaskList = createTool({
   params: [],
 
   async invoke({ context }) {
-    const { taskId, getToolByName, postMessage } = context;
+    const { taskId, getToolByName } = context;
 
     if (!taskId) {
       return toolError("taskId 不能为空");
@@ -602,7 +608,7 @@ export const ExecuteTaskList = createTool({
             getExecutionType: (taskItem) => resolveExecutionType(parentConv, taskItem).type,
             onRunTask: async (taskItem) => {
               const { type: executionType } = resolveExecutionType(parentConv, taskItem);
-              const firstResult = await startNewTask({
+              const result = await startNewTask({
                 taskItem,
                 filePath,
                 getToolByName,
@@ -612,55 +618,16 @@ export const ExecuteTaskList = createTool({
                 executionType,
                 taskId: taskId as string,
                 completedTaskIds,
+                allTasks: parseResult.items,
               });
-
-              if (firstResult.success) {
-                results.push(firstResult);
-                return firstResult;
-              }
-
-              logger.warn(
-                `[ExecuteTaskList] 任务 "${firstResult.target}" 执行失败，立即进行一次重试`,
-              );
-
-              const retryResult = await startNewTask({
-                taskItem,
-                filePath,
-                getToolByName,
-                parentDocs,
-                taskListContent,
-                parentConv,
-                executionType: "failed",
-                taskId: taskId as string,
-                completedTaskIds,
-              });
-
-              const finalResult = retryResult.success
-                ? {
-                    ...retryResult,
-                    summary: `首次执行失败，立即重试后成功。\n${retryResult.summary}`,
-                    invalidTools: mergeInvalidTools(
-                      firstResult.invalidTools,
-                      retryResult.invalidTools,
-                    ),
-                  }
-                : {
-                    ...retryResult,
-                    summary: `首次执行失败：${firstResult.summary}\n重试后仍失败：${retryResult.summary}`,
-                    invalidTools: mergeInvalidTools(
-                      firstResult.invalidTools,
-                      retryResult.invalidTools,
-                    ),
-                  };
-
-              results.push(finalResult);
-              return finalResult;
+              results.push(result);
+              return result;
             },
           });
 
           const executionMsg = buildExecutionMessage({ results, pendingTasks });
           logger.info(`[ExecuteTaskList] ${executionMsg}`);
-          postMessage?.(executionMsg);
+          appendInternalExecutionSummary(parentConv, executionMsg);
           continueParentConversationIfNeeded(
             parentConv,
             "executeTaskList 异步执行已完成，请基于最新 taskList 和执行结果继续推进任务；若全部完成请直接总结给用户。",
@@ -668,7 +635,7 @@ export const ExecuteTaskList = createTool({
         } catch (error) {
           const errorMsg = `执行任务列表失败: ${error instanceof Error ? error.message : String(error)}`;
           logger.error(`[ExecuteTaskList] ${errorMsg}`);
-          postMessage?.(errorMsg);
+          appendInternalExecutionSummary(parentConv, errorMsg);
           continueParentConversationIfNeeded(
             parentConv,
             "executeTaskList 异步执行出现错误，请基于最新错误信息继续处理并给出下一步动作。",

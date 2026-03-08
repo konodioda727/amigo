@@ -68,8 +68,8 @@ SERVER_PORT=10013
 STORAGE_PATH=./storage
 LOG_LEVEL=info
 
-# 可选：浏览器工具相关
-# BROWSER_HEADLESS=false
+# 可选：搜索工具优化（browserSearch 会优先走 Google API，再回退 Google HTML 解析；不使用 Playwright）
+# SERPER_API_KEY=your_serper_api_key
 ```
 
 ### 配置说明
@@ -80,6 +80,7 @@ LOG_LEVEL=info
 - `MODEL_NAME` 会通过内置映射表解析到 provider；若未命中任何 provider，会直接报错（不再做隐式兜底）。
 - `SERVER_PORT`：WebSocket 服务端口，默认 `10013`。
 - `STORAGE_PATH`：会话存储目录，默认 `./storage`（通常是 `packages/server/storage/`）。
+- `SERPER_API_KEY`：可选；配置后 `browserSearch` 会优先调用 Google 搜索 API（SERPER），未配置时回退到 Google HTML 解析（无 Playwright 依赖）。
 
 ## 启动方法
 
@@ -255,12 +256,12 @@ bun --filter @amigo-llm/types build
 - 服务端进程当前工作目录是否符合预期
 - 是否在执行过程中异常退出（可查看服务端日志）
 
-### 4）浏览器相关工具无法执行或行为异常
+### 4）搜索工具结果异常
 
-仓库里包含浏览器工具能力，运行环境差异会影响结果。必要时尝试：
+`browserSearch` 当前为纯 HTTP 方案（不依赖 Playwright）。必要时尝试：
 
-- 检查本机图形环境/容器环境兼容性
-- 调整 `BROWSER_HEADLESS=false` 进行排查
+- 检查目标站点是否对机器人请求有限制
+- 配置 `SERPER_API_KEY` 以提升 Google 结果稳定性
 - 查看服务端日志中的工具调用错误信息
 
 ## SDK 说明（简版）

@@ -2,14 +2,21 @@ import type { Sandbox } from "@/core/sandbox";
 import { logger } from "@/utils/logger";
 import { createTool } from "./base";
 
+const addLineNumbers = (content: string, startLine: number) =>
+  content
+    .split("\n")
+    .map((line, index) => `${String(startLine + index).padStart(4, " ")}| ${line}`)
+    .join("\n");
+
 /**
  * ReadFile 工具
  * 用于从沙箱中读取文件内容
  */
 export const ReadFile = createTool({
   name: "readFile",
-  description: "从沙箱中读取文件内容。支持读取整个文件或指定行范围。",
-  whenToUse: "需要查看文件内容或定位指定行时使用。通常在 editFile 前先 readFile 以确认上下文。",
+  description: "从沙箱中读取文件内容。支持读取整个文件或指定行范围。返回内容自带真实行号。",
+  whenToUse:
+    "需要查看文件内容或定位指定行时使用。通常在 editFile 前先 readFile 以确认上下文；后续若要按行修改，直接使用返回内容中的行号。",
 
   params: [
     {
@@ -68,16 +75,19 @@ export const ReadFile = createTool({
 
       let content: string;
       let readInfo: string;
+      let numberedStartLine = 1;
 
       if (startLine !== undefined && endLine !== undefined) {
         const start = Math.max(1, Number(startLine));
         const end = Math.min(totalLines, Number(endLine));
         content = (await sandbox.runCommand(`sed -n '${start},${end}p' '${cleanPath}'`)) || "";
         readInfo = `第 ${start}-${end} 行`;
+        numberedStartLine = start;
       } else if (startLine !== undefined) {
         const start = Math.max(1, Number(startLine));
         content = (await sandbox.runCommand(`sed -n '${start},$p' '${cleanPath}'`)) || "";
         readInfo = `第 ${start} 行到末尾`;
+        numberedStartLine = start;
       } else if (endLine !== undefined) {
         const end = Math.min(totalLines, Number(endLine));
         content = (await sandbox.runCommand(`sed -n '1,${end}p' '${cleanPath}'`)) || "";
@@ -87,6 +97,11 @@ export const ReadFile = createTool({
         readInfo = "全部内容";
       }
 
+      const trimmedContent = content.trim();
+      const numberedContent = trimmedContent
+        ? addLineNumbers(trimmedContent, numberedStartLine)
+        : "";
+
       const successMsg = `成功读取文件 ${cleanPath}（${readInfo}，共 ${totalLines} 行）`;
       logger.info(`[ReadFile] ${successMsg}`);
 
@@ -94,7 +109,7 @@ export const ReadFile = createTool({
         message: successMsg,
         toolResult: {
           success: true,
-          content: content.trim(),
+          content: numberedContent,
           filePath: cleanPath,
           message: successMsg,
           totalLines,

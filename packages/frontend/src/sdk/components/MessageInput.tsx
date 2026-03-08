@@ -225,7 +225,6 @@ const deleteOssObjectViaServer = async (wsUrl: string, objectKey: string): Promi
  * <MessageInput taskId="task-123" />
  *
  * // With custom callback
- * <MessageInput onSend={(message) => console.log('Sent:', message)} />
  *
  * // Disabled state
  * <MessageInput disabled={true} />

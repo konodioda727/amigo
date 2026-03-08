@@ -22,7 +22,6 @@ import type { UseWebSocketReturn } from "../types/hooks";
  *
  *   useEffect(() => {
  *     const unsubscribe = subscribe('message', (data) => {
- *       console.log('Received message:', data);
  *     });
  *     return unsubscribe;
  *   }, [subscribe]);

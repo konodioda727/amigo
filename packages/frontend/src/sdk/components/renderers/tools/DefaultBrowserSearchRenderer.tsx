@@ -1,5 +1,6 @@
-import { AlertCircle, CheckCircle, Globe } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronUp, Globe } from "lucide-react";
 import type React from "react";
+import { useState } from "react";
 import type { ToolMessageRendererProps } from "../../../types/renderers";
 
 /**
@@ -7,9 +8,9 @@ import type { ToolMessageRendererProps } from "../../../types/renderers";
  */
 export const DefaultBrowserSearchRenderer: React.FC<ToolMessageRendererProps<"browserSearch">> = ({
   message,
-  isLatest: _isLatest,
 }) => {
-  const { params, toolOutput, error, hasError } = message;
+  const [isExpanded, setIsExpanded] = useState(false);
+  const { params, toolOutput, error, hasError, partial } = message;
 
   // If there's an error, show error message
   if (hasError && error) {
@@ -23,58 +24,40 @@ export const DefaultBrowserSearchRenderer: React.FC<ToolMessageRendererProps<"br
 
   const { query } = params;
   const isCompleted = !!toolOutput;
-  const getActionTitle = () => `搜索并抓取: ${query}`;
-
-  const getDomain = (link: string) => {
-    try {
-      return new URL(link).hostname;
-    } catch {
-      return "";
-    }
-  };
+  // Use partial status if available, fallback to !isCompleted
+  const isLoading = partial !== undefined ? partial : !isCompleted;
 
   return (
-    <div className="my-2 border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm max-w-3xl">
-      {/* Header */}
-      <div className="px-3 py-2 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 overflow-hidden">
-          <Globe className="w-4 h-4 text-gray-500 flex-shrink-0" />
-          <span className="font-semibold text-sm truncate text-gray-900" title={getActionTitle()}>
-            {getActionTitle()}
-          </span>
-        </div>
-        <div>{isCompleted ? <CheckCircle className="w-4 h-4 text-green-500" /> : null}</div>
-      </div>
+    <div className="flex flex-col mb-2 px-2 max-w-[85%]">
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="flex items-center gap-2 text-xs text-neutral-400 hover:text-neutral-600 transition-colors w-fit pb-1"
+      >
+        <Globe size={14} className={isLoading ? "animate-pulse" : ""} />
+        <span className="truncate max-w-[200px] text-left">搜索: {query}</span>
+        {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+      </button>
 
-      {/* Content */}
-      {isCompleted && (
-        <div className="p-3 bg-white border-t border-gray-200">
-          <div className="flex items-center gap-2">
-            {toolOutput?.url && (
-              <img
-                src={`https://www.google.com/s2/favicons?domain=${getDomain(toolOutput.url)}`}
-                alt="favicon"
-                className="w-4 h-4"
-              />
-            )}
-            <div className="flex flex-col overflow-hidden">
-              {toolOutput?.title && (
-                <div className="text-sm font-semibold truncate text-gray-900">
-                  {toolOutput.title}
-                </div>
-              )}
-              {toolOutput?.url && (
-                <a
-                  href={toolOutput.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-blue-600 font-medium hover:underline truncate block"
-                >
-                  {toolOutput.url}
-                </a>
-              )}
-            </div>
-          </div>
+      {isExpanded && isCompleted && (
+        <div className="transition-all duration-300 ease-in-out border-l-2 border-neutral-200 ml-1.5 pl-4 py-1 text-sm text-neutral-500 flex flex-col gap-2">
+          {toolOutput.results && toolOutput.results.length > 0 ? (
+            toolOutput.results.map((res: any) => (
+              <a
+                key={res.url}
+                href={res.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-blue-500 hover:underline transition-colors flex items-center gap-1.5"
+                title={res.snippet || res.title}
+              >
+                <div className="w-1.5 h-1.5 rounded-full bg-neutral-300 flex-shrink-0" />
+                <span className="truncate">{res.title || res.url}</span>
+              </a>
+            ))
+          ) : (
+            <span className="italic">没有找到相关结果</span>
+          )}
         </div>
       )}
     </div>

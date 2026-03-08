@@ -1,4 +1,4 @@
-import { AlertCircle, AlertTriangle, Info } from "lucide-react";
+import { AlertCircle, AlertTriangle, CheckCircle2, Info } from "lucide-react";
 import type React from "react";
 import type { AlertRendererProps } from "../../types/renderers";
 
@@ -16,6 +16,11 @@ export const DefaultAlertRenderer: React.FC<AlertRendererProps> = ({
       icon: Info,
       bgColor: "bg-info/10",
       textColor: "text-info",
+    },
+    success: {
+      icon: CheckCircle2,
+      bgColor: "bg-emerald-50",
+      textColor: "text-emerald-600",
     },
     warning: {
       icon: AlertTriangle,

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import { logger } from "@/utils/logger";
-import { taskOrchestrator } from "../TaskOrchestrator";
+import { resolveObservedSubTaskStatus, taskOrchestrator } from "../TaskOrchestrator";
 
 // Mock logger
 mock.module("@/utils/logger", () => ({
@@ -102,5 +102,29 @@ describe("TaskOrchestrator Interrupt Logic", () => {
     expect(conversation.status).toBe("aborted");
     expect(conversation.pendingToolCall).toBeNull();
     expect(conversation.userInput).toBe("");
+  });
+});
+
+describe("resolveObservedSubTaskStatus", () => {
+  it("keeps wait_review sticky while still waiting for confirmation", () => {
+    const status = resolveObservedSubTaskStatus({
+      currentStatus: "waiting_tool_confirmation",
+      pendingToolName: undefined,
+      lastSyncedStatus: "wait_review",
+      hasObservedActiveState: true,
+    });
+
+    expect(status).toBe("wait_review");
+  });
+
+  it("maps completeTask confirmation waits to wait_review", () => {
+    const status = resolveObservedSubTaskStatus({
+      currentStatus: "waiting_tool_confirmation",
+      pendingToolName: "completeTask",
+      lastSyncedStatus: "running",
+      hasObservedActiveState: true,
+    });
+
+    expect(status).toBe("wait_review");
   });
 });

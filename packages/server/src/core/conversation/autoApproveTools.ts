@@ -1,9 +1,9 @@
 import { getGlobalState } from "@/globalState";
 
 export const DEFAULT_AUTO_APPROVE_TOOL_NAMES = [
-  "think",
   "askFollowupQuestion",
   "completeTask",
+  "browserSearch",
 ] as const;
 
 export const getConfiguredAutoApproveToolNames = (): string[] =>

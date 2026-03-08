@@ -6,6 +6,7 @@ export const WaitingToolCallMessageSchema = z.object({
     taskId: z.string(),
     toolName: z.string(),
     params: z.any().optional(),
+    updateTime: z.number().optional(),
   }),
 });
 

@@ -4,6 +4,7 @@ import { BashSchema } from "./bash";
 import { BrowserSearchSchema } from "./browserSearch";
 import { CompleteTaskSchema } from "./completeTask";
 import type { ToolExecutionContext } from "./context";
+import { EditDesignDocSchema, ReadDesignDocSchema } from "./designDoc";
 import { EditFileSchema } from "./editFile";
 import { ReadFileSchema } from "./readFile";
 import {
@@ -25,12 +26,20 @@ export const toolSchemas = z.discriminatedUnion("name", [
   ExecuteTaskListSchema,
   EditFileSchema,
   ReadFileSchema,
+  EditDesignDocSchema,
+  ReadDesignDocSchema,
   BashSchema,
 ]);
 
 export type ToolNames = z.infer<typeof toolSchemas>["name"];
 
 export type ToolSchema = z.infer<typeof toolSchemas>;
+export type {
+  EditDesignDocParams,
+  EditDesignDocResult,
+  ReadDesignDocParams,
+  ReadDesignDocResult,
+} from "./designDoc";
 
 /**
  * 对应参数要求
@@ -79,4 +88,5 @@ export interface TransportToolContent<T extends ToolNames> {
   toolName: ToolNames;
   result: ToolResult<T>;
   params: ToolParams<T>;
+  toolCallId?: string;
 }

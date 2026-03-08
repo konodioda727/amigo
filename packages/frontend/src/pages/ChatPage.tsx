@@ -70,10 +70,10 @@ const ChatPage: React.FC = () => {
   }, [taskId, store, navigate]);
 
   return (
-    <>
+    <div className="flex-1 w-full flex flex-col overflow-hidden">
       <ChatWindow taskId={effectiveTaskId} />
       <MessageInput taskId={effectiveTaskId} />
-    </>
+    </div>
   );
 };
 

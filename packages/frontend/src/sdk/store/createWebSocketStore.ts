@@ -34,7 +34,12 @@ export function createWebSocketStore(
   config?: WebSocketStoreConfig,
 ): UseBoundStore<StoreApi<WebSocketStore>> {
   const store = create<WebSocketStore>()((...a) => {
-    const connectionSlice = createConnectionSlice(...a);
+    const connectionSlice = createConnectionSlice({
+      url: config?.url,
+      reconnect: config?.reconnect,
+      reconnectInterval: config?.reconnectInterval,
+      reconnectAttempts: config?.reconnectAttempts,
+    })(...a);
     const taskSlice = createTaskSlice(...a);
     const messageSlice = createMessageSlice(...a);
     const mentionSlice = createMentionSlice(...a);

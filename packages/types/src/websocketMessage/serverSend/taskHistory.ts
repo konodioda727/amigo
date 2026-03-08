@@ -4,7 +4,18 @@ export const TaskHistoryMessageSchema = z.object({
   type: z.literal("taskHistory"),
   data: z.object({
     messages: z.array(z.any()),
-    taskId: z.string()
+    taskId: z.string(),
+    conversationStatus: z
+      .enum([
+        "streaming",
+        "aborted",
+        "idle",
+        "completed",
+        "waiting_tool_confirmation",
+        "tool_executing",
+        "error",
+      ])
+      .optional(),
   }),
 });
 

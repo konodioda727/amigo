@@ -9,9 +9,9 @@ import type { DisplayMessageType } from "../messages/types";
 import { defaultRenderers } from "./renderers";
 
 const TypingIndicator = React.memo(() => (
-  <div className="px-6 pt-2 pb-6 flex items-center gap-3">
-    <AmigoLogo className="w-12 h-10" isAnimating={true} />
-    <span className="text-sm font-medium text-neutral-400">正在思考与执行...</span>
+  <div className="px-6 pt-2 pb-6 flex items-center gap-2">
+    <AmigoLogo className="w-8 h-7 opacity-75" isAnimating={true} />
+    <span className="text-xs font-medium text-neutral-300 tracking-wide">正在思考与执行...</span>
   </div>
 ));
 
@@ -213,7 +213,7 @@ export const ChatWindow: FC<ChatWindowProps> = ({
 
   const getMessageKey = (message: DisplayMessageType, index: number) => {
     if (message.type === "tool") {
-      return `tool-${message.toolName}-${message.updateTime}-${index}`;
+      return `tool-${message.toolCallId || message.toolName}-${message.updateTime}-${index}`;
     }
 
     return `${message.type}-${message.updateTime}-${index}`;

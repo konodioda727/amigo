@@ -35,7 +35,7 @@ export const DefaultAskFollowupQuestionRenderer: React.FC<AskFollowupQuestionRen
   return (
     <div className="mb-4">
       <div className="chat chat-start">
-        <div className="chat-bubble bg-neutral-100 text-neutral-900 rounded-xl px-4 py-3 shadow-none max-w-[85%] break-words overflow-hidden">
+        <div className="chat-bubble bg-[#f7f7f7] border border-[#ececec] text-neutral-900 rounded-xl px-4 py-3 shadow-none max-w-[85%] break-words overflow-hidden">
           <div className="text-sm leading-relaxed whitespace-pre-wrap">{message.question}</div>
         </div>
       </div>

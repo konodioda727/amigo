@@ -70,6 +70,9 @@ export const GetTaskListProgress = createTool({
       const waitingSubTasks = statusList
         .filter((item) => item.status === "waiting_user_input")
         .map((item) => item.description || item.subTaskId || "未知任务");
+      const waitReviewSubTasks = statusList
+        .filter((item) => item.status === "wait_review")
+        .map((item) => item.description || item.subTaskId || "未知任务");
       const failedSubTasks = statusList
         .filter((item) => item.status === "failed")
         .map((item) => ({
@@ -82,7 +85,7 @@ export const GetTaskListProgress = createTool({
         ? "所有任务已完成！"
         : `还有 ${parseResult.remaining} 个任务待完成`;
 
-      const successMsg = `任务进度: ${parseResult.completed}/${parseResult.total} (${parseResult.percentage}%) - ${statusText}；运行中 ${runningSubTasks.length}，等待输入 ${waitingSubTasks.length}，失败 ${failedSubTasks.length}`;
+      const successMsg = `任务进度: ${parseResult.completed}/${parseResult.total} (${parseResult.percentage}%) - ${statusText}；运行中 ${runningSubTasks.length}，等待输入 ${waitingSubTasks.length}，待审核 ${waitReviewSubTasks.length}，失败 ${failedSubTasks.length}`;
       logger.info(`[GetTaskListProgress] ${successMsg}`);
 
       return {
@@ -97,6 +100,7 @@ export const GetTaskListProgress = createTool({
             percentage: parseResult.percentage,
             running: runningSubTasks.length,
             waitingUserInput: waitingSubTasks.length,
+            waitingReview: waitReviewSubTasks.length,
             failed: failedSubTasks.length,
           },
           isAllCompleted: isAllDone,
@@ -104,6 +108,7 @@ export const GetTaskListProgress = createTool({
           completedTasks,
           runningSubTasks,
           waitingSubTasks,
+          waitReviewSubTasks,
           failedSubTasks,
         },
       };

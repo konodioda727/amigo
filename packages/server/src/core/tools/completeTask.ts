@@ -160,7 +160,9 @@ export const CompleteTask = createTool({
       const parentIsRunning = activeConversationStatuses.has(parentConversation.status);
       const hasRunningSubTasks = Object.values(parentConversation.memory.subTasks).some(
         (subTaskStatus) =>
-          subTaskStatus.status === "running" || subTaskStatus.status === "waiting_user_input",
+          subTaskStatus.status === "running" ||
+          subTaskStatus.status === "waiting_user_input" ||
+          subTaskStatus.status === "wait_review",
       );
 
       if (hasPendingTasks && !parentIsRunning && !hasRunningSubTasks) {
@@ -202,19 +204,15 @@ export const CompleteTask = createTool({
       }
 
       // 通知父任务
-      const notificationMessage = [
-        `✅ 子任务已完成：${summary}`,
-        achievements ? `\n📊 成果：${achievements}` : "",
-        usage ? `\n💡 使用方法：${usage}` : "",
-      ]
-        .filter(Boolean)
-        .join("");
+      const completedTaskLabel = taskKey ? `Task ${taskKey}` : "子任务";
+      const notificationMessage = `${completedTaskLabel} 已完成`;
 
       broadcaster.broadcast(parentTaskId, {
         type: "alert",
         data: {
           message: notificationMessage,
-          severity: "info",
+          severity: "success",
+          toastOnly: true,
           updateTime: Date.now(),
         },
       });

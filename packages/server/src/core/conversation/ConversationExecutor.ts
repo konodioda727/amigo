@@ -80,6 +80,7 @@ export class ConversationExecutor {
       },
       pending.type,
       controller.signal,
+      pending.updateTime,
     );
 
     if (conversation.isAborted) {
@@ -114,15 +115,6 @@ export class ConversationExecutor {
     const pending = conversation.pendingToolCall;
     if (!pending) {
       return;
-    }
-
-    if (conversation.type === "sub") {
-      logger.info(`[ConversationExecutor] 子任务自动批准工具 ${pending.toolName}（等待确认状态）`);
-      return this.executePendingToolAndContinue(conversation, pending, {
-        onAbortedAfterTool: "[ConversationExecutor] 子任务工具执行后检测到中断，停止 loop",
-        onContinue: "[ConversationExecutor] 子任务工具执行完毕，继续执行 loop",
-        onStop: "[ConversationExecutor] 子任务工具执行完毕，停止 loop",
-      });
     }
 
     // 等待用户输入（此时应该已经有输入了，因为是 MessageResolver 触发的）

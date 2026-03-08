@@ -12,7 +12,7 @@ import {
   XCircle,
 } from "lucide-react";
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useWebSocketContext } from "../sdk/context/WebSocketContext";
@@ -28,10 +28,24 @@ interface TaskListItem {
   isCompleted: boolean;
 }
 
+interface TaskStatusMapEntry {
+  status?: TaskSidebarStatus;
+  subTaskId?: string;
+}
+
+type TaskSidebarStatus =
+  | "running"
+  | "waiting_user_input"
+  | "wait_review"
+  | "completed"
+  | "failed"
+  | undefined;
+
 const TASK_LIST_LINE_PATTERN = /^\s*-\s+\[([ xX])\]\s+(.+)$/;
 const IN_PROGRESS_SUFFIX_PATTERN = /\s*\(In Progress\)\s*$/i;
 const TASK_ID_PATTERN = /\bTask\s+(\d+(?:\.\d+)*)\s*[:：]?/i;
 const TASK_ID_TAG_PATTERN = /\[id:\s*([\d.]+)\s*\]/i;
+const STATUS_TRANSITION_HOLD_MS = 900;
 
 const normalizeTaskDescription = (description: string): string =>
   description
@@ -293,10 +307,13 @@ const DocSidebar: React.FC = () => {
 
 const TaskListContent: React.FC<{
   content: string;
-  statusMap: Record<string, any>;
+  statusMap: Record<string, TaskStatusMapEntry>;
   currentTaskId: string | null;
   onTaskClick: (taskId: string | undefined) => void;
 }> = ({ content, statusMap, currentTaskId, onTaskClick }) => {
+  const transitionTimersRef = useRef<Record<string, number>>({});
+  const [displayedStatuses, setDisplayedStatuses] = useState<Record<string, TaskSidebarStatus>>({});
+
   const items = useMemo(() => {
     if (!content) return [];
     const lines = content.split("\n");
@@ -321,18 +338,93 @@ const TaskListContent: React.FC<{
     return undefined;
   };
 
-  const getStatusIcon = (status: string | undefined, isCompleted: boolean) => {
+  useEffect(() => {
+    return () => {
+      for (const timer of Object.values(transitionTimersRef.current)) {
+        window.clearTimeout(timer);
+      }
+      transitionTimersRef.current = {};
+    };
+  }, []);
+
+  useEffect(() => {
+    const incomingStatuses = Object.fromEntries(
+      items.map((item) => [item.taskKey, getStatusEntry(item)?.status as TaskSidebarStatus]),
+    );
+
+    setDisplayedStatuses((previous) => {
+      const next = { ...previous };
+      let changed = false;
+      const validKeys = new Set(items.map((item) => item.taskKey));
+
+      for (const key of Object.keys(next)) {
+        if (validKeys.has(key)) continue;
+        delete next[key];
+        changed = true;
+        const timer = transitionTimersRef.current[key];
+        if (timer) {
+          window.clearTimeout(timer);
+          delete transitionTimersRef.current[key];
+        }
+      }
+
+      for (const item of items) {
+        const key = item.taskKey;
+        const currentStatus = previous[key];
+        const incomingStatus = incomingStatuses[key];
+        const shouldHoldTransientRegression =
+          (currentStatus === "waiting_user_input" || currentStatus === "wait_review") &&
+          currentStatus !== incomingStatus &&
+          (incomingStatus === "running" || incomingStatus === undefined);
+
+        if (shouldHoldTransientRegression) {
+          if (!transitionTimersRef.current[key]) {
+            transitionTimersRef.current[key] = window.setTimeout(() => {
+              setDisplayedStatuses((latest) => {
+                if (latest[key] === incomingStatus) {
+                  return latest;
+                }
+                return {
+                  ...latest,
+                  [key]: incomingStatus,
+                };
+              });
+              delete transitionTimersRef.current[key];
+            }, STATUS_TRANSITION_HOLD_MS);
+          }
+          continue;
+        }
+
+        const timer = transitionTimersRef.current[key];
+        if (timer) {
+          window.clearTimeout(timer);
+          delete transitionTimersRef.current[key];
+        }
+
+        if (currentStatus !== incomingStatus) {
+          next[key] = incomingStatus;
+          changed = true;
+        }
+      }
+
+      return changed ? next : previous;
+    });
+  }, [items, statusMap]);
+
+  const getStatusIcon = (status: TaskSidebarStatus, isCompleted: boolean) => {
     if (status === "running") return <PlayCircle className="w-4 h-4 text-blue-500 animate-pulse" />;
     if (status === "waiting_user_input") return <Circle className="w-4 h-4 text-amber-500" />;
+    if (status === "wait_review") return <Circle className="w-4 h-4 text-orange-500" />;
     if (status === "completed" || isCompleted)
       return <CheckCircle2 className="w-4 h-4 text-green-500" />;
     if (status === "failed") return <XCircle className="w-4 h-4 text-red-500" />;
     return <Circle className="w-4 h-4 text-gray-300" />;
   };
 
-  const getStatusText = (status: string | undefined, isCompleted: boolean) => {
+  const getStatusText = (status: TaskSidebarStatus, isCompleted: boolean) => {
     if (status === "running") return "进行中";
     if (status === "waiting_user_input") return "等待用户输入";
+    if (status === "wait_review") return "等待审核";
     if (status === "completed" || isCompleted) return "已完成";
     if (status === "failed") return "已失败";
     return "空闲";
@@ -349,7 +441,8 @@ const TaskListContent: React.FC<{
         <div className="space-y-1">
           {items.map((item) => {
             const statusEntry = getStatusEntry(item);
-            const status = statusEntry?.status;
+            const status =
+              displayedStatuses[item.taskKey] ?? (statusEntry?.status as TaskSidebarStatus);
             const subTaskId = statusEntry?.subTaskId;
             const isActive = subTaskId === currentTaskId;
             return (
