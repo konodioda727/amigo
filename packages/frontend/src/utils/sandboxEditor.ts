@@ -1,24 +1,9 @@
 export const getHttpBaseUrlFromWebSocketUrl = (wsUrl: string): string => {
-  const parsed = new URL(wsUrl);
-  parsed.protocol = parsed.protocol === "wss:" ? "https:" : "http:";
-  parsed.pathname = "";
-  parsed.search = "";
-  parsed.hash = "";
-  return parsed.toString().replace(/\/$/, "");
-};
-
-export const getSandboxEditorUrl = (wsUrl: string, sandboxId?: string | null): string => {
-  if (!sandboxId) {
-    return "";
+  if (wsUrl.startsWith("wss://")) {
+    return `https://${wsUrl.slice("wss://".length)}`;
   }
-
-  return `${getHttpBaseUrlFromWebSocketUrl(wsUrl)}/api/tasks/${encodeURIComponent(sandboxId)}/editor`;
-};
-
-export const getSandboxOpenFileUrl = (wsUrl: string, sandboxId?: string | null): string => {
-  if (!sandboxId) {
-    return "";
+  if (wsUrl.startsWith("ws://")) {
+    return `http://${wsUrl.slice("ws://".length)}`;
   }
-
-  return `${getHttpBaseUrlFromWebSocketUrl(wsUrl)}/api/tasks/${encodeURIComponent(sandboxId)}/editor/open-file`;
+  return wsUrl;
 };

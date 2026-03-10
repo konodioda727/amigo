@@ -117,6 +117,12 @@ export const ExecuteTaskListSchema = z.object({
     .object({
       success: z.boolean().describe("操作是否成功"),
       message: z.string().describe("操作结果消息"),
+      async: z.boolean().optional().describe("是否以异步后台任务执行"),
+      status: z.enum(["started", "already_running"]).optional().describe("后台任务状态"),
+      executionId: z.string().optional().describe("后台任务编号"),
+      startedAt: z.string().optional().describe("后台任务启动时间"),
+      pending: z.number().optional().describe("待执行任务数"),
+      alreadyRunning: z.boolean().optional().describe("是否已有同类后台任务在运行"),
       executed: z.boolean().optional().describe("是否执行了任务"),
       executionResults: z
         .array(

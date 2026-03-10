@@ -62,6 +62,14 @@ export { DefaultMessageRenderer } from "./DefaultMessageRenderer";
 export { DefaultThinkRenderer } from "./DefaultThinkRenderer";
 export { DefaultToolRenderer } from "./DefaultToolRenderer";
 export { DefaultUserMessageRenderer } from "./DefaultUserMessageRenderer";
-
-// Re-export tool-specific renderers
 export { DefaultBrowserSearchRenderer } from "./tools/DefaultBrowserSearchRenderer";
+// Re-export tool-specific renderers
+export {
+  DefaultEditFileRenderer,
+  EditFileResultBody,
+} from "./tools/DefaultEditFileRenderer";
+export {
+  DefaultReadFileRenderer,
+  ReadFileResultBody,
+} from "./tools/DefaultReadFileRenderer";
+export { ToolAccordion } from "./tools/ToolAccordion";

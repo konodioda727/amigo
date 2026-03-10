@@ -364,8 +364,6 @@ export const createMessageSlice: StateCreator<WebSocketStore, [], [], MessageSli
     }
 
     const newDisplayMessages = combineMessages(messages as any);
-    const latestTask = get().tasks[taskId];
-
     if (taskId === get().mainTaskId) {
       // Reset doc state before hydrating docs from the current conversation history.
       get().setDocState({

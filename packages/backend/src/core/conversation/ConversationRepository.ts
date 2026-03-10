@@ -1,0 +1,355 @@
+import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import path from "node:path";
+import { StorageType, type TaskStatusMetadata, type ToolInterface } from "@amigo-llm/types";
+import { getSandboxManager, sandboxRegistry } from "@/core/sandbox";
+import { getGlobalState } from "@/globalState";
+import { logger } from "@/utils/logger";
+import { FilePersistedMemory } from "../memory";
+import { type AmigoLlm, getLlm } from "../model";
+import { CUSTOMED_TOOLS, getBaseTools, ToolService } from "../tools";
+import { Conversation, type ConversationType } from "./Conversation";
+
+/**
+ * 获取所有自定义工具（内置 CUSTOMED_TOOLS + SDK 注册的工具）
+ */
+// biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
+function getAllCustomTools(): ToolInterface<any>[] {
+  const registryTools = getGlobalState("registryTools") || [];
+  const registryToolNames = new Set(registryTools.map((t) => t.name));
+  const filteredCustomedTools = CUSTOMED_TOOLS.filter((tool) => !registryToolNames.has(tool.name));
+  return [...filteredCustomedTools, ...registryTools];
+}
+
+/**
+ * 会话仓库 - 管理会话的创建、查找和持久化
+ */
+export class ConversationRepository {
+  private conversations = new Map<string, Conversation>();
+
+  private buildTaskRelationGraph(storageRoot: string): {
+    existingTaskIds: Set<string>;
+    parentMap: Map<string, string>;
+    childrenMap: Map<string, Set<string>>;
+  } {
+    const existingTaskIds = new Set<string>();
+    const parentMap = new Map<string, string>();
+    const childrenMap = new Map<string, Set<string>>();
+
+    const addRelation = (parentId: string, childId: string): void => {
+      const children = childrenMap.get(parentId) || new Set<string>();
+      children.add(childId);
+      childrenMap.set(parentId, children);
+    };
+
+    if (existsSync(storageRoot)) {
+      for (const entry of readdirSync(storageRoot, { withFileTypes: true })) {
+        if (!entry.isDirectory()) {
+          continue;
+        }
+
+        const taskId = entry.name;
+        existingTaskIds.add(taskId);
+
+        const taskStatusPath = path.join(storageRoot, taskId, `${StorageType.TASK_STATUS}.json`);
+        if (!existsSync(taskStatusPath)) {
+          continue;
+        }
+
+        try {
+          const taskStatus = JSON.parse(
+            readFileSync(taskStatusPath, "utf-8"),
+          ) as TaskStatusMetadata;
+          if (taskStatus.fatherTaskId) {
+            parentMap.set(taskId, taskStatus.fatherTaskId);
+            addRelation(taskStatus.fatherTaskId, taskId);
+          }
+        } catch (error) {
+          logger.warn(
+            `[ConversationRepository] 读取任务状态失败: ${taskStatusPath}, error: ${error}`,
+          );
+        }
+      }
+    }
+
+    for (const conversation of this.getAll()) {
+      existingTaskIds.add(conversation.id);
+      if (!conversation.parentId) {
+        continue;
+      }
+      parentMap.set(conversation.id, conversation.parentId);
+      addRelation(conversation.parentId, conversation.id);
+    }
+
+    return { existingTaskIds, parentMap, childrenMap };
+  }
+
+  private collectTaskTree(taskId: string, childrenMap: Map<string, Set<string>>): string[] {
+    const allTaskIds: string[] = [];
+    const visited = new Set<string>();
+
+    const dfs = (currentTaskId: string): void => {
+      if (visited.has(currentTaskId)) {
+        return;
+      }
+
+      visited.add(currentTaskId);
+      allTaskIds.push(currentTaskId);
+
+      const children = childrenMap.get(currentTaskId);
+      if (!children) {
+        return;
+      }
+
+      for (const childId of children) {
+        dfs(childId);
+      }
+    };
+
+    dfs(taskId);
+    return allTaskIds;
+  }
+
+  private deleteTaskStorage(taskId: string, storageRoot: string): boolean {
+    const taskStoragePath = path.join(storageRoot, taskId);
+    if (!existsSync(taskStoragePath)) {
+      return false;
+    }
+
+    rmSync(taskStoragePath, { recursive: true, force: true });
+    logger.info(`[Memory] 已删除存储目录: ${taskStoragePath}`);
+    return true;
+  }
+
+  /**
+   * 根据 ID 获取会话
+   */
+  get(id: string): Conversation | undefined {
+    return this.conversations.get(id);
+  }
+
+  /**
+   * 检查会话是否存在
+   */
+  has(id: string): boolean {
+    return this.conversations.has(id);
+  }
+
+  /**
+   * 保存会话到内存
+   */
+  save(conversation: Conversation): void {
+    this.conversations.set(conversation.id, conversation);
+  }
+
+  /**
+   * 从内存中移除会话
+   */
+  remove(id: string): boolean {
+    return this.conversations.delete(id);
+  }
+
+  /**
+   * 递归删除会话及其所有子任务
+   * @returns 被删除的所有任务 ID 列表（包括主任务和子任务）
+   */
+  async deleteWithChildren(taskId: string): Promise<string[]> {
+    const deletedIds: string[] = [];
+    const storageRoot = getGlobalState("globalStoragePath") || process.cwd();
+    const { existingTaskIds, parentMap, childrenMap } = this.buildTaskRelationGraph(storageRoot);
+    if (!existingTaskIds.has(taskId)) {
+      logger.warn(`[ConversationRepository] 任务不存在: ${taskId}`);
+      return deletedIds;
+    }
+
+    // 只有删除主任务时才删除 sandbox（子任务共享父任务的 sandbox）
+    const rootConversation = this.get(taskId);
+    const rootParentId = rootConversation?.parentId || parentMap.get(taskId);
+    const shouldDeleteSandbox = !rootParentId;
+    const sandboxKey = rootParentId || taskId;
+
+    // 收集所有需要删除的任务（包括主任务和所有子任务）
+    const allTaskIds = this.collectTaskTree(taskId, childrenMap);
+
+    // 删除所有会话
+    for (const id of allTaskIds) {
+      const conversation = this.get(id);
+      if (conversation) {
+        // 如果会话正在运行，先中断
+        if (!["idle", "completed", "aborted"].includes(conversation.status)) {
+          const { taskOrchestrator } = await import("./TaskOrchestrator");
+          taskOrchestrator.interrupt(conversation);
+        }
+      }
+
+      const deletedFromStorage = this.deleteTaskStorage(id, storageRoot);
+      const deletedFromMemory = this.remove(id);
+      if (deletedFromStorage || deletedFromMemory) {
+        deletedIds.push(id);
+        logger.info(`[ConversationRepository] 已删除会话: ${id}`);
+      }
+    }
+
+    // 只有删除主任务时才卸载 sandbox
+    if (shouldDeleteSandbox) {
+      const sandboxManager = getSandboxManager();
+
+      // 先尝试从 registry 中删除（如果存在）
+      if (sandboxManager.has(sandboxKey)) {
+        await sandboxManager.destroy(sandboxKey);
+        logger.info(`[ConversationRepository] 已从 registry 卸载 sandbox: ${sandboxKey}`);
+      } else if (sandboxManager === sandboxRegistry) {
+        // 如果 registry 中不存在（例如服务器重启后），尝试直接通过 Docker API 清理
+        logger.info(`[ConversationRepository] Sandbox 不在 registry 中，尝试直接清理容器`);
+        await this.cleanupOrphanedContainer(sandboxKey);
+      } else {
+        logger.info(
+          `[ConversationRepository] 自定义 sandbox manager 未持有 ${sandboxKey}，跳过默认孤儿容器清理`,
+        );
+      }
+    } else {
+      logger.info(
+        `[ConversationRepository] 跳过 sandbox 删除（子任务删除，父任务 ${sandboxKey} 可能仍在使用）`,
+      );
+    }
+
+    return deletedIds;
+  }
+
+  /**
+   * 清理可能遗留的容器（服务器重启后 registry 丢失的情况）
+   */
+  private async cleanupOrphanedContainer(sandboxKey: string): Promise<void> {
+    try {
+      const Docker = (await import("dockerode")).default;
+      const docker = new Docker();
+
+      // 列出所有容器（包括已停止的），过滤带有 amigo 标签的
+      const containers = await docker.listContainers({
+        all: true,
+        filters: {
+          label: ["amigo.managed=true", `amigo.taskId=${sandboxKey}`],
+        },
+      });
+
+      logger.info(`[ConversationRepository] 找到 ${containers.length} 个匹配的容器`);
+
+      // 删除找到的容器
+      for (const containerInfo of containers) {
+        try {
+          const container = docker.getContainer(containerInfo.Id);
+
+          // 先尝试停止
+          try {
+            await container.stop();
+            logger.info(`[ConversationRepository] 已停止容器: ${containerInfo.Id}`);
+          } catch (stopError) {
+            // 容器可能已经停止，忽略错误
+            logger.debug(`[ConversationRepository] 停止容器时出错（可能已停止）: ${stopError}`);
+          }
+
+          // 删除容器
+          await container.remove({ force: true });
+          logger.info(`[ConversationRepository] 已删除孤立容器: ${containerInfo.Id}`);
+        } catch (error) {
+          logger.warn(`[ConversationRepository] 删除容器 ${containerInfo.Id} 时出错: ${error}`);
+        }
+      }
+
+      if (containers.length === 0) {
+        logger.info(`[ConversationRepository] 未找到需要清理的孤立容器`);
+      }
+    } catch (error) {
+      logger.warn(`[ConversationRepository] 清理孤立容器时出错: ${error}`);
+    }
+  }
+
+  /**
+   * 获取所有会话
+   */
+  getAll(): Conversation[] {
+    return Array.from(this.conversations.values());
+  }
+
+  /**
+   * 创建新会话
+   */
+  create(params?: {
+    type?: ConversationType;
+    parentId?: string;
+    customPrompt?: string;
+    // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
+    tools?: ToolInterface<any>[];
+    llm?: AmigoLlm;
+  }): Conversation {
+    const allCustomTools = getAllCustomTools();
+    const type = params?.type || "main";
+
+    // 根据任务类型过滤基础工具
+    const baseTools = getBaseTools(type);
+
+    const toolService = new ToolService(
+      baseTools,
+      params?.tools || (type === "main" ? allCustomTools : []),
+    );
+
+    const conversation = Conversation.create({
+      toolService,
+      llm: params?.llm || getLlm(),
+      type,
+      parentId: params?.parentId,
+      customPrompt: params?.customPrompt,
+    });
+
+    this.save(conversation);
+    logger.info(`[ConversationRepository] 创建新会话: ${conversation.id}`);
+
+    return conversation;
+  }
+
+  /**
+   * 从磁盘加载会话（如果内存中不存在）
+   * 注意：此方法会在任务不存在时自动创建，仅用于内部创建流程
+   */
+  getOrLoad(taskId: string): Conversation {
+    const existing = this.get(taskId);
+    if (existing) {
+      return existing;
+    }
+
+    const allCustomTools = getAllCustomTools();
+    const conversation = Conversation.fromTaskId(taskId, allCustomTools);
+    this.save(conversation);
+
+    logger.info(`[ConversationRepository] 从磁盘加载会话: ${taskId}`);
+    return conversation;
+  }
+
+  /**
+   * 从磁盘加载已存在的会话（不会自动创建）
+   * @returns 会话对象，如果不存在则返回 null
+   */
+  load(taskId: string): Conversation | null {
+    // 先检查内存
+    const existing = this.get(taskId);
+    if (existing) {
+      return existing;
+    }
+
+    // 检查磁盘上是否存在
+    if (!FilePersistedMemory.exists(taskId)) {
+      logger.warn(`[ConversationRepository] 任务不存在: ${taskId}`);
+      return null;
+    }
+
+    // 从磁盘加载
+    const allCustomTools = getAllCustomTools();
+    const conversation = Conversation.fromTaskId(taskId, allCustomTools);
+    this.save(conversation);
+
+    logger.info(`[ConversationRepository] 从磁盘加载已存在的会话: ${taskId}`);
+    return conversation;
+  }
+}
+
+// 全局单例
+export const conversationRepository = new ConversationRepository();

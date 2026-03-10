@@ -23,6 +23,7 @@ logs/
 # Env
 .env
 .env.*
+!.env.example
 
 # Output
 out/
@@ -46,3 +47,7 @@ Desktop.ini
 
 # Bun
 .bun*
+packages/swebench
+.playwright-cli
+deliverables
+**/.amigo

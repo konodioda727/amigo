@@ -5,7 +5,7 @@ export const toast = {
   error: (message: string) => hotToast.error(message),
   warning: (message: string) =>
     hotToast(message, {
-      icon: "⚠️",
+      icon: "!",
       style: {
         background: "#fef3c7",
         color: "#92400e",
@@ -13,7 +13,7 @@ export const toast = {
     }),
   info: (message: string) =>
     hotToast(message, {
-      icon: "ℹ️",
+      icon: "i",
       style: {
         background: "#dbeafe",
         color: "#1e40af",

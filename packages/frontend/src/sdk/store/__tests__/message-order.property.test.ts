@@ -121,13 +121,6 @@ describe("Property 5: Message Processing Order", () => {
         const combined = combineMessages(messages as any);
 
         // Extract update times from input messages
-        const inputTimes = messages.map((msg) => {
-          if ("updateTime" in msg.data) {
-            return msg.data.updateTime;
-          }
-          return 0;
-        });
-
         // Extract update times from combined messages
         const outputTimes = combined.map((msg) => msg.updateTime);
 
@@ -180,8 +173,6 @@ describe("Property 5: Message Processing Order", () => {
         const combined = combineMessages(messages as any);
 
         // Extract input message types
-        const inputTypes = new Set(messages.map((msg) => msg.type));
-
         // Extract output message types
         const outputTypes = new Set(combined.map((msg) => msg.type));
 

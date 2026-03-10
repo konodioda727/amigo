@@ -70,17 +70,11 @@ export type {
 
 export type {
   ChatWindowProps,
-  ConversationHistoryProps,
   MessageInputProps,
   MessageInputRef,
   TaskRendererProps,
 } from "./components";
-export {
-  ChatWindow,
-  ConversationHistory,
-  MessageInput,
-  TaskRenderer,
-} from "./components";
+export { ChatWindow, MessageInput, TaskRenderer } from "./components";
 
 // ============================================================================
 // Renderers
@@ -90,12 +84,17 @@ export {
   DefaultAlertRenderer,
   DefaultAskFollowupQuestionRenderer,
   DefaultBrowserSearchRenderer,
+  DefaultEditFileRenderer,
   DefaultErrorRenderer,
   DefaultInterruptRenderer,
   DefaultMessageRenderer,
+  DefaultReadFileRenderer,
   DefaultToolRenderer,
   DefaultUserMessageRenderer,
   defaultRenderers,
+  EditFileResultBody,
+  ReadFileResultBody,
+  ToolAccordion,
 } from "./components/renderers";
 
 export type {
@@ -115,6 +114,7 @@ export type {
 // Types
 // ============================================================================
 
+export type { DocType } from "./store/slices/docSlice";
 // Re-export all types from the types module
 export type * from "./types";
 

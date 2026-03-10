@@ -71,4 +71,37 @@ describe("task status map synchronization", () => {
 
     expect(store.getState().tasks["sub-task-streaming"]?.status).toBe("streaming");
   });
+
+  test("stores task context usage snapshot from taskStatusMapUpdated messages", () => {
+    const store = createWebSocketStore({
+      url: "ws://localhost:10013",
+      autoConnect: false,
+    });
+
+    store.getState().processMessage({
+      type: "taskStatusMapUpdated",
+      data: {
+        taskId: "parent-task",
+        subTasks: {},
+        contextUsage: {
+          model: "qwen3-coder",
+          contextWindow: 32000,
+          estimatedTokens: 12000,
+          usageRatio: 0.375,
+          compressionThreshold: 0.8,
+          targetRatio: 0.5,
+          isCompressing: false,
+          compressionCount: 1,
+        },
+      },
+    } as any);
+
+    expect(store.getState().taskContextUsageMaps["parent-task"]).toEqual(
+      expect.objectContaining({
+        model: "qwen3-coder",
+        usageRatio: 0.375,
+        compressionCount: 1,
+      }),
+    );
+  });
 });

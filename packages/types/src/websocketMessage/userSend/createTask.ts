@@ -6,5 +6,6 @@ export const CreateTaskSchema = z.object({
   data: z.object({
     message: z.string(),
     attachments: z.array(UserMessageAttachmentSchema).optional(),
+    context: z.any().optional(),
   }),
 });

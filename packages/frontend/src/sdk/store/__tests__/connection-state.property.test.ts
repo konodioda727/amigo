@@ -159,7 +159,15 @@ describe("Property 6: Connection State Consistency", () => {
         // Verify notification if status changed
         if (initialStatus !== newStatus) {
           expect(notificationCount).toBeGreaterThan(0);
-          expect(lastNotifiedStatus).toBe(newStatus);
+          const notifiedStatus = lastNotifiedStatus;
+          if (notifiedStatus === null) {
+            throw new Error("Expected subscriber to receive a connection status update");
+          }
+          if (notifiedStatus !== newStatus) {
+            throw new Error(
+              `Expected subscriber to receive ${newStatus}, got ${String(notifiedStatus)}`,
+            );
+          }
         }
 
         unsubscribe();

@@ -1,4 +1,8 @@
-import type { SERVER_SEND_MESSAGE_NAME, WebSocketMessage } from "@amigo-llm/types";
+import type {
+  ContextUsageStatus,
+  SERVER_SEND_MESSAGE_NAME,
+  WebSocketMessage,
+} from "@amigo-llm/types";
 import type { StateCreator } from "zustand";
 import type { DisplayMessageType } from "../../messages/types";
 import type { WebSocketStore } from "../websocket";
@@ -30,6 +34,7 @@ export interface TaskSlice {
   taskHistories: Array<{ taskId: string; title: string; updatedAt: string }>;
   taskStatusMaps: Record<string, Record<string, any>>;
   taskAutoApproveToolNameMaps: Record<string, string[]>;
+  taskContextUsageMaps: Record<string, ContextUsageStatus | undefined>;
 
   registerTask: (taskId: string) => void;
   unregisterTask: (taskId: string) => void;
@@ -44,6 +49,7 @@ export interface TaskSlice {
   setCurrentTaskIdsForNewConversation: (taskId: string) => void;
   setTaskStatusMap: (taskId: string, subTasks: Record<string, any>) => void;
   setTaskAutoApproveToolNames: (taskId: string, toolNames: string[]) => void;
+  setTaskContextUsage: (taskId: string, contextUsage: ContextUsageStatus | undefined) => void;
   setCreatingConversation: (isCreating: boolean) => void;
   taskStatusMapUpdated: (taskId: string, subTasks: Record<string, any>) => void;
   createNewConversation: () => void;
@@ -84,6 +90,7 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
   taskHistories: [],
   taskStatusMaps: {},
   taskAutoApproveToolNameMaps: {},
+  taskContextUsageMaps: {},
 
   taskStatusMapUpdated: (taskId: string, subTasks: Record<string, any>) => {
     get().setTaskStatusMap(taskId, subTasks);
@@ -257,6 +264,16 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
       taskAutoApproveToolNameMaps: {
         ...taskAutoApproveToolNameMaps,
         [taskId]: [...toolNames],
+      },
+    } as any);
+  },
+
+  setTaskContextUsage: (taskId: string, contextUsage: ContextUsageStatus | undefined) => {
+    const { taskContextUsageMaps } = get();
+    set({
+      taskContextUsageMaps: {
+        ...taskContextUsageMaps,
+        [taskId]: contextUsage,
       },
     } as any);
   },

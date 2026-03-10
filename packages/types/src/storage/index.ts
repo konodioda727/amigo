@@ -42,6 +42,19 @@ export interface SubTaskStatus {
   error?: string;
 }
 
+export interface ContextUsageStatus {
+  model: string;
+  contextWindow: number;
+  estimatedTokens: number;
+  usageRatio: number;
+  compressionThreshold: number;
+  targetRatio: number;
+  isCompressing: boolean;
+  compressionCount: number;
+  lastCompressionAt?: string;
+  compressionAnchorUpdateTime?: number;
+}
+
 /**
  * 任务状态元数据接口
  */
@@ -50,9 +63,11 @@ export interface TaskStatusMetadata {
   fatherTaskId?: string;
   conversationStatus: ConversationStatus;
   toolNames: string[];
+  context?: any;
   autoApproveToolNames?: string[];
   pendingToolCall?: PendingToolCall;
   subTasks?: Record<string, SubTaskStatus>;
+  contextUsage?: ContextUsageStatus;
   createdAt: string;
   updatedAt: string;
 }

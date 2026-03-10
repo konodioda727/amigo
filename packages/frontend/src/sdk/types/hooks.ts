@@ -1,6 +1,8 @@
 import type {
+  ContextUsageStatus,
   SERVER_SEND_MESSAGE_NAME,
   ServerSendMessageData,
+  SubTaskStatus,
   USER_SEND_MESSAGE_NAME,
   UserMessageAttachment,
   WebSocketMessage,
@@ -70,8 +72,9 @@ export interface UseTasksReturn {
   tasks: Record<string, TaskState>;
   currentTaskId: string | null;
   mainTaskId: string | null;
-  taskStatusMaps: Record<string, Record<string, any>>;
+  taskStatusMaps: Record<string, Record<string, SubTaskStatus>>;
   taskAutoApproveToolNameMaps: Record<string, string[]>;
+  taskContextUsageMaps: Record<string, ContextUsageStatus | undefined>;
 
   // Task operations
   switchTask: (taskId: string) => void;
@@ -99,7 +102,11 @@ export interface UseMentionsReturn {
  */
 export interface UseSendMessageReturn {
   sendMessage: (message: string, taskId?: string, attachments?: UserMessageAttachment[]) => void;
-  sendCreateTask: (message: string, attachments?: UserMessageAttachment[]) => void;
+  sendCreateTask: (
+    message: string,
+    attachments?: UserMessageAttachment[],
+    context?: unknown,
+  ) => void;
   sendInterrupt: (taskId?: string) => void;
   sendResume: (taskId?: string) => void;
   sendLoadTask: (taskId: string) => void;

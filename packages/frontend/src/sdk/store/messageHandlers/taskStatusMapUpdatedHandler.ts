@@ -12,5 +12,8 @@ export const handleTaskStatusMapUpdated = (
   if (data.taskId && Array.isArray(data.autoApproveToolNames)) {
     store.setTaskAutoApproveToolNames(data.taskId, data.autoApproveToolNames);
   }
+  if (data.taskId && "contextUsage" in data) {
+    store.setTaskContextUsage(data.taskId, data.contextUsage);
+  }
   return true;
 };

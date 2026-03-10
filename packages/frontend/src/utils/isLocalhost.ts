@@ -1,7 +1,8 @@
-/**
- * 判断是否为本地测试
- * @returns true if the current host is localhost
- */
-export const isLocalhost = () => {
-  return window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+export const isLocalhost = (): boolean => {
+  if (typeof window === "undefined") {
+    return true;
+  }
+
+  const hostname = window.location.hostname;
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
 };

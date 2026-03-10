@@ -13,6 +13,7 @@ import {
   GetTaskListProgressSchema,
   ReadTaskDocsSchema,
 } from "./taskDocs";
+import { UpdateDevServerSchema } from "./updateDevServer";
 
 export type { ToolExecutionContext } from "./context";
 
@@ -29,6 +30,7 @@ export const toolSchemas = z.discriminatedUnion("name", [
   EditDesignDocSchema,
   ReadDesignDocSchema,
   BashSchema,
+  UpdateDevServerSchema,
 ]);
 
 export type ToolNames = z.infer<typeof toolSchemas>["name"];
@@ -40,6 +42,7 @@ export type {
   ReadDesignDocParams,
   ReadDesignDocResult,
 } from "./designDoc";
+export type { UpdateDevServerParams, UpdateDevServerResult } from "./updateDevServer";
 
 /**
  * 对应参数要求
@@ -78,6 +81,7 @@ export interface ToolInterface<K extends ToolNames | any> {
   }) => Promise<{
     message: string;
     toolResult: K extends ToolNames ? ToolResult<K> : any;
+    websocketData?: unknown;
   }>;
 }
 
@@ -89,4 +93,5 @@ export interface TransportToolContent<T extends ToolNames> {
   result: ToolResult<T>;
   params: ToolParams<T>;
   toolCallId?: string;
+  websocketData?: unknown;
 }

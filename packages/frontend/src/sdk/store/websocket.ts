@@ -2,6 +2,7 @@ import { createWebSocketStore } from "./createWebSocketStore";
 
 // Export types
 export type { WebSocketStore, WebSocketStoreConfig } from "./createWebSocketStore";
+export type { ConnectionStatus } from "./slices/connectionSlice";
 
 // Default store instance for backward compatibility
 const defaultStore = createWebSocketStore();

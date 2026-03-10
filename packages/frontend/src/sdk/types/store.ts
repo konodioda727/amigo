@@ -1,4 +1,5 @@
 import type {
+  ContextUsageStatus,
   ConversationStatus,
   SERVER_SEND_MESSAGE_NAME,
   ServerSendMessageData,
@@ -79,8 +80,10 @@ export type Unsubscribe = () => void;
 export interface WebSocketStore {
   taskStatusMaps: Record<string, Record<string, any>>;
   taskAutoApproveToolNameMaps: Record<string, string[]>;
+  taskContextUsageMaps: Record<string, ContextUsageStatus | undefined>;
   setTaskStatusMap: (taskId: string, subTasks: Record<string, any>) => void;
   setTaskAutoApproveToolNames: (taskId: string, toolNames: string[]) => void;
+  setTaskContextUsage: (taskId: string, contextUsage: ContextUsageStatus | undefined) => void;
   // Connection state
   socket: WebSocket | null;
   connectionStatus: ConnectionStatus;

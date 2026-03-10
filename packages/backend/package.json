@@ -1,0 +1,48 @@
+{
+  "name": "@amigo-llm/backend",
+  "version": "1.0.2",
+  "description": "",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./sdk": {
+      "bun": "./src/sdk.ts",
+      "types": "./dist/sdk.d.ts",
+      "default": "./dist/sdk.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "test": "bun test",
+    "build": "bun run build:js && bun run build:types",
+    "build:js": "bun build ./src/index.ts ./src/sdk.ts --outdir ./dist --target='bun'",
+    "build:types": "tsc -p ./tsconfig.declarations.json"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@amigo-llm/types": "workspace:*",
+    "dockerode": "^4.0.9",
+    "dotenv": "^17.2.3",
+    "p-wait-for": "^6.0.0",
+    "uuid": "^13.0.0",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.3",
+    "@types/dockerode": "^4.0.0",
+    "fast-check": "^4.3.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

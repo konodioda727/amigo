@@ -2,21 +2,25 @@
   "name": "@amigo-llm/frontend",
   "version": "0.0.2",
   "type": "module",
-  "main": "./dist/sdk/index.js",
-  "types": "./dist/sdk/index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/sdk/index.js",
-      "types": "./dist/sdk/index.d.ts"
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     },
-    "./styles": "./dist/index.css"
+    "./styles": {
+      "bun": "./src/index.css",
+      "import": "./src/index.css",
+      "default": "./dist/index.css"
+    }
   },
   "scripts": {
-    "dev": "bun run src/index.ts --watch",
-    "start": "bun run src/index.ts",
-    "build": "bun run build.ts",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview"
+    "test": "bun test",
+    "build": "bun run build.ts && bun run build:types",
+    "build:types": "tsc -p ./tsconfig.declarations.json"
   },
   "peerDependencies": {
     "react": "^18.0.0",

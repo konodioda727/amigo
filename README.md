@@ -1,92 +1,185 @@
 # Amigo
 
-Amigo 是一个基于 WebSocket 的多任务对话/编排应用，包含：
+Amigo 是一个面向 coding / design agent 场景的 Bun monorepo，既可以直接运行完整应用，也可以把 backend / frontend 作为 SDK 接入自己的产品。
 
-- `packages/server`：Bun 服务端（任务编排、模型调用、工具执行、会话存储）
-- `packages/frontend`：Bun + React 前端（聊天界面、任务切换、文档侧栏）
-- `packages/types`：前后端共享类型
+## 项目组成
 
+- `packages/amigo`：完整应用，包含服务端入口、HTTP 路由、preview/editor wiring、前端页面和 sandbox 资产
+- `packages/backend`：后端 SDK，包含会话运行时、任务编排、工具执行、sandbox 能力、conversation WebSocket runtime
+- `packages/frontend`：React SDK，包含聊天窗口、输入框、状态管理、任务切换和渲染器体系
+- `packages/types`：前后端共享协议与类型
 
-## 适用场景
+## 功能概览
 
-本项目支持两种模式：`Spec 模式`与`会话模式`, agent 会根据任务复杂度决定进入哪个模式工作
+### 完整应用 `packages/amigo`
 
-- Spec 模式：需要明确需求、拆分任务、并行执行的复杂任务
-- 会话模式：简单的脚本运行、日常生活问题解答
+- 多任务对话，支持主任务 / 子任务切换
+- coding agent 工具链：bash、读写文件、启动 dev server、打开 sandbox editor
+- design doc 存储、读取、任务文档展示
+- GitHub 仓库预热与首次 sandbox 导入
+- Docker sandbox 生命周期管理
+- 开发预览、preview 域名转发与 editor 跳转
 
-## 项目结构
+### Backend SDK `@amigo-llm/backend`
+
+- `AmigoServerBuilder`
+- `defineTool()`、`defineMessage()`
+- conversation WebSocket runtime
+- 模型工厂注入
+- 自动批准工具配置
+- 追加或覆盖 system prompt
+- 覆盖 `main` / `sub` 基础工具集合
+- sandbox manager 注入
+- 会话创建钩子
+- tool preset：coding、GitHub 集成、sandbox 能力
+
+### Frontend SDK `@amigo-llm/frontend`
+
+- `WebSocketProvider`
+- `ChatWindow`
+- `MessageInput`
+- hooks：`useConnection`、`useMessages`、`useSendMessage`、`useTasks`、`useMentions`、`useWebSocket`
+- 默认消息 / 工具 / 错误 / 中断渲染器
+- 应用层自定义 renderers 扩展
+
+## 使用方式
+
+### 1. 直接运行完整应用
+
+```bash
+bun install
+cp packages/amigo/.env.example packages/amigo/.env
+docker build -t ai_sandbox packages/amigo/assets
+bun dev
+```
+
+启动后默认地址：
+
+- 前端：`http://localhost:3000`
+- 服务端 WebSocket / HTTP：`ws://localhost:10013`
+
+### 2. 作为 backend SDK 使用
+
+```ts
+import { AmigoServerBuilder, defineTool } from "@amigo-llm/backend/sdk";
+
+const echoTool = defineTool({
+  name: "echoText",
+  description: "回显输入",
+  params: [{ name: "text", optional: false, description: "输入文本" }],
+  async invoke({ params }) {
+    return {
+      message: "echo 完成",
+      toolResult: { text: params.text },
+    };
+  },
+});
+
+const server = new AmigoServerBuilder()
+  .port(10013)
+  .storagePath("./storage")
+  .registerTool(echoTool)
+  .build();
+
+server.start();
+```
+
+### 3. 作为 frontend SDK 使用
+
+```tsx
+import { ChatWindow, MessageInput, WebSocketProvider } from "@amigo-llm/frontend";
+import "@amigo-llm/frontend/styles";
+
+export default function App() {
+  return (
+    <WebSocketProvider url="ws://localhost:10013" autoConnect>
+      <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
+        <ChatWindow />
+        <MessageInput placeholder="输入需求..." />
+      </div>
+    </WebSocketProvider>
+  );
+}
+```
+
+## 职责划分
+
+- `packages/amigo` 负责完整应用入口、HTTP 路由、preview/editor 访问路径、preview 反代和页面壳层
+- `packages/backend` 负责通用 runtime、工具系统、会话系统、sandbox 能力和 conversation WebSocket
+- `packages/frontend` 负责 React 聊天 UI、状态管理和可扩展渲染层
+
+## 仓库结构
 
 ```text
 amigo/
-├── package.json                # Monorepo 根脚本（bun workspace）
 ├── README.md
+├── package.json
 └── packages/
-    ├── frontend/               # 前端应用 + 前端 SDK
-    │   ├── src/components/     # 页面布局、侧边栏、文档面板
-    │   ├── src/sdk/            # WebSocket Provider / hooks / UI 组件
-    │   └── package.json
-    ├── server/                 # Bun 服务端 + Server SDK
-    │   ├── src/core/           # 编排、工具、消息处理等核心逻辑
-    │   ├── src/appTools/       # 当前应用注册的工具集合
-    │   └── package.json
-    └── types/                  # 共享协议和类型定义
-        └── package.json
+    ├── frontend/
+    │   ├── README.md
+    │   └── src/sdk/             # frontend SDK
+    ├── backend/
+    │   ├── README.md
+    │   ├── src/appTools/        # 可复用工具预设
+    │   ├── src/core/            # 会话、模型、sandbox、conversation runtime
+    ├── amigo/
+    │   ├── assets/              # 主 app 的 sandbox Dockerfile、code-server 扩展
+    │   ├── src/server/          # 主 app 服务端入口、HTTP 路由、preview/editor wiring
+    │   └── src/web/             # 主 app 前端壳
+    ├── swebench/
+    │   ├── README.md
+    │   └── assets/              # sandbox Dockerfile、code-server 扩展
+    │   └── src/                 # 独立 SWE-bench server profile 与 headless runner
+    └── types/
 ```
 
 ## 环境要求
 
-- Bun >= 1.0（建议使用较新版本）
-- Node.js >= 18（主要用于工具链兼容）
+- Bun 1.x
+- Node.js 18+
+- Docker
 
-说明：当前仓库的开发脚本以 `bun` 为主，README 中不再混用 `pnpm` 启动方式。
+如果你要启用 sandbox：
 
-## 安装
+- macOS 本地开发：Docker Desktop 即可
+- Linux 部署：除了 Docker，还需要安装并注册 `runsc`（gVisor runtime）
+
+## 快速开始
+
+### 1. 安装依赖
 
 ```bash
-git clone <your-repo-url>
-cd amigo
 bun install
+cp packages/amigo/.env.example packages/amigo/.env
 ```
 
-## 服务端配置（必看）
+### 2. 填写服务端环境变量
 
-服务端启动时会读取 `packages/server/.env`。
-
-新建文件：`packages/server/.env`
+最少需要配置：
 
 ```env
-# 必填：模型 API Key
 MODEL_API_KEY=your_api_key
-
-# 可选：模型配置
 MODEL_NAME=qwen3-coder
 MODEL_BASE_URL=https://openrouter.ai/api/v1
-LLM_TEMPERATURE=0
-
-# 可选：服务配置
-SERVER_PORT=10013
-STORAGE_PATH=./storage
-LOG_LEVEL=info
-
-# 可选：搜索工具优化（browserSearch 会优先走 Google API，再回退 Google HTML 解析；不使用 Playwright）
-# SERPER_API_KEY=your_serper_api_key
 ```
 
-### 配置说明
+其余变量见 [`packages/amigo/.env.example`](./packages/amigo/.env.example)。
 
-- `MODEL_API_KEY`：必填；未配置时服务端会直接报错退出。
-- `MODEL_NAME`：默认 `qwen3-coder`。
-- `MODEL_BASE_URL`：默认 `https://openrouter.ai/api/v1`（仅 OpenAI 兼容模型路径使用）。
-- `MODEL_NAME` 会通过内置映射表解析到 provider；若未命中任何 provider，会直接报错（不再做隐式兜底）。
-- `SERVER_PORT`：WebSocket 服务端口，默认 `10013`。
-- `STORAGE_PATH`：会话存储目录，默认 `./storage`（通常是 `packages/server/storage/`）。
-- `SERPER_API_KEY`：可选；配置后 `browserSearch` 会优先调用 Google 搜索 API（SERPER），未配置时回退到 Google HTML 解析（无 Playwright 依赖）。
+### 3. 构建 sandbox 镜像
 
-## 启动方法
+主 app 默认使用 `AMIGO_SANDBOX_IMAGE` 指定的镜像；未配置时回退到 `ai_sandbox`：
 
-说明：如果需要使用沙箱执行能力（例如隔离命令执行/任务运行），请先确认本机 Docker 已安装且 Docker 服务处于运行状态（Docker Desktop 或 Docker Engine）。未启动 Docker 时，相关能力会不可用或报错，但基础对话与普通功能仍可使用。
+```bash
+docker build -t ai_sandbox packages/amigo/assets
+```
 
-### 方式 1：同时启动前后端（推荐）
+SWE-bench 使用独立镜像：
+
+```bash
+docker build -t amigo-swe -f packages/swebench/assets/Dockerfile .
+```
+
+### 4. 启动
 
 在仓库根目录执行：
 
@@ -94,197 +187,288 @@ LOG_LEVEL=info
 bun dev
 ```
 
-这个命令会通过 workspace 脚本同时启动前端和服务端（不包含 `types` 包）。
+默认情况下：
 
-启动后关注两个地址：
+- 前端：`http://localhost:3000`
+- 服务端 WebSocket / HTTP：`ws://localhost:10013`
 
-- 前端：控制台打印的 `Server running at ...` 地址（通常是 `http://localhost:3000`）
-- 服务端：`ws://localhost:10013`（或你在 `.env` 中配置的端口）
-
-### 方式 2：分别启动（便于排查问题）
-
-在两个终端中分别执行：
+也可以分开启动：
 
 ```bash
-# 终端 1：服务端
-bun --filter @amigo-llm/server start
+bun --filter @amigo-llm/amigo start:server
+bun --filter @amigo-llm/amigo start:web
 ```
 
-```bash
-# 终端 2：前端
-bun --filter @amigo-llm/frontend start
-```
-
-### 方式 3：只启动服务端（用于对接自定义前端）
+## 常用命令
 
 ```bash
-bun --filter @amigo-llm/server start
-```
+bun dev
+bun run build
+bun run lint
+bun run lint:fix
 
-### 方式 4：只启动前端（用于联调远程服务端）
-
-```bash
-bun --filter @amigo-llm/frontend start
-```
-
-注意：前端默认会连接当前页面主机名的 `10013` 端口（协议自动在 `ws/wss` 间切换）。如果你的服务端端口不是 `10013`，需要自行修改前端连接逻辑或做端口映射。
-
-## 首次使用流程（详细）
-
-以下流程按当前前端界面行为整理。
-
-### 1. 打开页面并确认连接状态
-
-- 打开前端页面后，顶部右侧会显示连接状态（已连接/连接中/已断开）。
-- 如果一直显示“已断开”，优先检查服务端是否启动、`SERVER_PORT` 是否为 `10013`、防火墙/端口占用情况。
-
-### 2. 新建对话
-
-- 左侧边栏点击“新对话”。
-- 页面会回到首页，等待你输入第一条消息。
-- 第一次发送消息时，如果当前没有任务 ID，前端会自动发送 `createTask` 请求创建主任务。
-
-### 3. 发送消息
-
-- 在底部输入框输入内容，按 `Enter` 发送。
-- 使用 `Shift + Enter` 换行。
-- 发送后消息会在主区域流式显示。
-
-### 4. 观察任务执行和切换
-
-- 顶部会显示“主任务”以及当前激活的子任务（如果存在）。
-- 左侧“历史对话”中可以切换到已有会话。
-- 当前路由支持 `/:taskId`，可以直接通过 URL 打开指定任务历史。
-
-### 5. 中断 / 恢复执行
-
-输入框右侧按钮会根据任务状态自动切换：
-
-- 发送中：显示“停止”按钮（中断当前执行）
-- 已中断：显示“继续”按钮（恢复执行）
-- 空闲/完成：显示“发送”按钮
-
-### 6. 工具调用确认（如出现）
-
-- 某些工具调用会在输入框上方显示确认区域。
-- 你可以确认或拒绝该次工具执行。
-- 如果服务端配置了自动批准工具，则部分工具不会弹出确认。
-
-### 7. 文档侧栏（需求 / 设计 / 任务）
-
-右侧文档侧栏会在有内容时显示，包含三个标签：
-
-- `需求`
-- `设计`
-- `任务`
-
-使用方式：
-
-- 点击标签切换文档内容
-- 点击 `Edit` 进入编辑模式
-- 保存后会同步到当前任务文档（前端会发送 `updateTaskDoc`）
-- 在 `任务` 标签中，可点击任务项跳转到对应子任务（前提是该任务行已解析出子任务 ID）
-
-### 8. 会话历史与删除
-
-- 左侧“历史对话”会显示已保存会话。
-- 选择某条历史可重新加载。
-- 删除后如果当前正在查看该会话，页面会自动回到首页。
-
-## 输入框与交互细节
-
-- `Enter`：发送消息
-- `Shift + Enter`：换行
-- 输入框按钮状态会随任务状态变化（发送 / 停止 / 继续）
-- 输入 `@` 可触发 mention 候选（用于引用会话/上下文，具体候选内容由前端 store 决定）
-
-## 构建与常用命令
-
-### 根目录命令
-
-```bash
-bun dev          # 同时启动前后端
-bun run build    # 构建所有 workspace 包
-bun run lint     # Biome 检查
-bun run lint:fix # 自动修复格式/部分 lint 问题
-```
-
-### 单包命令
-
-```bash
-# 服务端
-bun --filter @amigo-llm/server build
-bun --filter @amigo-llm/server test
-bun --filter @amigo-llm/server start
-
-# 前端
+bun --filter @amigo-llm/backend test
+bun --filter @amigo-llm/backend build
 bun --filter @amigo-llm/frontend build
-bun --filter @amigo-llm/frontend start
-
-# 类型包
-bun --filter @amigo-llm/types build
+bun --filter @amigo-llm/amigo build
+bun --filter @amigo-llm/swebench start
+bun --filter @amigo-llm/swebench run --dataset /path/to/instances.jsonl --limit 1
 ```
 
-## 构建产物
+## 配置说明
 
-- 前端：`packages/frontend/dist/`
-- 服务端：`packages/server/dist/`
-- 类型：`packages/types/dist/`
+### 必填
 
-## 常见问题
+| 变量 | 说明 |
+| --- | --- |
+| `MODEL_API_KEY` | LLM API Key |
 
-### 1）启动服务端时报错 `MODEL_API_KEY environment variable is required`
+### 模型
 
-原因：未配置 `packages/server/.env` 中的 `MODEL_API_KEY`。
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `MODEL_NAME` | `qwen3-coder` | 模型名；服务端会按内置 provider 规则解析 |
+| `MODEL_BASE_URL` | `https://openrouter.ai/api/v1` | OpenAI-compatible base URL |
+| `LLM_TEMPERATURE` | `0` | 采样温度 |
+| `MODEL_CONTEXT_CONFIGS` | - | 按模型手动配置上下文窗口与自动压缩阈值，JSON 格式，例如 `{"qwen3-coder":{"contextWindow":262144,"compressionThreshold":0.8,"targetRatio":0.5}}` |
 
-处理：补充 `MODEL_API_KEY` 后重启服务端。
+### 服务端
 
-### 2）前端页面能打开，但一直显示未连接
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `SERVER_PORT` | `10013` | Bun 服务端口 |
+| `STORAGE_PATH` | `./storage` | 会话、设计稿、Penpot 绑定等存储目录 |
+| `LOG_LEVEL` | `INFO` | 日志级别 |
 
-检查项：
+### Sandbox / Preview
 
-- 服务端是否已启动
-- 服务端端口是否为 `10013`（或前端连接逻辑是否已同步修改）
-- 当前页面主机名是否能访问服务端端口（本机/远端/反向代理）
-- 浏览器控制台和服务端日志是否有 WebSocket 握手错误
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `AMIGO_SANDBOX_MEMORY_MB` | `2048` | 每个 sandbox 容器内存上限 |
+| `AMIGO_PREVIEW_BASE_DOMAIN` | - | 用于对外暴露 Preview 的通配域名，例如 `preview.example.com` |
+| `AMIGO_PREVIEW_PUBLIC_PROTOCOL` | `https` | Preview 外链协议 |
 
-### 3）历史记录/任务文档没有保存
+### 搜索
 
-检查项：
+| 变量 | 说明 |
+| --- | --- |
+| `SERPER_API_KEY` | `browserSearch` 优先走 SERPER，没有则回退 HTML 抓取 |
 
-- `STORAGE_PATH` 是否可写
-- 服务端进程当前工作目录是否符合预期
-- 是否在执行过程中异常退出（可查看服务端日志）
+### OSS 附件上传
 
-### 4）搜索工具结果异常
+| 变量 | 说明 |
+| --- | --- |
+| `OSS_ENDPOINT` | OSS endpoint |
+| `OSS_BUCKET` | bucket 名称 |
+| `OSS_ACCESS_KEY_ID` | AccessKey ID |
+| `OSS_ACCESS_KEY_SECRET` | AccessKey Secret |
+| `OSS_PUBLIC_BASE_URL` | 可选，自定义附件公网访问地址 |
+| `OSS_UPLOAD_PREFIX` | 可选，默认 `uploads` |
+| `OSS_POLICY_EXPIRE_SECONDS` | 可选，默认 `600` |
+| `OSS_SECURITY_TOKEN` | 可选，STS 场景使用 |
 
-`browserSearch` 当前为纯 HTTP 方案（不依赖 Playwright）。必要时尝试：
+### Penpot
 
-- 检查目标站点是否对机器人请求有限制
-- 配置 `SERPER_API_KEY` 以提升 Google 结果稳定性
-- 查看服务端日志中的工具调用错误信息
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `PENPOT_BASE_URL` | `http://localhost:9001` | Penpot 实例地址 |
+| `PENPOT_ACCESS_TOKEN` | - | 访问 Penpot RPC 的 token |
+| `PENPOT_TEAM_ID` | - | 新建 / 更新 Penpot 文件时需要 |
+| `PENPOT_PROJECT_ID` | - | 新建 / 更新 Penpot 文件时需要 |
 
-## SDK 说明（简版）
+## 部署建议
 
-本仓库除了应用本体，还提供前后端 SDK：
+### 推荐拓扑
 
-- 前端 SDK：`@amigo-llm/frontend`
-- 服务端 SDK（扩展入口建议）：`@amigo-llm/server/sdk`
-- 类型包：`@amigo-llm/types`
+- 前端：静态构建后用 Nginx / Caddy 托管
+- 服务端：直接跑在 Linux 主机上，由 systemd 管理
+- Docker / gVisor：与服务端同机，供 sandbox 使用
+- Penpot：单独部署或接入现有实例
 
-如果你要做二次集成，优先查看：
+不推荐把 `packages/amigo/src/server` 再包进 Docker 里部署，原因是它本身还要去管理宿主机 Docker、绑定本机随机端口、拉起 sandbox 容器，复杂度会明显上升。
 
-- `packages/frontend/README.md`（前端 SDK 使用说明）
-- `packages/server/README.md`（服务端 SDK 使用说明）
-- `packages/server/package.json`（导出入口与子路径）
-- `packages/types/package.json`
+### 前端和服务端的网络约束
 
-## 开发建议
+当前应用层前端写死了这一条连接规则：
 
-- 文档、代码和默认端口保持一致（当前前端默认连 `10013`）
-- 新增环境变量时同步更新本 README 的“服务端配置”章节
-- 修改前端连接策略时同步更新“启动方法”和“常见问题”章节
+- 本地：`ws://<hostname>:10013`
+- 非 localhost：`wss://<hostname>:10013`
 
-## 许可证
+这意味着如果你不改 [`packages/amigo/src/web/App.tsx`](./packages/amigo/src/web/App.tsx)，生产环境需要满足：
 
-ISC
+1. 前端页面和服务端使用同一个 hostname
+2. `10013` 端口对浏览器可访问
+3. 非本地部署时，`10013` 端口前面要有 TLS 终止和 WebSocket 转发
+
+如果你想把 WebSocket 也收敛到 `443`，需要改前端连接地址逻辑，或者直接基于 frontend SDK 自己做一层应用壳。
+
+## Sandbox 部署
+
+### 本地开发
+
+本地开发最简单：
+
+1. 安装 Docker Desktop
+2. 构建镜像：`docker build -t ai_sandbox packages/amigo/assets`
+3. 启动服务端
+
+macOS 下代码会直接使用 `runc`，不需要额外配置 `runsc`。
+
+### Linux 生产环境
+
+当前代码在非 macOS 环境下会把 Docker runtime 设为 `runsc`。也就是说，Linux 机器上如果没有 gVisor，sandbox 创建会直接失败。
+
+你需要：
+
+1. 安装 Docker Engine
+2. 安装 gVisor，并确认 `runsc` 可执行
+3. 在 Docker daemon 中注册 `runsc` runtime
+4. 构建 sandbox 镜像（默认 tag 可用 `ai_sandbox`，也可配合 `AMIGO_SANDBOX_IMAGE` 自定义）
+
+如果你不打算使用 gVisor，而是继续用 `runc`，需要修改 [`packages/backend/src/core/sandbox/index.ts`](./packages/backend/src/core/sandbox/index.ts) 里的 runtime 选择逻辑。
+
+### Sandbox 镜像要求
+
+当前镜像至少需要包含：
+
+- `git`
+- `python3`
+- 基础编译工具
+- `code-server`
+- 常用 JS 包管理器 / 运行时
+
+仓库已经提供了可直接使用的 Dockerfile：
+
+- [`packages/amigo/assets/Dockerfile`](./packages/amigo/assets/Dockerfile)
+
+### 数据持久化
+
+建议把 `STORAGE_PATH` 配置到持久磁盘，例如：
+
+```env
+STORAGE_PATH=/var/lib/amigo/storage
+```
+
+因为除了 `storage` 本身，sandbox 还会在它的同级目录写入内部缓存：
+
+- `.amigo/github-bootstrap/mirrors`
+- `.amigo/pnpm-store`
+
+最稳妥的做法是把 `/var/lib/amigo` 整个目录都做持久化。
+
+### Preview 和 Editor 的差异
+
+- Preview：支持通过 `AMIGO_PREVIEW_BASE_DOMAIN` 做通配子域名代理，适合公网访问
+- Editor：当前是直接跳转到宿主机上随机分配的 `code-server` 端口，更适合本机、内网或 SSH 隧道场景
+
+也就是说：
+
+- 想让 Preview 对外可用，配置通配 DNS + 反向代理到 Bun 服务即可
+- 想让 Editor 也对公网稳定可用，当前实现还不算完整，最好放在内网环境使用
+
+### Preview 通配域名配置
+
+假设：
+
+- 主站：`amigo.example.com`
+- Preview 通配域名：`*.preview.example.com`
+- Bun 服务监听：`127.0.0.1:10013`
+
+则推荐：
+
+```env
+AMIGO_PREVIEW_BASE_DOMAIN=preview.example.com
+AMIGO_PREVIEW_PUBLIC_PROTOCOL=https
+```
+
+然后把：
+
+- `preview.example.com`
+- `*.preview.example.com`
+
+都反向代理到同一个 Bun 服务。服务端会根据子域名里的 `sandboxId` 自动转发到对应 sandbox 的 dev server。
+
+## Penpot 配置
+
+### 最小要求
+
+如果你希望：
+
+- `editDesignDoc` 保存后自动同步到 Penpot
+- 在设计页里查看绑定、轮询远端状态、从 Penpot 反向回写
+
+至少要配置：
+
+```env
+PENPOT_BASE_URL=https://penpot.example.com
+PENPOT_ACCESS_TOKEN=your_penpot_token
+PENPOT_TEAM_ID=team_id
+PENPOT_PROJECT_ID=project_id
+```
+
+### 这些变量分别做什么
+
+- `PENPOT_BASE_URL`：Penpot 实例根地址
+- `PENPOT_ACCESS_TOKEN`：所有 RPC 读写都需要
+- `PENPOT_TEAM_ID`、`PENPOT_PROJECT_ID`：创建 Penpot 文件、把 design doc 正向同步到 Penpot 时需要
+
+如果只做“读取已绑定文件并回写到 design doc”，token 仍然必需；但没有 `teamId/projectId` 时，首次创建或覆盖同步会失败。
+
+### 如何拿到 teamId / projectId / fileId / pageId
+
+- `teamId`、`projectId`：从 Penpot 工作台 URL 的 hash 参数里拿
+- `fileId`、`pageId`：绑定现有页面时，前端保存的也是 Penpot workspace URL，服务端会从 hash 参数中解析
+
+格式类似：
+
+```text
+https://penpot.example.com/#/workspace?team-id=...&project-id=...&file-id=...&page-id=...
+```
+
+### 运行方式
+
+设计稿相关链路大致是：
+
+1. agent 用 `editDesignDoc` / `readDesignDoc` 操作 design doc
+2. `editDesignDoc` 保存后尝试自动同步到 Penpot
+3. 前端设计页会轮询 Penpot 远端 revision
+4. 发现 Penpot 有新 revision 时，可自动或手动回写到 design doc
+
+## SDK 文档
+
+- Backend SDK: [`packages/backend/README.md`](./packages/backend/README.md)
+- Frontend SDK: [`packages/frontend/README.md`](./packages/frontend/README.md)
+
+## 生产启动建议
+
+### 构建
+
+```bash
+bun run build
+```
+
+### 服务端
+
+在 `packages/amigo` 下准备好 `.env` 后，可以直接用构建产物启动：
+
+```bash
+bun packages/amigo/dist/server/index.js
+```
+
+建议再配上 systemd，确保自动重启。
+
+### 前端
+
+```bash
+bun --filter @amigo-llm/frontend build
+```
+
+构建产物在 `packages/frontend/dist/`，可交给 Nginx / Caddy 托管。
+
+## 注意事项
+
+- 不要把真实 `.env` 和密钥提交到仓库
+- `MODEL_NAME` 必须能命中服务端 provider 映射规则，否则启动会失败
+- sandbox 镜像名可通过 `AMIGO_SANDBOX_IMAGE` 或应用自己注入的 `SandboxRegistry` 配置，默认回退到 `ai_sandbox`
+- 生产环境若使用 HTTPS 页面，WebSocket 侧也必须是 `wss`
+- 附件上传依赖 OSS；未配置时，聊天仍可用，但上传按钮会失败

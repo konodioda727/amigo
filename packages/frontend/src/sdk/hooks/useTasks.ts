@@ -41,6 +41,7 @@ export function useTasks(): UseTasksReturn {
   const mainTaskId = store((state) => state.mainTaskId);
   const taskStatusMaps = store((state) => (state as any).taskStatusMaps);
   const taskAutoApproveToolNameMaps = store((state) => (state as any).taskAutoApproveToolNameMaps);
+  const taskContextUsageMaps = store((state) => (state as any).taskContextUsageMaps);
 
   // Task operations
   const switchTask = useCallback(
@@ -83,6 +84,7 @@ export function useTasks(): UseTasksReturn {
     mainTaskId,
     taskStatusMaps,
     taskAutoApproveToolNameMaps,
+    taskContextUsageMaps,
     switchTask,
     getTaskHierarchy,
     getTaskStatus,

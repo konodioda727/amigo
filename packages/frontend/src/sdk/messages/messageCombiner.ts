@@ -107,8 +107,9 @@ const toolProcessor: MessageProcessor<"tool"> = ({ msg, res }) => {
   const parsed = JSON.parse(msg.data.message) as TransportToolContent<any> & {
     toolCallId?: string;
     error?: string;
+    websocketData?: unknown;
   };
-  const { toolName, params, result, error, toolCallId } = parsed;
+  const { toolName, params, result, error, toolCallId, websocketData } = parsed;
   const updateTime = getStableUpdateTime(msg.data.updateTime, res);
   const isPartial = msg.data.partial ?? false;
 
@@ -123,6 +124,7 @@ const toolProcessor: MessageProcessor<"tool"> = ({ msg, res }) => {
       toolName: existingMessage.toolName,
       params: (params as unknown as ToolParams<any>) || existingMessage.params,
       toolOutput: result as unknown as ToolResult<any>,
+      websocketData: websocketData ?? existingMessage.websocketData,
       toolCallId: toolCallId || existingMessage.toolCallId,
       error,
       hasError: !!error,
@@ -136,6 +138,7 @@ const toolProcessor: MessageProcessor<"tool"> = ({ msg, res }) => {
       toolName,
       params: params as unknown as ToolParams<any>,
       toolOutput: result as unknown as ToolResult<any>,
+      websocketData,
       toolCallId,
       error,
       hasError: !!error,
@@ -238,7 +241,7 @@ const errorProcessor: MessageProcessor<"error"> = ({ msg, res }) => {
   return { handled: true };
 };
 
-const waitingToolCallProcessor: MessageProcessor<"waiting_tool_call"> = ({ msg, res }) => {
+const waitingToolCallProcessor: MessageProcessor<"waiting_tool_call"> = ({ msg }) => {
   if (msg.type !== "waiting_tool_call") return { handled: false };
   return { handled: true };
 };

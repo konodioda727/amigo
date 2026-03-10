@@ -96,8 +96,6 @@ describe("SDK Integration Tests", () => {
       message: customMessageRenderer,
     };
 
-    const capturedRenderers: any = null;
-
     function TestComponent() {
       const { messages } = useMessages();
       return <div data-testid="messages">{messages.length}</div>;
@@ -151,32 +149,14 @@ describe("SDK Integration Tests", () => {
    * Validates that event handlers can be provided to WebSocketProvider
    */
   test("Event handlers can be provided", () => {
-    let connectCalled = false;
-    let disconnectCalled = false;
-    let errorCalled = false;
-    let messageCalled = false;
-
-    const onConnect = () => {
-      connectCalled = true;
-    };
-    const onDisconnect = () => {
-      disconnectCalled = true;
-    };
-    const onError = () => {
-      errorCalled = true;
-    };
-    const onMessage = () => {
-      messageCalled = true;
-    };
-
     render(
       <WebSocketProvider
         url="ws://localhost:10013"
         autoConnect={false}
-        onConnect={onConnect}
-        onDisconnect={onDisconnect}
-        onError={onError}
-        onMessage={onMessage}
+        onConnect={() => {}}
+        onDisconnect={() => {}}
+        onError={() => {}}
+        onMessage={() => {}}
       >
         <div>Test</div>
       </WebSocketProvider>,
@@ -296,8 +276,6 @@ describe("SDK Integration Tests", () => {
     const initialState = {
       connectionStatus: "disconnected" as const,
       tasks: {},
-      mainTaskId: null,
-      currentTaskId: null,
     };
 
     function TestComponent() {

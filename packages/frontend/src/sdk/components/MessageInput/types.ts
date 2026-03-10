@@ -1,0 +1,35 @@
+export interface MessageInputProps {
+  taskId?: string;
+  className?: string;
+  placeholder?: string;
+  onSend?: (message: string) => void;
+  createTaskContext?: unknown;
+  disabled?: boolean;
+  showMentions?: boolean;
+}
+
+export interface MessageInputRef {
+  focus: () => void;
+  insertMention: (sessionId: string, sessionTitle: string) => void;
+  clear: () => void;
+}
+
+export type MentionSuggestionItem = {
+  id: string;
+  label: string;
+};
+
+export type MentionSuggestionRenderProps = {
+  command: (item: MentionSuggestionItem) => void;
+  editor: {
+    view: {
+      coordsAtPos: (position: number) => { left: number; bottom: number };
+    };
+  };
+  event: KeyboardEvent;
+  items: MentionSuggestionItem[];
+  range: {
+    from: number;
+  };
+  selectedIndex: number;
+};

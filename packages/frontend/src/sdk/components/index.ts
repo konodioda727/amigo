@@ -8,8 +8,8 @@
 export type { ChatWindowProps } from "./ChatWindow";
 // Main UI components
 export { ChatWindow } from "./ChatWindow";
-export type { MessageInputProps, MessageInputRef } from "./MessageInput";
-export { MessageInput } from "./MessageInput";
+export type { MessageInputProps, MessageInputRef } from "./MessageInput/index";
+export { MessageInput } from "./MessageInput/index";
 // Re-export renderers
 export * from "./renderers";
 export type { TaskRendererProps } from "./TaskRenderer";

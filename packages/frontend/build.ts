@@ -117,13 +117,30 @@ if (existsSync(outdir)) {
 
 const start = performance.now();
 
-const entrypoints = [...new Bun.Glob("**.html").scanSync("src")]
-  .map(a => path.resolve("src", a))
-  .filter(dir => !dir.includes("node_modules"));
-console.log(`📄 Found ${entrypoints.length} HTML ${entrypoints.length === 1 ? "file" : "files"} to process\n`);
+console.log("📄 Building frontend SDK JavaScript\n");
 
-const result = await Bun.build({
-  entrypoints,
+const jsResult = await Bun.build({
+  entrypoints: [path.resolve("src", "index.ts")],
+  outdir,
+  minify: true,
+  format: "esm",
+  target: "browser",
+  sourcemap: "linked",
+  external: ["react", "react-dom", "react/jsx-runtime"],
+  define: {
+    "process.env.NODE_ENV": JSON.stringify("production"),
+  },
+  ...cliConfig,
+});
+
+if (!jsResult.success) {
+  throw new Error("Failed to build frontend SDK JavaScript");
+}
+
+console.log("🎨 Building frontend SDK styles\n");
+
+const cssResult = await Bun.build({
+  entrypoints: [path.resolve("src", "index.css")],
   outdir,
   plugins: [plugin],
   minify: true,
@@ -135,9 +152,13 @@ const result = await Bun.build({
   ...cliConfig,
 });
 
+if (!cssResult.success) {
+  throw new Error("Failed to build frontend SDK styles");
+}
+
 const end = performance.now();
 
-const outputTable = result.outputs.map(output => ({
+const outputTable = [...jsResult.outputs, ...cssResult.outputs].map(output => ({
   File: path.relative(process.cwd(), output.path),
   Type: output.kind,
   Size: formatFileSize(output.size),

@@ -54,8 +54,12 @@ const DiffLine: React.FC<{
 };
 
 const getPreviewContent = (message: ToolMessageRendererProps<"editFile">["message"]) => {
-  const beforeFromResult = message.toolOutput?.websocketOnly?.beforeContent;
-  const afterFromResult = message.toolOutput?.websocketOnly?.afterContent;
+  const transportPreview =
+    message.websocketData && typeof message.websocketData === "object"
+      ? (message.websocketData as { beforeContent?: string; afterContent?: string })
+      : undefined;
+  const beforeFromResult = transportPreview?.beforeContent;
+  const afterFromResult = transportPreview?.afterContent;
   const mode = message.params.mode ?? "overwrite";
 
   if (beforeFromResult !== undefined || afterFromResult !== undefined) {

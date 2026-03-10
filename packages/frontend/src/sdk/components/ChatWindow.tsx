@@ -1,5 +1,5 @@
 import { ArrowDown } from "lucide-react";
-import React, { type FC, useEffect, useRef, useState } from "react";
+import React, { type FC, useRef, useState } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { AmigoLogo } from "../../components/AmigoLogo";
 import { useWebSocketContext } from "../context/WebSocketContext";
@@ -8,9 +8,20 @@ import { useTasks } from "../hooks/useTasks";
 import type { DisplayMessageType } from "../messages/types";
 import { defaultRenderers } from "./renderers";
 
+const AssistantAvatar: FC<{ className?: string; isAnimating?: boolean }> = ({
+  className = "",
+  isAnimating = false,
+}) => (
+  <AmigoLogo
+    className={[isAnimating ? "animate-pulse" : "", className].filter(Boolean).join(" ")}
+    isAnimating={isAnimating}
+    aria-hidden="true"
+  />
+);
+
 const TypingIndicator = React.memo(() => (
   <div className="px-6 pt-2 pb-6 flex items-center gap-2">
-    <AmigoLogo className="w-8 h-7 opacity-75" isAnimating={true} />
+    <AssistantAvatar className="h-7 w-8 opacity-75" isAnimating={true} />
     <span className="text-xs font-medium text-neutral-300 tracking-wide">正在思考与执行...</span>
   </div>
 ));
@@ -84,27 +95,7 @@ export const ChatWindow: FC<ChatWindowProps> = ({
   const shouldShowInitialLoading = isCreatingConversation || status === "streaming";
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
-  const [showScrollButton, setShowScrollButton] = useState(false);
-  const forceScrollToBottomTimeoutRef = useRef<number | null>(null);
-  const forceScrollToBottomUntilRef = useRef(0);
-  const isAtBottomRef = useRef(true);
-  const atBottomDebounceTimeoutRef = useRef<number | null>(null);
-  const ignoreAtBottomUntilRef = useRef(0);
-  const reloadAutoScrollTimeoutRef = useRef<number | null>(null);
-  const hasAppliedReloadAutoScrollRef = useRef(false);
-  const shouldAutoScrollOnReloadRef = useRef(false);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof performance === "undefined") return;
-    const navEntries = performance.getEntriesByType("navigation");
-    const nav = navEntries[0] as PerformanceNavigationTiming | undefined;
-    if (nav?.type) {
-      shouldAutoScrollOnReloadRef.current = nav.type === "reload";
-      return;
-    }
-    const legacyNav = (performance as Performance & { navigation?: { type?: number } }).navigation;
-    shouldAutoScrollOnReloadRef.current = legacyNav?.type === 1;
-  }, []);
+  const [isAtBottom, setIsAtBottom] = useState(false);
 
   // Scroll to bottom
   const scrollToBottom = (behavior: "auto" | "smooth" = "smooth") => {
@@ -123,71 +114,15 @@ export const ChatWindow: FC<ChatWindowProps> = ({
     });
   };
 
-  useEffect(() => {
-    ignoreAtBottomUntilRef.current = Date.now() + 450;
-    isAtBottomRef.current = true;
-    if (atBottomDebounceTimeoutRef.current !== null) {
-      window.clearTimeout(atBottomDebounceTimeoutRef.current);
-      atBottomDebounceTimeoutRef.current = null;
+  const getMessageKey = (message: DisplayMessageType, index: number) => {
+    if (message.type === "tool") {
+      return `tool-${message.toolCallId || message.toolName}-${message.updateTime}-${index}`;
     }
-    setShowScrollButton(false);
-  }, [taskId]);
 
-  useEffect(() => {
-    if (messages.length === 0) return;
-    if (Date.now() > forceScrollToBottomUntilRef.current) return;
+    return `${message.type}-${message.updateTime}-${index}`;
+  };
 
-    const frameId = window.requestAnimationFrame(() => {
-      scrollToBottom("auto");
-    });
-
-    return () => window.cancelAnimationFrame(frameId);
-  }, [messages]);
-
-  useEffect(() => {
-    if (!shouldAutoScrollOnReloadRef.current) return;
-    if (hasAppliedReloadAutoScrollRef.current) return;
-    if (messages.length === 0) return;
-
-    hasAppliedReloadAutoScrollRef.current = true;
-    reloadAutoScrollTimeoutRef.current = window.setTimeout(() => {
-      forceScrollToBottomUntilRef.current = Date.now() + 800;
-      isAtBottomRef.current = true;
-      setShowScrollButton(false);
-      scrollToBottom("auto");
-      window.requestAnimationFrame(() => {
-        scrollToBottom("auto");
-      });
-      reloadAutoScrollTimeoutRef.current = null;
-    }, 320);
-  }, [messages.length]);
-
-  useEffect(() => {
-    if (status !== "streaming") return;
-    if (messages.length === 0) return;
-    if (!isAtBottomRef.current) return;
-
-    const frameId = window.requestAnimationFrame(() => {
-      scrollToBottom("auto");
-    });
-
-    return () => window.cancelAnimationFrame(frameId);
-  }, [status, messages.length]);
-
-  useEffect(() => {
-    return () => {
-      if (atBottomDebounceTimeoutRef.current !== null) {
-        window.clearTimeout(atBottomDebounceTimeoutRef.current);
-      }
-      if (reloadAutoScrollTimeoutRef.current !== null) {
-        window.clearTimeout(reloadAutoScrollTimeoutRef.current);
-      }
-      if (forceScrollToBottomTimeoutRef.current !== null) {
-        window.clearTimeout(forceScrollToBottomTimeoutRef.current);
-      }
-    };
-  }, []);
-
+  const lastMessage = messages[messages.length - 1];
   /**
    * Render a single message using the appropriate renderer
    */
@@ -211,15 +146,6 @@ export const ChatWindow: FC<ChatWindowProps> = ({
     return <div className="text-red-500">Unknown message type: {message.type}</div>;
   };
 
-  const getMessageKey = (message: DisplayMessageType, index: number) => {
-    if (message.type === "tool") {
-      return `tool-${message.toolCallId || message.toolName}-${message.updateTime}-${index}`;
-    }
-
-    return `${message.type}-${message.updateTime}-${index}`;
-  };
-
-  const lastMessage = messages[messages.length - 1];
   const isPendingUserMessage =
     lastMessage?.type === "userSendMessage" && lastMessage.status === "pending";
   const shouldShowTyping = status === "streaming" && !isPendingUserMessage;
@@ -245,7 +171,7 @@ export const ChatWindow: FC<ChatWindowProps> = ({
           ) : (
             <div className="w-full max-w-[1200px] flex items-center justify-center h-full text-neutral-500 p-6">
               <div className="text-center flex flex-col items-center">
-                <AmigoLogo className="w-24 h-24 mb-4 opacity-80" isAnimating={false} />
+                <AssistantAvatar className="mb-4 h-20 w-20 opacity-80" isAnimating={false} />
                 <p className="text-lg font-medium text-neutral-600 mb-1">今天想做点什么？</p>
                 <p className="text-sm text-neutral-400">在下方输入您的需求，我将为您完成任务</p>
               </div>
@@ -261,26 +187,8 @@ export const ChatWindow: FC<ChatWindowProps> = ({
             increaseViewportBy={{ top: 600, bottom: 1000 }}
             atBottomThreshold={AT_BOTTOM_THRESHOLD_PX}
             computeItemKey={(index, message) => getMessageKey(message, index)}
-            followOutput={(isAtBottom) => (status === "streaming" && isAtBottom ? "auto" : false)}
-            atBottomStateChange={(isAtBottom) => {
-              isAtBottomRef.current = isAtBottom;
-
-              if (Date.now() < ignoreAtBottomUntilRef.current) {
-                return;
-              }
-
-              if (atBottomDebounceTimeoutRef.current !== null) {
-                window.clearTimeout(atBottomDebounceTimeoutRef.current);
-              }
-
-              atBottomDebounceTimeoutRef.current = window.setTimeout(() => {
-                const nextShowScrollButton = !isAtBottomRef.current;
-                setShowScrollButton((prev) =>
-                  prev === nextShowScrollButton ? prev : nextShowScrollButton,
-                );
-                atBottomDebounceTimeoutRef.current = null;
-              }, 120);
-            }}
+            followOutput={(atBottom) => (atBottom ? "smooth" : false)}
+            atBottomStateChange={setIsAtBottom}
             context={{ shouldShowTyping }}
             components={virtuosoComponents}
             itemContent={(index, message) => {
@@ -302,23 +210,11 @@ export const ChatWindow: FC<ChatWindowProps> = ({
       </div>
 
       {/* Scroll to bottom button */}
-      {showScrollButton && messages.length > 0 && (
+      {messages.length > 0 && !isAtBottom && (
         <button
           type="button"
           onClick={() => {
-            if (forceScrollToBottomTimeoutRef.current !== null) {
-              window.clearTimeout(forceScrollToBottomTimeoutRef.current);
-            }
-            isAtBottomRef.current = true;
-            setShowScrollButton(false);
-            forceScrollToBottomUntilRef.current = Date.now() + 1200;
             scrollToBottom("smooth");
-            // Virtuoso may stop slightly above bottom when items are remeasured during smooth scroll.
-            // Snap once after the animation to guarantee the final position.
-            forceScrollToBottomTimeoutRef.current = window.setTimeout(() => {
-              scrollToBottom("auto");
-              forceScrollToBottomTimeoutRef.current = null;
-            }, 420);
           }}
           className="absolute bottom-6 left-1/2 -translate-x-1/2 w-10 h-10 flex items-center justify-center rounded-full bg-white shadow-md hover:shadow-lg transition-all border-0"
           aria-label="Scroll to bottom"

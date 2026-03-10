@@ -1,0 +1,167 @@
+import type { ToolInterface } from "@amigo-llm/types";
+import Bun, { type ServerWebSocket } from "bun";
+import { setGlobalState } from "@/globalState";
+import type { ServerConfig } from "../config";
+import { type LlmFactory, setLlmFactory } from "../model";
+import type { ModelContextConfig } from "../model/contextConfig";
+import type { MessageRegistry, ToolRegistry } from "../registry";
+import type { SandboxManager } from "../sandbox";
+import { ServerWebSocketMessageHandler } from "./webSocketMessageHandler";
+
+export interface ConversationWebSocketData {
+  kind: "conversation";
+}
+
+type AmigoWebSocketData = ConversationWebSocketData | undefined;
+
+/**
+ * 服务器构造选项
+ */
+export interface AmigoServerOptions {
+  /** 服务器配置 */
+  config: ServerConfig;
+  /** 工具注册表 */
+  toolRegistry?: ToolRegistry;
+  /** 消息注册表 */
+  messageRegistry?: MessageRegistry;
+  /** 模型工厂（可选，默认从环境变量创建） */
+  llmFactory?: LlmFactory;
+  /** 额外自动批准的工具名称（在内置默认列表之外） */
+  autoApproveToolNames?: string[];
+  /** 使用 SDK 覆盖默认自动批准工具名称 */
+  defaultAutoApproveToolNames?: string[];
+  /** 全局追加系统提示词（应用级特化） */
+  extraSystemPrompt?: string;
+  /** 使用 SDK 覆盖基础工具集合 */
+  // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
+  baseTools?: Partial<Record<"main" | "sub", ToolInterface<any>[]>>;
+  /** 使用 SDK 覆盖默认 system prompt */
+  systemPrompts?: Partial<Record<"main" | "sub", string>>;
+  /** 可注入的 sandbox manager */
+  sandboxManager?: SandboxManager;
+  /** 按模型配置上下文窗口与压缩阈值 */
+  modelContextConfigs?: Record<string, ModelContextConfig | number>;
+  /** 会话创建完成后的 app 层 hook */
+  onConversationCreate?: (payload: { taskId: string; context?: any }) => void | Promise<void>;
+}
+
+/**
+ * 服务接口暴露
+ */
+class AmigoServer {
+  private readonly port: number;
+  private readonly webSocketMessageHandler: ServerWebSocketMessageHandler;
+  private _toolRegistry?: ToolRegistry;
+  private _messageRegistry?: MessageRegistry;
+  private _server?: Bun.Server<AmigoWebSocketData>;
+
+  constructor(options: AmigoServerOptions) {
+    this.port = options.config.port;
+    this._toolRegistry = options.toolRegistry;
+    this._messageRegistry = options.messageRegistry;
+    this.webSocketMessageHandler = new ServerWebSocketMessageHandler(options.messageRegistry);
+
+    setGlobalState("globalStoragePath", options.config.storagePath);
+    setLlmFactory(options.llmFactory);
+
+    if (options.toolRegistry) {
+      setGlobalState("registryTools", options.toolRegistry.getAll());
+    }
+    if (options.messageRegistry) {
+      setGlobalState("registryMessages", options.messageRegistry.getAll());
+    }
+    setGlobalState("autoApproveToolNames", options.autoApproveToolNames || []);
+    setGlobalState("defaultAutoApproveToolNames", options.defaultAutoApproveToolNames);
+    setGlobalState("extraSystemPrompt", options.extraSystemPrompt || "");
+    setGlobalState("baseTools", options.baseTools || {});
+    setGlobalState("systemPrompts", options.systemPrompts || {});
+    setGlobalState("sandboxManager", options.sandboxManager);
+    setGlobalState("modelContextConfigs", options.modelContextConfigs);
+    setGlobalState("onConversationCreate", options.onConversationCreate);
+  }
+
+  get toolRegistry(): ToolRegistry | undefined {
+    return this._toolRegistry;
+  }
+
+  get messageRegistry(): MessageRegistry | undefined {
+    return this._messageRegistry;
+  }
+
+  get serverHandle(): Bun.Server<AmigoWebSocketData> | undefined {
+    return this._server;
+  }
+
+  get isRunning(): boolean {
+    return !!this._server;
+  }
+
+  tryUpgradeConversationWebSocket(req: Request, server: Bun.Server): boolean {
+    return server.upgrade(req, { data: { kind: "conversation" } });
+  }
+
+  async handleWebSocketMessage(ws: ServerWebSocket, message: string | Buffer): Promise<void> {
+    if (typeof message !== "string") {
+      ws.close(1003, "Unsupported binary websocket message");
+      return;
+    }
+
+    await this.webSocketMessageHandler.handleMessage(ws, message);
+  }
+
+  async handleWebSocketOpen(ws: ServerWebSocket): Promise<void> {
+    await this.webSocketMessageHandler.handleOpen(ws);
+  }
+
+  handleWebSocketClose(ws: ServerWebSocket, _code: number, _reason: string): void {
+    this.webSocketMessageHandler.handleClose(ws);
+  }
+
+  start(): Bun.Server<AmigoWebSocketData> {
+    if (this._server) {
+      return this._server;
+    }
+
+    this._server = Bun.serve({
+      fetch: async (req, server) => {
+        if (
+          (req.headers.get("upgrade") || "").toLowerCase() === "websocket" &&
+          this.tryUpgradeConversationWebSocket(req, server)
+        ) {
+          return;
+        }
+
+        return new Response("Not Found", { status: 404 });
+      },
+      port: this.port,
+      websocket: {
+        data: {} as AmigoWebSocketData,
+        message: (ws: ServerWebSocket<AmigoWebSocketData>, message: string | Buffer) =>
+          this.handleWebSocketMessage(ws, message),
+        open: (ws: ServerWebSocket<AmigoWebSocketData>) => this.handleWebSocketOpen(ws),
+        close: (ws: ServerWebSocket<AmigoWebSocketData>, code: number, reason: string) =>
+          this.handleWebSocketClose(ws, code, reason),
+        drain: () => {},
+      },
+    });
+
+    return this._server;
+  }
+
+  /**
+   * 兼容旧 API。建议使用 start()
+   */
+  init(): Bun.Server<AmigoWebSocketData> {
+    return this.start();
+  }
+
+  stop(): void {
+    if (!this._server) {
+      return;
+    }
+    this._server.stop();
+    this._server = undefined;
+  }
+}
+
+export default AmigoServer;

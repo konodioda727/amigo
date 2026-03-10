@@ -18,19 +18,12 @@ export const AmigoLogo: React.FC<AmigoLogoProps> = ({
       {...props}
     >
       <title>Amigo Logo</title>
-      {/* Body */}
       <circle cx="45" cy="50" r="22" fill="#E0F2FE" />
-
-      {/* Blush */}
       <ellipse cx="32" cy="53" rx="3" ry="1.5" fill="#FECACA" opacity="0.8" />
       <ellipse cx="58" cy="53" rx="3" ry="1.5" fill="#FECACA" opacity="0.8" />
-
-      {/* Eyes */}
       <g>
         <circle cx="36" cy="44" r="5" fill="#ffffff" />
         <circle cx="54" cy="44" r="5" fill="#ffffff" />
-
-        {/* Pupils */}
         <circle cx="37" cy="44" r="2.5" fill="#334155">
           {isAnimating && (
             <animate
@@ -56,8 +49,6 @@ export const AmigoLogo: React.FC<AmigoLogoProps> = ({
           )}
         </circle>
       </g>
-
-      {/* Sweat drop (working hard!) */}
       {isAnimating && (
         <g>
           <path d="M 22 32 Q 25 37 22 40 Q 19 37 22 32" fill="#93C5FD">
@@ -72,8 +63,6 @@ export const AmigoLogo: React.FC<AmigoLogoProps> = ({
           </path>
         </g>
       )}
-
-      {/* Paper */}
       <rect
         x="62"
         y="42"
@@ -85,8 +74,6 @@ export const AmigoLogo: React.FC<AmigoLogoProps> = ({
         strokeWidth="1.5"
         transform="rotate(12 65 40)"
       />
-
-      {/* Text lines on paper */}
       <g transform="rotate(12 65 40)">
         <line
           x1="66"
@@ -116,8 +103,6 @@ export const AmigoLogo: React.FC<AmigoLogoProps> = ({
           strokeLinecap="round"
         />
       </g>
-
-      {/* Hand writing with pen */}
       <g>
         {isAnimating && (
           <animateTransform
@@ -128,13 +113,9 @@ export const AmigoLogo: React.FC<AmigoLogoProps> = ({
             repeatCount="indefinite"
           />
         )}
-        {/* Pen body */}
         <path d="M 68 45 L 82 30 L 85 33 L 71 48 Z" fill="#FDE047" />
-        {/* Nib */}
         <path d="M 68 45 L 65 48 L 71 48 Z" fill="#475569" />
-        {/* Eraser tip */}
         <path d="M 82 30 L 85 33 L 87 31 L 84 28 Z" fill="#FCA5A5" />
-        {/* Hand */}
         <circle cx="72" cy="46" r="4.5" fill="#BAE6FD" />
       </g>
     </svg>
