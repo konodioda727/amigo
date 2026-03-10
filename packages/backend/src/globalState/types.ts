@@ -1,5 +1,5 @@
 import type { MessageDefinition, ToolInterface } from "@amigo-llm/types";
-import type { ModelContextConfig } from "@/core/model/contextConfig";
+import type { ModelConfig, ModelContextConfig } from "@/core/model/contextConfig";
 import type { SandboxManager } from "@/core/sandbox/types";
 
 export type ConversationTypeKey = "main" | "sub";
@@ -9,6 +9,7 @@ export type ConversationTypeKey = "main" | "sub";
  */
 export interface GlobalStateType {
   globalStoragePath: string;
+  globalCachePath: string;
   /** 用户通过 SDK 注册的自定义工具 */
   // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
   registryTools: ToolInterface<any>[];
@@ -27,7 +28,9 @@ export interface GlobalStateType {
   systemPrompts?: Partial<Record<ConversationTypeKey, string>>;
   /** 可注入的 sandbox manager */
   sandboxManager?: SandboxManager;
-  /** 按模型配置上下文窗口与压缩阈值 */
+  /** 按模型配置 provider、baseURL、上下文窗口与压缩参数 */
+  modelConfigs?: Record<string, ModelConfig | number>;
+  /** 兼容旧命名，后续建议使用 modelConfigs */
   modelContextConfigs?: Record<string, ModelContextConfig | number>;
   /** 会话创建完成后的 app 层 hook */
   onConversationCreate?: (payload: { taskId: string; context?: any }) => void | Promise<void>;

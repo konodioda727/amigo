@@ -3,6 +3,7 @@ import { createConnection, createServer } from "node:net";
 import path from "node:path";
 import { PassThrough } from "node:stream";
 import Docker from "dockerode";
+import { getCacheRootPath } from "@/core/storage";
 import { getGlobalState } from "@/globalState";
 import { getGithubSandboxBindingForTask } from "@/integrations/github";
 import { logger } from "@/utils/logger";
@@ -85,12 +86,11 @@ interface DependencyInstallPlan {
 }
 
 function getSharedPnpmStoreHostPath(): string {
-  const storageRoot = getGlobalState("globalStoragePath");
-  if (!storageRoot) {
-    throw new Error("globalStoragePath 未配置");
+  const cacheRoot = getGlobalState("globalCachePath");
+  if (cacheRoot) {
+    return path.resolve(cacheRoot, "pnpm-store");
   }
-
-  return path.resolve(storageRoot, "..", ".amigo", "pnpm-store");
+  return path.resolve(getCacheRootPath(), "pnpm-store");
 }
 
 function normalizeSandboxWorkingDir(input: string | undefined): string {

@@ -190,6 +190,7 @@ export class StreamHandler {
           });
         }
 
+        contextCompressionManager.syncContextUsage(conversation);
         return currentTool;
       }
 
@@ -197,6 +198,7 @@ export class StreamHandler {
         this.transport.emitFinalThink(conversation, reasoningBuffer, reasoningUpdateTime);
       }
       this.transport.emitFinalMessage(conversation, messageBuffer);
+      contextCompressionManager.syncContextUsage(conversation);
 
       this.consecutiveErrorCount = 0;
       return currentTool || "message";

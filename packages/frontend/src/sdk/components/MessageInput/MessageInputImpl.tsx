@@ -47,6 +47,7 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
       createTaskContext,
       disabled = false,
       showMentions = true,
+      bottomAccessory,
     },
     ref,
   ) => {
@@ -452,6 +453,13 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
             </button>
           </div>
         </div>
+
+        {bottomAccessory && (
+          <div className="mx-auto flex w-full max-w-[800px] justify-start mt-2 px-2">
+            {bottomAccessory}
+          </div>
+        )}
+
         <ImagePreviewModal image={previewImage} onClose={() => setPreviewImage(null)} />
       </div>
     );

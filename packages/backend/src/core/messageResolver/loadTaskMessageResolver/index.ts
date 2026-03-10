@@ -1,5 +1,5 @@
 import type { USER_SEND_MESSAGE_NAME } from "@amigo-llm/types";
-import { broadcaster, conversationRepository } from "@/core/conversation";
+import { broadcaster } from "@/core/conversation";
 import { changeCurrentTaskId } from "@/utils/changeCurrentTaskId";
 import { logger } from "@/utils/logger";
 import BaseMessageResolver from "../base";
@@ -17,10 +17,12 @@ export class LoadTaskMessageResolver extends BaseMessageResolver<"loadTask"> {
     const subTasks = this.conversation.memory.subTasks;
     const autoApproveToolNames = this.conversation.memory.autoApproveToolNames;
     const contextUsage = this.conversation.memory.contextUsage;
+    const context = this.conversation.memory.context;
     if (
       (subTasks && Object.keys(subTasks).length > 0) ||
       (autoApproveToolNames && autoApproveToolNames.length > 0) ||
-      contextUsage
+      contextUsage ||
+      context
     ) {
       broadcaster.broadcast(taskId, {
         type: "taskStatusMapUpdated",
@@ -29,6 +31,7 @@ export class LoadTaskMessageResolver extends BaseMessageResolver<"loadTask"> {
           subTasks,
           autoApproveToolNames,
           contextUsage,
+          context,
         },
       });
     }

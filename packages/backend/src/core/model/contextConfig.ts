@@ -1,30 +1,36 @@
 import { getGlobalState } from "@/globalState";
+import type { ModelProvider } from "./types";
 
-export interface ModelContextConfig {
-  contextWindow: number;
+export interface ModelConfig {
+  provider?: ModelProvider;
+  baseURL?: string;
+  contextWindow?: number;
   compressionThreshold?: number;
   targetRatio?: number;
   preserveRecentMessages?: number;
   minMessagesToCompress?: number;
 }
 
-export interface ResolvedModelContextConfig {
+export interface ResolvedModelConfig {
   model: string;
-  contextWindow: number;
-  compressionThreshold: number;
-  targetRatio: number;
-  preserveRecentMessages: number;
-  minMessagesToCompress: number;
+  provider?: ModelProvider;
+  baseURL?: string;
+  contextWindow?: number;
+  compressionThreshold?: number;
+  targetRatio?: number;
+  preserveRecentMessages?: number;
+  minMessagesToCompress?: number;
 }
 
-type RawModelContextConfig = ModelContextConfig | number;
+export type ModelContextConfig = ModelConfig & { contextWindow: number };
+export type ResolvedModelContextConfig = ResolvedModelConfig & { contextWindow: number };
+
+type RawModelConfig = ModelConfig | number;
 
 const DEFAULT_COMPRESSION_THRESHOLD = 0.8;
 const DEFAULT_TARGET_RATIO = 0.5;
 const DEFAULT_PRESERVE_RECENT_MESSAGES = 8;
 const DEFAULT_MIN_MESSAGES_TO_COMPRESS = 4;
-
-let cachedEnvConfigs: Record<string, RawModelContextConfig> | null = null;
 
 const normalizeModelName = (model: string): string => model.trim().toLowerCase();
 
@@ -48,41 +54,10 @@ const toPositiveInt = (value: number | undefined, fallback: number): number => {
   return Math.max(1, Math.floor(value));
 };
 
-const parseEnvConfigs = (): Record<string, RawModelContextConfig> => {
-  if (cachedEnvConfigs) {
-    return cachedEnvConfigs;
-  }
-
-  const raw = process.env.MODEL_CONTEXT_CONFIGS?.trim();
-  if (!raw) {
-    cachedEnvConfigs = {};
-    return cachedEnvConfigs;
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      cachedEnvConfigs = {};
-      return cachedEnvConfigs;
-    }
-
-    cachedEnvConfigs = Object.fromEntries(
-      Object.entries(parsed as Record<string, RawModelContextConfig>).map(([model, value]) => [
-        normalizeModelName(model),
-        value,
-      ]),
-    );
-    return cachedEnvConfigs;
-  } catch {
-    cachedEnvConfigs = {};
-    return cachedEnvConfigs;
-  }
-};
-
 const normalizeConfig = (
   model: string,
-  rawConfig: RawModelContextConfig | undefined,
-): ResolvedModelContextConfig | null => {
+  rawConfig: RawModelConfig | undefined,
+): ResolvedModelConfig | null => {
   if (typeof rawConfig === "number") {
     if (!Number.isFinite(rawConfig) || rawConfig <= 0) {
       return null;
@@ -97,8 +72,25 @@ const normalizeConfig = (
     };
   }
 
-  if (!rawConfig || !Number.isFinite(rawConfig.contextWindow) || rawConfig.contextWindow <= 0) {
+  if (!rawConfig) {
     return null;
+  }
+
+  const provider = rawConfig.provider?.trim() || undefined;
+  const baseURL = rawConfig.baseURL?.trim() || undefined;
+  const hasContextWindow =
+    Number.isFinite(rawConfig.contextWindow) && (rawConfig.contextWindow || 0) > 0;
+
+  if (!hasContextWindow && !provider && !baseURL) {
+    return null;
+  }
+
+  if (!hasContextWindow) {
+    return {
+      model,
+      provider,
+      baseURL,
+    };
   }
 
   const compressionThreshold = clampRatio(
@@ -116,7 +108,9 @@ const normalizeConfig = (
 
   return {
     model,
-    contextWindow: Math.floor(rawConfig.contextWindow),
+    provider,
+    baseURL,
+    contextWindow: Math.floor(rawConfig.contextWindow as number),
     compressionThreshold,
     targetRatio,
     preserveRecentMessages: toPositiveInt(
@@ -130,9 +124,9 @@ const normalizeConfig = (
   };
 };
 
-export const resolveModelContextConfig = (model: string): ResolvedModelContextConfig | null => {
+export const resolveModelConfig = (model: string): ResolvedModelConfig | null => {
   const normalizedModel = normalizeModelName(model);
-  const configured = getGlobalState("modelContextConfigs");
+  const configured = getGlobalState("modelConfigs") ?? getGlobalState("modelContextConfigs");
   const normalizedConfigured = configured
     ? Object.fromEntries(
         Object.entries(configured).map(([configuredModel, value]) => [
@@ -141,6 +135,15 @@ export const resolveModelContextConfig = (model: string): ResolvedModelContextCo
         ]),
       )
     : null;
-  const rawConfig = normalizedConfigured?.[normalizedModel] ?? parseEnvConfigs()[normalizedModel];
+  const rawConfig = normalizedConfigured?.[normalizedModel];
   return normalizeConfig(model, rawConfig);
+};
+
+export const resolveModelContextConfig = (model: string): ResolvedModelContextConfig | null => {
+  const config = resolveModelConfig(model);
+  if (!config?.contextWindow) {
+    return null;
+  }
+
+  return config as ResolvedModelContextConfig;
 };

@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { getGlobalState } from "@amigo-llm/backend";
+import { getTaskStoragePath } from "@amigo-llm/backend";
+import { getConfiguredPenpotConfig } from "../../config/runtimeConfig";
 
 const PENPOT_BINDINGS_DIRNAME = "penpotBindings";
 
@@ -16,7 +17,9 @@ export interface PenpotBinding {
 }
 
 export const getPenpotBaseUrl = () =>
-  (process.env.PENPOT_BASE_URL || "http://localhost:9001").trim().replace(/\/+$/, "");
+  (getConfiguredPenpotConfig()?.baseUrl || process.env.PENPOT_BASE_URL || "http://localhost:9001")
+    .trim()
+    .replace(/\/+$/, "");
 
 const normalizePageId = (value: string) =>
   value
@@ -26,7 +29,7 @@ const normalizePageId = (value: string) =>
     .replace(/^-+|-+$/g, "");
 
 const getBindingsPath = (taskId: string) =>
-  path.join(getGlobalState("globalStoragePath") || process.cwd(), taskId, PENPOT_BINDINGS_DIRNAME);
+  path.join(getTaskStoragePath(taskId), PENPOT_BINDINGS_DIRNAME);
 
 export const parsePenpotBindingUrl = (
   penpotUrl: string,

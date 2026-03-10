@@ -20,7 +20,7 @@ export const messageInputEditorStyles = `
     min-height: 60px;
     max-height: 320px;
     overflow-y: auto;
-    padding: 18px 64px 18px 60px;
+    padding: 18px 108px 18px 60px;
     border-radius: 30px;
     border: 1px solid #e5e7eb;
     background-color: #ffffff;

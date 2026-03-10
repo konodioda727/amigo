@@ -1,9 +1,10 @@
 import type { ToolInterface } from "@amigo-llm/types";
 import Bun, { type ServerWebSocket } from "bun";
 import { setGlobalState } from "@/globalState";
+import { configureLogger, type LoggerConfig } from "@/utils/logger";
 import type { ServerConfig } from "../config";
 import { type LlmFactory, setLlmFactory } from "../model";
-import type { ModelContextConfig } from "../model/contextConfig";
+import type { ModelConfig, ModelContextConfig } from "../model/contextConfig";
 import type { MessageRegistry, ToolRegistry } from "../registry";
 import type { SandboxManager } from "../sandbox";
 import { ServerWebSocketMessageHandler } from "./webSocketMessageHandler";
@@ -39,8 +40,12 @@ export interface AmigoServerOptions {
   systemPrompts?: Partial<Record<"main" | "sub", string>>;
   /** 可注入的 sandbox manager */
   sandboxManager?: SandboxManager;
-  /** 按模型配置上下文窗口与压缩阈值 */
+  /** 按模型配置 provider、baseURL、上下文窗口与压缩参数 */
+  modelConfigs?: Record<string, ModelConfig | number>;
+  /** 兼容旧命名，后续建议使用 modelConfigs */
   modelContextConfigs?: Record<string, ModelContextConfig | number>;
+  /** 日志配置 */
+  loggerConfig?: Partial<LoggerConfig>;
   /** 会话创建完成后的 app 层 hook */
   onConversationCreate?: (payload: { taskId: string; context?: any }) => void | Promise<void>;
 }
@@ -61,7 +66,11 @@ class AmigoServer {
     this._messageRegistry = options.messageRegistry;
     this.webSocketMessageHandler = new ServerWebSocketMessageHandler(options.messageRegistry);
 
+    if (options.loggerConfig) {
+      configureLogger(options.loggerConfig);
+    }
     setGlobalState("globalStoragePath", options.config.storagePath);
+    setGlobalState("globalCachePath", options.config.cachePath);
     setLlmFactory(options.llmFactory);
 
     if (options.toolRegistry) {
@@ -76,7 +85,9 @@ class AmigoServer {
     setGlobalState("baseTools", options.baseTools || {});
     setGlobalState("systemPrompts", options.systemPrompts || {});
     setGlobalState("sandboxManager", options.sandboxManager);
-    setGlobalState("modelContextConfigs", options.modelContextConfigs);
+    const modelConfigs = options.modelConfigs ?? options.modelContextConfigs;
+    setGlobalState("modelConfigs", modelConfigs);
+    setGlobalState("modelContextConfigs", modelConfigs);
     setGlobalState("onConversationCreate", options.onConversationCreate);
   }
 

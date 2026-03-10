@@ -29,6 +29,8 @@
     "zod": "^4.1.13"
   },
   "devDependencies": {
+    "@types/react": "^18.2.15",
+    "@types/react-dom": "^18.2.7",
     "bun-plugin-tailwind": "^0.1.2",
     "daisyui": "^5.1.25",
     "tailwindcss": "^4.1.17",

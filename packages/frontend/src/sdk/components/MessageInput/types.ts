@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 export interface MessageInputProps {
   taskId?: string;
   className?: string;
@@ -6,6 +8,7 @@ export interface MessageInputProps {
   createTaskContext?: unknown;
   disabled?: boolean;
   showMentions?: boolean;
+  bottomAccessory?: ReactNode;
 }
 
 export interface MessageInputRef {

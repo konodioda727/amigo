@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { defineTool, getGlobalState, logger } from "@amigo-llm/backend";
+import { defineTool, getTaskStoragePath, logger } from "@amigo-llm/backend";
 import { type ExecutableDesignDoc, validateExecutableDesignDoc } from "./designDocSchema";
 import { resolveDesignDocOwnerTaskId } from "./designDocScope";
 
@@ -36,7 +36,7 @@ export const normalizePageId = (value: string): string =>
     .replace(/^-+|-+$/g, "");
 
 export const getDesignDocsPath = (taskId: string) =>
-  path.join(getGlobalState("globalStoragePath") || process.cwd(), taskId, DESIGN_DOCS_DIRNAME);
+  path.join(getTaskStoragePath(taskId), DESIGN_DOCS_DIRNAME);
 
 const ensureDirectoryExists = (directory: string) => {
   if (!existsSync(directory)) {

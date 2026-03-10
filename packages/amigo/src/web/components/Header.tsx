@@ -17,17 +17,9 @@ const statusConfig: Record<ConnectionStatus, { label: string; color: string; pul
   disconnected: { label: "已断开", color: "bg-red-500" },
 };
 
-const formatUsageRatio = (ratio?: number): string => {
-  if (typeof ratio !== "number" || Number.isNaN(ratio)) {
-    return "--";
-  }
-  return `${Math.round(ratio * 100)}%`;
-};
-
 const Header: React.FC = () => {
   const { status: connectionStatus } = useConnection();
-  const { currentTaskId, mainTaskId, switchTask, taskStatusMaps, taskContextUsageMaps } =
-    useTasks();
+  const { currentTaskId, mainTaskId, switchTask, taskStatusMaps } = useTasks();
   const { isOpen, toggle } = useSidebar();
   const config = statusConfig[connectionStatus];
 
@@ -46,13 +38,6 @@ const Header: React.FC = () => {
           return normalizeSubTaskDescription(description);
         })()
       : undefined;
-  const currentTaskContextUsage =
-    (currentTaskId && taskContextUsageMaps?.[currentTaskId]) ||
-    (mainTaskId ? taskContextUsageMaps?.[mainTaskId] : undefined);
-  const isContextUsageHigh =
-    (currentTaskContextUsage?.usageRatio || 0) >=
-    (currentTaskContextUsage?.compressionThreshold || Number.POSITIVE_INFINITY);
-
   return (
     <header className="h-12 border-b border-gray-100 bg-white flex items-center justify-between px-4 z-20">
       <div className="flex items-center gap-4 flex-1">
@@ -107,21 +92,6 @@ const Header: React.FC = () => {
         )}
       </div>
       <div className="flex items-center gap-2 px-2 py-0.5">
-        {currentTaskContextUsage && (
-          <div
-            className={`px-2 py-0.5 rounded-full text-[11px] font-medium border ${
-              currentTaskContextUsage.isCompressing
-                ? "bg-blue-50 text-blue-600 border-blue-100"
-                : isContextUsageHigh
-                  ? "bg-amber-50 text-amber-700 border-amber-100"
-                  : "bg-gray-50 text-gray-600 border-gray-100"
-            }`}
-          >
-            {currentTaskContextUsage.isCompressing
-              ? `压缩中 ${formatUsageRatio(currentTaskContextUsage.usageRatio)}`
-              : `上下文 ${formatUsageRatio(currentTaskContextUsage.usageRatio)}`}
-          </div>
-        )}
         <span
           className={`
             w-1.5 h-1.5 rounded-full ${config.color}

@@ -35,6 +35,7 @@ export interface TaskSlice {
   taskStatusMaps: Record<string, Record<string, any>>;
   taskAutoApproveToolNameMaps: Record<string, string[]>;
   taskContextUsageMaps: Record<string, ContextUsageStatus | undefined>;
+  taskContextMaps: Record<string, unknown>;
 
   registerTask: (taskId: string) => void;
   unregisterTask: (taskId: string) => void;
@@ -50,6 +51,7 @@ export interface TaskSlice {
   setTaskStatusMap: (taskId: string, subTasks: Record<string, any>) => void;
   setTaskAutoApproveToolNames: (taskId: string, toolNames: string[]) => void;
   setTaskContextUsage: (taskId: string, contextUsage: ContextUsageStatus | undefined) => void;
+  setTaskContext: (taskId: string, context: unknown) => void;
   setCreatingConversation: (isCreating: boolean) => void;
   taskStatusMapUpdated: (taskId: string, subTasks: Record<string, any>) => void;
   createNewConversation: () => void;
@@ -91,6 +93,7 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
   taskStatusMaps: {},
   taskAutoApproveToolNameMaps: {},
   taskContextUsageMaps: {},
+  taskContextMaps: {},
 
   taskStatusMapUpdated: (taskId: string, subTasks: Record<string, any>) => {
     get().setTaskStatusMap(taskId, subTasks);
@@ -109,10 +112,30 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
   },
 
   unregisterTask: (taskId: string) => {
-    const { tasks } = get();
+    const {
+      tasks,
+      taskContextMaps,
+      taskContextUsageMaps,
+      taskStatusMaps,
+      taskAutoApproveToolNameMaps,
+    } = get();
     const newTasks = { ...tasks };
+    const nextTaskContextMaps = { ...taskContextMaps };
+    const nextTaskContextUsageMaps = { ...taskContextUsageMaps };
+    const nextTaskStatusMaps = { ...taskStatusMaps };
+    const nextTaskAutoApproveToolNameMaps = { ...taskAutoApproveToolNameMaps };
     delete newTasks[taskId];
-    set({ tasks: newTasks } as any);
+    delete nextTaskContextMaps[taskId];
+    delete nextTaskContextUsageMaps[taskId];
+    delete nextTaskStatusMaps[taskId];
+    delete nextTaskAutoApproveToolNameMaps[taskId];
+    set({
+      tasks: newTasks,
+      taskContextMaps: nextTaskContextMaps,
+      taskContextUsageMaps: nextTaskContextUsageMaps,
+      taskStatusMaps: nextTaskStatusMaps,
+      taskAutoApproveToolNameMaps: nextTaskAutoApproveToolNameMaps,
+    } as any);
   },
 
   setActiveTask: (taskId) => {
@@ -278,6 +301,16 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
     } as any);
   },
 
+  setTaskContext: (taskId: string, context: unknown) => {
+    const { taskContextMaps } = get();
+    set({
+      taskContextMaps: {
+        ...taskContextMaps,
+        [taskId]: context,
+      },
+    } as any);
+  },
+
   setCreatingConversation: (isCreatingConversation) => {
     set({ isCreatingConversation } as any);
   },
@@ -293,7 +326,15 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
     get().resetDocState();
 
     // Reset to empty state - server will create new task on first message
-    set({ mainTaskId: "", activeTaskId: null, isCreatingConversation: false } as any);
+    set({
+      mainTaskId: "",
+      activeTaskId: null,
+      isCreatingConversation: false,
+      taskContextMaps: {},
+      taskContextUsageMaps: {},
+      taskStatusMaps: {},
+      taskAutoApproveToolNameMaps: {},
+    } as any);
   },
 
   handleSessionHistories: (histories) => {

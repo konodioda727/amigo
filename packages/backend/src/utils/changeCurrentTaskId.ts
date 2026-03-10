@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { StorageType } from "@amigo-llm/types";
 import type { Conversation, WebSocketBroadcaster } from "@/core/conversation";
-import { getGlobalState } from "@/globalState";
+import { getTaskStoragePath } from "@/core/storage";
 import { logger } from "./logger";
 
 /**
@@ -13,16 +13,8 @@ export const changeCurrentTaskId = async (
   conversation: Conversation,
   broadcaster: WebSocketBroadcaster,
 ) => {
-  const globalStoragePath = getGlobalState("globalStoragePath");
-
-  if (!globalStoragePath) {
-    logger.error("globalStoragePath is not set.");
-    return;
-  }
-
   const frontendJsonPath = path.join(
-    globalStoragePath,
-    taskId,
+    getTaskStoragePath(taskId),
     "messages",
     `${StorageType.FRONT_END}.json`,
   );

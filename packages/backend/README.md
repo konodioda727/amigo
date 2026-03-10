@@ -35,7 +35,8 @@ import { AmigoServerBuilder } from "@amigo-llm/backend/sdk";
 
 const server = new AmigoServerBuilder()
   .port(10013)
-  .storagePath("./storage")
+  .cachePath("./.amigo")
+  .loggerConfig({ enableTimestamp: true })
   .build();
 
 server.start();
@@ -43,7 +44,9 @@ server.start();
 
 同时提供 `server.init()`，推荐统一使用 `server.start()`。
 
-这会启动一个 headless conversation WebSocket runtime。应用可以在自己的 `Bun.serve(...)` 里接入这个 runtime，再补充自己的 HTTP 路由、editor 跳转、preview 路由或 preview 代理。
+这会启动一个 headless conversation WebSocket runtime。应用可以在自己的 `Bun.serve(...)` 里接入这个 runtime，再补充自己的 HTTP 路由、鉴权和页面壳层。
+
+`editor` 跳转、`preview` 路由、preview HTTP / WebSocket 反代都属于应用层能力，不属于 backend SDK 本身。
 
 例如：
 
@@ -53,7 +56,7 @@ import { AmigoServerBuilder } from "@amigo-llm/backend/sdk";
 
 const runtime = new AmigoServerBuilder()
   .port(10013)
-  .storagePath("./storage")
+  .cachePath("./.amigo")
   .build();
 
 Bun.serve({
@@ -90,7 +93,13 @@ Bun.serve({
 ### 基础配置
 
 ```ts
-new AmigoServerBuilder().port(10013).storagePath("./storage");
+new AmigoServerBuilder().port(10013).cachePath("./.amigo");
+```
+
+也可以显式配置日志：
+
+```ts
+new AmigoServerBuilder().loggerConfig({ enableTimestamp: false });
 ```
 
 ### 注册工具
@@ -177,13 +186,15 @@ const server = new AmigoServerBuilder()
 - mock / test
 - 对接自定义 provider
 
-### 模型上下文窗口与自动压缩
+### 模型配置与自动压缩
 
-如果你希望按模型手动配置上下文窗口，并在接近阈值时自动压缩历史上下文：
+如果你希望按模型统一配置 provider、baseURL、上下文窗口，并在接近阈值时自动压缩历史上下文：
 
 ```ts
-new AmigoServerBuilder().modelContextConfigs({
+new AmigoServerBuilder().modelConfigs({
   "qwen3-coder": {
+    provider: "openai-compatible",
+    baseURL: "https://openrouter.ai/api/v1",
     contextWindow: 262144,
     compressionThreshold: 0.8,
     targetRatio: 0.5,
@@ -191,13 +202,16 @@ new AmigoServerBuilder().modelContextConfigs({
 });
 ```
 
-也可以直接使用环境变量 `MODEL_CONTEXT_CONFIGS`，格式相同。
+如果你希望在配置时拿到更好的类型提示，可以从 SDK 导入 `MODEL_PROVIDERS`、`KnownModelProvider` 和 `ModelConfig`。
+
+`modelConfigs()` 是推荐入口。旧的 `modelContextConfigs()` 仍兼容，但后续建议统一迁移到 `modelConfigs`。
 
 行为说明：
 
 - 当前任务的上下文占比会同步到 `taskStatusMapUpdated.data.contextUsage`
 - 当占比达到 `compressionThreshold` 时，服务端会先总结较早的会话，再只携带“压缩摘要锚点及其之后”的上下文继续调用模型
 - 压缩开始 / 完成 / 失败会通过 `alert` 消息同步到前端
+- provider 解析优先读取 `modelConfigs[model].provider`；未配置时，仍会回退到 SDK 内置的默认 provider 规则
 
 ### 自动批准工具
 
@@ -364,12 +378,10 @@ server.stop();
 - design doc 读写工具
 - Penpot 同步
 - GitHub 仓库预热
-- sandbox / bash / 文件编辑 / dev preview 工具
-- `editor` / `preview` HTTP 路由
-- preview HTTP / WebSocket 反代
+- sandbox / bash / 文件编辑 / dev server 工具
 - coding agent 专用系统提示词
 
-对应入口在 [`packages/amigo/src/server/app.ts`](../amigo/src/server/app.ts)。如果你要做自己的应用，可以复用 backend runtime，并在自己的服务端入口里接入这些能力或替换成自己的实现。
+对应入口在 [`packages/amigo/src/server/app.ts`](../amigo/src/server/app.ts)。其中 `editor` / `preview` 路由以及 preview HTTP / WebSocket 反代，都是 `packages/amigo` 这一层 app HTTP 额外补上的能力。如果你要做自己的应用，可以复用 backend runtime，并在自己的服务端入口里自行实现这些路由与暴露策略。
 
 ## 运行时配置
 

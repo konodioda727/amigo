@@ -8,6 +8,7 @@ export const TaskStatusMapUpdatedMessageSchema = z.object({
     subTasks: z.record(z.string(), z.any()), // Use any for now or a proper zod schema for SubTaskStatus
     autoApproveToolNames: z.array(z.string()).optional(),
     contextUsage: z.any().optional(),
+    context: z.any().optional(),
   }),
 });
 
@@ -16,4 +17,5 @@ export type TaskStatusMapUpdatedData = {
   subTasks: Record<string, SubTaskStatus>;
   autoApproveToolNames?: string[];
   contextUsage?: ContextUsageStatus;
+  context?: unknown;
 };

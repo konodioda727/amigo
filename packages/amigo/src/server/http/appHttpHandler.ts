@@ -1,5 +1,6 @@
 import { conversationRepository, logger, type SandboxRegistry } from "@amigo-llm/backend";
 import { z } from "zod";
+import type { PreviewHostConfig } from "../config/previewHost";
 import {
   getDesignDocController,
   listDesignDocsController,
@@ -24,11 +25,6 @@ interface AppHttpRoute {
   method: "GET" | "POST" | "DELETE";
   pattern: RegExp;
   controller: (req: Request, match: RegExpMatchArray) => Promise<Response>;
-}
-
-export interface PreviewHostConfig {
-  baseDomain?: string;
-  publicProtocol?: string;
 }
 
 export interface AmigoHttpHandler {

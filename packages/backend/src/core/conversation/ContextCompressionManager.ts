@@ -75,7 +75,6 @@ const buildContextUsage = (params: {
   isCompressing: boolean;
   compressionCount: number;
   lastCompressionAt?: string;
-  compressionAnchorUpdateTime?: number;
 }): ContextUsageStatus => ({
   model: params.conversation.llm.model,
   contextWindow: params.contextWindow,
@@ -86,25 +85,14 @@ const buildContextUsage = (params: {
   isCompressing: params.isCompressing,
   compressionCount: params.compressionCount,
   lastCompressionAt: params.lastCompressionAt,
-  compressionAnchorUpdateTime: params.compressionAnchorUpdateTime,
 });
 
-const getCompressionAnchorIndex = (
-  messages: ChatMessage[],
-  anchorUpdateTime?: number,
-): number | null => {
-  if (typeof anchorUpdateTime !== "number") {
-    return null;
-  }
-
-  const index = messages.findIndex((message) => message.updateTime === anchorUpdateTime);
+const getCompressionAnchorIndex = (messages: ChatMessage[]): number | null => {
+  const index = messages.findLastIndex((message) => message.type === "compaction");
   return index >= 1 ? index : null;
 };
 
-const getMessagesForCurrentContext = (
-  messages: ChatMessage[],
-  anchorUpdateTime?: number,
-): ChatMessage[] => {
+const getMessagesForCurrentContext = (messages: ChatMessage[]): ChatMessage[] => {
   if (messages.length <= 1) {
     return [...messages];
   }
@@ -114,7 +102,7 @@ const getMessagesForCurrentContext = (
     return [];
   }
 
-  const anchorIndex = getCompressionAnchorIndex(messages, anchorUpdateTime);
+  const anchorIndex = getCompressionAnchorIndex(messages);
   if (anchorIndex === null) {
     return [...messages];
   }
@@ -135,22 +123,30 @@ const buildCompressionTranscript = (messages: ChatMessage[]): string =>
 const buildCompressionSystemPrompt = (): string =>
   [
     "你是一个对话上下文压缩器。",
-    "你的任务是把一段多轮任务执行历史压缩成可继续执行任务的上下文摘要。",
-    "保留这些信息：用户目标、关键约束、已完成动作、重要工具结果、失败与回退、当前待办、未解决问题。",
-    "不要杜撰，不要加入新计划，不要输出 markdown 标题层级过深。",
-    "输出必须简洁但信息完整，便于后续模型直接继续任务。",
+    "你的任务是把一段多轮任务执行历史压缩成结构化摘要。",
+    "保留这些信息：用户目标、关键约束、已完成动作、重要工具结果、失败与回退、当前事实、未决问题。",
+    "不要杜撰，不要加入新计划，不要输出下一步建议。",
+    "输出必须简洁但信息完整，便于后续模型结合摘要之后的近期消息继续任务。",
   ].join("\n");
 
 const buildCompressionUserPrompt = (transcript: string): string =>
   [
     "请压缩下面这段历史会话。",
     "输出格式：",
-    "1. 目标与约束",
-    "2. 已完成事项",
-    "3. 当前状态",
-    "4. 下一步",
+    "1. 用户目标与约束",
+    "2. 已完成动作与关键结果",
+    "3. 当前已知事实",
+    "4. 未决问题",
     "",
     transcript,
+  ].join("\n");
+
+const buildCompactionMessageContent = (summary: string): string =>
+  [
+    "以下为此锚点之前历史交互的压缩摘要。",
+    "它只包含已确认的目标、约束、关键动作、工具结果与未决问题；其后的近期消息拥有更高优先级。",
+    "",
+    summary.trim(),
   ].join("\n");
 
 const emitCompressionAlert = (
@@ -176,7 +172,6 @@ type CompressionSplit = {
 
 const decideCompressionSplit = (
   messages: ChatMessage[],
-  anchorUpdateTime: number | undefined,
   keepBudgetTokens: number,
   preserveRecentMessages: number,
   minMessagesToCompress: number,
@@ -185,7 +180,7 @@ const decideCompressionSplit = (
     return null;
   }
 
-  const anchorIndex = getCompressionAnchorIndex(messages, anchorUpdateTime) ?? 1;
+  const anchorIndex = getCompressionAnchorIndex(messages) ?? 1;
   if (anchorIndex >= messages.length - 1) {
     return null;
   }
@@ -241,37 +236,68 @@ const streamSummaryText = async (
   return summary.trim();
 };
 
+const buildContextUsageSnapshot = (
+  conversation: Conversation,
+): {
+  contextUsage: ContextUsageStatus;
+  modelMessages: AmigoModelMessage[];
+} | null => {
+  const config = resolveModelContextConfig(conversation.llm.model);
+  if (!config) {
+    return null;
+  }
+
+  const selectedMessages = getMessagesForCurrentContext(conversation.memory.messages);
+  const modelMessages = toModelMessages(selectedMessages, conversation.llm);
+  const estimatedTokens = estimateModelMessagesTokens(modelMessages);
+
+  return {
+    modelMessages,
+    contextUsage: buildContextUsage({
+      conversation,
+      estimatedTokens,
+      contextWindow: config.contextWindow,
+      compressionThreshold: config.compressionThreshold,
+      targetRatio: config.targetRatio,
+      isCompressing: conversation.memory.contextUsage?.isCompressing || false,
+      compressionCount: conversation.memory.contextUsage?.compressionCount || 0,
+      lastCompressionAt: conversation.memory.contextUsage?.lastCompressionAt,
+    }),
+  };
+};
+
 export class ContextCompressionManager {
+  syncContextUsage(conversation: Conversation): void {
+    const snapshot = buildContextUsageSnapshot(conversation);
+    if (!snapshot) {
+      if (conversation.memory.contextUsage) {
+        conversation.setContextUsage(undefined);
+      }
+      return;
+    }
+
+    conversation.setContextUsage(snapshot.contextUsage);
+  }
+
   async prepareMessages(
     conversation: Conversation,
     signal?: AbortSignal,
   ): Promise<AmigoModelMessage[]> {
-    const config = resolveModelContextConfig(conversation.llm.model);
-    if (!config) {
+    const snapshot = buildContextUsageSnapshot(conversation);
+    if (!snapshot) {
       if (conversation.memory.contextUsage) {
         conversation.setContextUsage(undefined);
       }
       return toModelMessages(conversation.memory.messages, conversation.llm);
     }
 
-    let selectedMessages = getMessagesForCurrentContext(
-      conversation.memory.messages,
-      conversation.memory.contextUsage?.compressionAnchorUpdateTime,
-    );
-    let modelMessages = toModelMessages(selectedMessages, conversation.llm);
-    let estimatedTokens = estimateModelMessagesTokens(modelMessages);
-    let contextUsage = buildContextUsage({
-      conversation,
-      estimatedTokens,
-      contextWindow: config.contextWindow,
-      compressionThreshold: config.compressionThreshold,
-      targetRatio: config.targetRatio,
+    const config = resolveModelContextConfig(conversation.llm.model)!;
+    let selectedMessages = getMessagesForCurrentContext(conversation.memory.messages);
+    let modelMessages = snapshot.modelMessages;
+    let contextUsage = {
+      ...snapshot.contextUsage,
       isCompressing: false,
-      compressionCount: conversation.memory.contextUsage?.compressionCount || 0,
-      lastCompressionAt: conversation.memory.contextUsage?.lastCompressionAt,
-      compressionAnchorUpdateTime: conversation.memory.contextUsage?.compressionAnchorUpdateTime,
-    });
-
+    };
     conversation.setContextUsage(contextUsage);
     if (contextUsage.usageRatio < config.compressionThreshold) {
       return modelMessages;
@@ -279,7 +305,6 @@ export class ContextCompressionManager {
 
     const split = decideCompressionSplit(
       conversation.memory.messages,
-      conversation.memory.contextUsage?.compressionAnchorUpdateTime,
       Math.floor(config.contextWindow * config.targetRatio),
       config.preserveRecentMessages,
       config.minMessagesToCompress,
@@ -321,20 +346,16 @@ export class ContextCompressionManager {
         throw new Error("压缩摘要为空");
       }
 
-      broadcaster.persistMessageOnly(conversation, {
-        role: "assistant",
-        type: "message",
-        content: "以下是此前会话的压缩摘要，请将其视为已经确认的事实背景并据此继续：\n" + summary,
+      conversation.memory.insertMessageAt(split.keepStartIndex, {
+        role: "system",
+        type: "compaction",
+        content: buildCompactionMessageContent(summary),
         partial: false,
       });
 
-      const anchorUpdateTime = conversation.memory.lastMessage?.updateTime;
-      selectedMessages = getMessagesForCurrentContext(
-        conversation.memory.messages,
-        anchorUpdateTime,
-      );
+      selectedMessages = getMessagesForCurrentContext(conversation.memory.messages);
       modelMessages = toModelMessages(selectedMessages, conversation.llm);
-      estimatedTokens = estimateModelMessagesTokens(modelMessages);
+      const estimatedTokens = estimateModelMessagesTokens(modelMessages);
 
       const completedAt = new Date().toISOString();
       contextUsage = buildContextUsage({
@@ -346,7 +367,6 @@ export class ContextCompressionManager {
         isCompressing: false,
         compressionCount: (conversation.memory.contextUsage?.compressionCount || 0) + 1,
         lastCompressionAt: completedAt,
-        compressionAnchorUpdateTime: anchorUpdateTime,
       });
       conversation.setContextUsage(contextUsage);
 
@@ -378,6 +398,7 @@ export class ContextCompressionManager {
 export const contextCompressionManager = new ContextCompressionManager();
 
 export const __testing__ = {
+  buildContextUsageSnapshot,
   decideCompressionSplit,
   estimateChatMessageTokens,
   estimateModelMessagesTokens,

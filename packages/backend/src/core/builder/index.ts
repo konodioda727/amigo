@@ -6,9 +6,10 @@
 
 import type { MessageDefinition, ToolInterface } from "@amigo-llm/types";
 import type { ZodObject } from "zod";
+import type { LoggerConfig } from "@/utils/logger";
 import { type ServerConfig, ServerConfigSchema } from "../config";
 import type { LlmFactory } from "../model";
-import type { ModelContextConfig } from "../model/contextConfig";
+import type { ModelConfig, ModelContextConfig } from "../model/contextConfig";
 import { MessageRegistry, ToolRegistry } from "../registry";
 import type { SandboxManager } from "../sandbox";
 import AmigoServer from "../server";
@@ -22,7 +23,7 @@ import AmigoServer from "../server";
  *
  * const server = new AmigoServerBuilder()
  *   .port(8080)
- *   .storagePath("./my-storage")
+ *   .cachePath("./.amigo")
  *   .registerTool(myTool)
  *   .build();
  *
@@ -41,7 +42,8 @@ export class AmigoServerBuilder {
   private _baseTools: Partial<Record<"main" | "sub", ToolInterface<any>[]>> = {};
   private _systemPrompts: Partial<Record<"main" | "sub", string>> = {};
   private _sandboxManager?: SandboxManager;
-  private _modelContextConfigs?: Record<string, ModelContextConfig | number>;
+  private _modelConfigs?: Record<string, ModelConfig | number>;
+  private _loggerConfig?: Partial<LoggerConfig>;
   private _onConversationCreate?: (payload: {
     taskId: string;
     context?: any;
@@ -56,10 +58,10 @@ export class AmigoServerBuilder {
   }
 
   /**
-   * 设置会话持久化存储路径
+   * 设置内部缓存根目录（pnpm-store / github-bootstrap 等）
    */
-  storagePath(path: string): this {
-    this.config.storagePath = path;
+  cachePath(path: string): this {
+    this.config.cachePath = path;
     return this;
   }
 
@@ -195,8 +197,18 @@ export class AmigoServerBuilder {
     return this;
   }
 
+  modelConfigs(configs: Record<string, ModelConfig | number>): this {
+    this._modelConfigs = { ...configs };
+    return this;
+  }
+
   modelContextConfigs(configs: Record<string, ModelContextConfig | number>): this {
-    this._modelContextConfigs = { ...configs };
+    this._modelConfigs = { ...configs };
+    return this;
+  }
+
+  loggerConfig(config: Partial<LoggerConfig>): this {
+    this._loggerConfig = { ...this._loggerConfig, ...config };
     return this;
   }
 
@@ -238,7 +250,8 @@ export class AmigoServerBuilder {
       baseTools: this._baseTools,
       systemPrompts: this._systemPrompts,
       sandboxManager: this._sandboxManager,
-      modelContextConfigs: this._modelContextConfigs,
+      modelConfigs: this._modelConfigs,
+      loggerConfig: this._loggerConfig,
       onConversationCreate: this._onConversationCreate,
     });
   }

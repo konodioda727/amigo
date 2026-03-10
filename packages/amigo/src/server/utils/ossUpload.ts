@@ -1,4 +1,5 @@
 import { createHmac, randomUUID } from "node:crypto";
+import { getConfiguredOssUploadConfig } from "../config/runtimeConfig";
 
 export interface OssUploadConfig {
   endpoint: string;
@@ -62,7 +63,20 @@ const sanitizePathSegment = (value: string) =>
 const normalizeHost = (value: string) => value.replace(/^https?:\/\//, "").replace(/\/+$/, "");
 const normalizeBaseUrl = (value: string) => value.replace(/\/+$/, "");
 
+const normalizeConfig = (config: OssUploadConfig): OssUploadConfig => ({
+  ...config,
+  endpoint: normalizeHost(config.endpoint),
+  publicBaseUrl: normalizeBaseUrl(config.publicBaseUrl),
+  uploadPrefix: (config.uploadPrefix || "uploads").replace(/^\/+|\/+$/g, ""),
+  policyExpireSeconds: Math.max(1, Math.floor(config.policyExpireSeconds || 600)),
+});
+
 export const getOssUploadConfig = (): OssUploadConfig | null => {
+  const configured = getConfiguredOssUploadConfig();
+  if (configured !== undefined) {
+    return configured ? normalizeConfig(configured) : null;
+  }
+
   const endpoint = process.env.OSS_ENDPOINT;
   const bucket = process.env.OSS_BUCKET;
   const accessKeyId = process.env.OSS_ACCESS_KEY_ID;
@@ -77,7 +91,7 @@ export const getOssUploadConfig = (): OssUploadConfig | null => {
     process.env.OSS_PUBLIC_BASE_URL || `https://${bucket}.${endpointHost}`,
   );
 
-  return {
+  return normalizeConfig({
     endpoint: endpointHost,
     bucket,
     accessKeyId,
@@ -86,7 +100,7 @@ export const getOssUploadConfig = (): OssUploadConfig | null => {
     uploadPrefix: (process.env.OSS_UPLOAD_PREFIX || "uploads").replace(/^\/+|\/+$/g, ""),
     policyExpireSeconds: Number(process.env.OSS_POLICY_EXPIRE_SECONDS || "600"),
     securityToken: process.env.OSS_SECURITY_TOKEN || undefined,
-  };
+  });
 };
 
 export const createOssPostPolicy = (

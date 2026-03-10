@@ -81,9 +81,11 @@ export interface WebSocketStore {
   taskStatusMaps: Record<string, Record<string, any>>;
   taskAutoApproveToolNameMaps: Record<string, string[]>;
   taskContextUsageMaps: Record<string, ContextUsageStatus | undefined>;
+  taskContextMaps: Record<string, unknown>;
   setTaskStatusMap: (taskId: string, subTasks: Record<string, any>) => void;
   setTaskAutoApproveToolNames: (taskId: string, toolNames: string[]) => void;
   setTaskContextUsage: (taskId: string, contextUsage: ContextUsageStatus | undefined) => void;
+  setTaskContext: (taskId: string, context: unknown) => void;
   // Connection state
   socket: WebSocket | null;
   connectionStatus: ConnectionStatus;

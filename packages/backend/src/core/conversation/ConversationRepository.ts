@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { StorageType, type TaskStatusMetadata, type ToolInterface } from "@amigo-llm/types";
 import { getSandboxManager, sandboxRegistry } from "@/core/sandbox";
+import { getStorageRootPath } from "@/core/storage";
 import { getGlobalState } from "@/globalState";
 import { logger } from "@/utils/logger";
 import { FilePersistedMemory } from "../memory";
@@ -154,7 +155,7 @@ export class ConversationRepository {
    */
   async deleteWithChildren(taskId: string): Promise<string[]> {
     const deletedIds: string[] = [];
-    const storageRoot = getGlobalState("globalStoragePath") || process.cwd();
+    const storageRoot = getStorageRootPath();
     const { existingTaskIds, parentMap, childrenMap } = this.buildTaskRelationGraph(storageRoot);
     if (!existingTaskIds.has(taskId)) {
       logger.warn(`[ConversationRepository] 任务不存在: ${taskId}`);

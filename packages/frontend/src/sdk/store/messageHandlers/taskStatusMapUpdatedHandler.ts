@@ -15,5 +15,8 @@ export const handleTaskStatusMapUpdated = (
   if (data.taskId && "contextUsage" in data) {
     store.setTaskContextUsage(data.taskId, data.contextUsage);
   }
+  if (data.taskId && "context" in data) {
+    store.setTaskContext(data.taskId, data.context);
+  }
   return true;
 };

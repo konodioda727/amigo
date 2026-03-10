@@ -75,6 +75,7 @@ export interface UseTasksReturn {
   taskStatusMaps: Record<string, Record<string, SubTaskStatus>>;
   taskAutoApproveToolNameMaps: Record<string, string[]>;
   taskContextUsageMaps: Record<string, ContextUsageStatus | undefined>;
+  taskContextMaps: Record<string, unknown>;
 
   // Task operations
   switchTask: (taskId: string) => void;

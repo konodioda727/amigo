@@ -104,4 +104,28 @@ describe("task status map synchronization", () => {
       }),
     );
   });
+
+  test("stores task context snapshot from taskStatusMapUpdated messages", () => {
+    const store = createWebSocketStore({
+      url: "ws://localhost:10013",
+      autoConnect: false,
+    });
+
+    store.getState().processMessage({
+      type: "taskStatusMapUpdated",
+      data: {
+        taskId: "parent-task",
+        subTasks: {},
+        context: {
+          repoUrl: "https://github.com/amigo/demo.git",
+          branch: "main",
+        },
+      },
+    } as any);
+
+    expect(store.getState().taskContextMaps["parent-task"]).toEqual({
+      repoUrl: "https://github.com/amigo/demo.git",
+      branch: "main",
+    });
+  });
 });

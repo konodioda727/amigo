@@ -1,14 +1,18 @@
+import { getConfiguredPenpotConfig } from "../../../config/runtimeConfig";
 import { getPenpotBaseUrl } from "../penpotBindings";
 import type { PenpotSyncConfig } from "./types";
 
 const normalizeBaseUrl = (value: string) => value.trim().replace(/\/+$/, "");
 
 export const readPenpotSyncConfig = (): PenpotSyncConfig => {
+  const configured = getConfiguredPenpotConfig();
   return {
-    baseUrl: normalizeBaseUrl(process.env.PENPOT_BASE_URL || getPenpotBaseUrl()),
-    accessToken: (process.env.PENPOT_ACCESS_TOKEN || "").trim(),
-    teamId: (process.env.PENPOT_TEAM_ID || "").trim(),
-    projectId: (process.env.PENPOT_PROJECT_ID || "").trim(),
+    baseUrl: normalizeBaseUrl(
+      configured?.baseUrl || process.env.PENPOT_BASE_URL || getPenpotBaseUrl(),
+    ),
+    accessToken: (configured?.accessToken || process.env.PENPOT_ACCESS_TOKEN || "").trim(),
+    teamId: (configured?.teamId || process.env.PENPOT_TEAM_ID || "").trim(),
+    projectId: (configured?.projectId || process.env.PENPOT_PROJECT_ID || "").trim(),
   };
 };
 
@@ -59,7 +63,9 @@ export const buildWorkspaceUrl = (config: PenpotSyncConfig, fileId: string, page
 
 export const ensurePenpotReadAccess = (config: PenpotSyncConfig) => {
   if (!config.accessToken) {
-    throw new Error("缺少 Penpot access token，请在 .env 中配置 PENPOT_ACCESS_TOKEN");
+    throw new Error(
+      "缺少 Penpot access token，请通过 createAmigoApp({ penpotConfig }) 或环境变量 PENPOT_ACCESS_TOKEN 配置",
+    );
   }
 };
 
@@ -67,7 +73,7 @@ export const ensurePenpotWriteAccess = (config: PenpotSyncConfig) => {
   ensurePenpotReadAccess(config);
   if (!config.teamId || !config.projectId) {
     throw new Error(
-      "缺少 Penpot teamId 或 projectId，请在 .env 中配置 PENPOT_TEAM_ID 和 PENPOT_PROJECT_ID",
+      "缺少 Penpot teamId 或 projectId，请通过 createAmigoApp({ penpotConfig }) 或环境变量 PENPOT_TEAM_ID / PENPOT_PROJECT_ID 配置",
     );
   }
 };

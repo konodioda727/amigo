@@ -4,11 +4,10 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { StorageType, type TaskStatusMetadata } from "@amigo-llm/types";
 import { conversationRepository } from "@/core/conversation";
-import { getGlobalState } from "@/globalState";
+import { getCacheRootPath, getStorageRootPath } from "@/core/storage";
 import { logger } from "@/utils/logger";
 
 const execFileAsync = promisify(execFile);
-const INTERNAL_ROOT_DIR = ".amigo";
 const GITHUB_BOOTSTRAP_DIR = "github-bootstrap";
 
 export interface GithubBootstrapInput {
@@ -30,15 +29,15 @@ interface GithubTaskBinding extends GithubBootstrapSummary {
 }
 
 function getStorageRoot(): string {
-  const storageRoot = getGlobalState("globalStoragePath");
-  if (!storageRoot) {
-    throw new Error("globalStoragePath 未配置");
-  }
-  return path.resolve(storageRoot);
+  return getStorageRootPath();
+}
+
+function getCacheRoot(): string {
+  return getCacheRootPath();
 }
 
 function getBootstrapRoot(): string {
-  return path.resolve(getStorageRoot(), "..", INTERNAL_ROOT_DIR, GITHUB_BOOTSTRAP_DIR);
+  return path.join(getCacheRoot(), GITHUB_BOOTSTRAP_DIR);
 }
 
 function getMirrorRoot(): string {

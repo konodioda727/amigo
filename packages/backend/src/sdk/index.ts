@@ -9,7 +9,7 @@
  *
  * const server = new AmigoServerBuilder()
  *   .port(8080)
- *   .storagePath("./my-storage")
+ *   .cachePath("./.amigo")
  *   .appendSystemPrompt("你是一个 coding agent，先搜索定位，再修改，修改后必须验证。")
  *   .registerTool(defineTool({
  *     name: "my_tool",
@@ -32,11 +32,14 @@
 // Builder API
 export { AmigoServerBuilder } from "../core/builder";
 export { ValidationError } from "../core/config";
-export type { ModelContextConfig } from "../core/model/contextConfig";
+export { MODEL_PROVIDERS } from "../core/model";
+export type { ModelConfig, ModelContextConfig } from "../core/model/contextConfig";
 // Error types
 // Registries (advanced usage)
 export { MessageRegistry, RegistrationError, ToolRegistry } from "../core/registry";
 export type { SandboxManager } from "../core/sandbox";
+export type { LoggerConfig } from "../utils/logger";
+export { configureLogger, LogLevel } from "../utils/logger";
 // Helper functions
 export { defineMessage, defineTool } from "./helpers";
 // Types (SDK-specific)
@@ -47,7 +50,9 @@ export type {
   CustomToolDefinition,
   CustomToolInvokeContext,
   CustomToolParam,
+  KnownModelProvider,
   LlmFactory,
+  ModelProvider,
   ServerConfig,
   ToolInterface,
   ToolParamDefinition,

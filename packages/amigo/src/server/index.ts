@@ -26,5 +26,4 @@ process.on("uncaughtException", (error) => {
 const app = createAmigoApp();
 app.server.start();
 
-const port = Number(process.env.SERVER_PORT) || 10013;
-console.log(`[amigo] server started on :${port}`);
+console.log(`[amigo] server started on :${app.port}`);

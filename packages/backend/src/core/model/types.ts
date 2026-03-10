@@ -26,7 +26,14 @@ export type AmigoLlmStreamOptions = {
   tools?: AmigoToolDefinition[];
 };
 
-export type AmigoLlmProvider = "openai-compatible" | "google-genai" | (string & {});
+export const MODEL_PROVIDERS = {
+  OPENAI_COMPATIBLE: "openai-compatible",
+  GOOGLE_GENAI: "google-genai",
+} as const;
+
+export type KnownModelProvider = (typeof MODEL_PROVIDERS)[keyof typeof MODEL_PROVIDERS];
+
+export type ModelProvider = KnownModelProvider | (string & {});
 
 export type AmigoLlmStreamEvent =
   | {
@@ -53,7 +60,7 @@ export type AmigoLlmStreamEvent =
 
 export interface AmigoLlm {
   model: string;
-  provider?: AmigoLlmProvider;
+  provider?: ModelProvider;
   stream(
     messages: AmigoModelMessage[],
     options?: AmigoLlmStreamOptions,

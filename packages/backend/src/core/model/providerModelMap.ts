@@ -1,7 +1,7 @@
-import type { AmigoLlmProvider } from "./types";
+import type { ModelProvider } from "./types";
 
 type ModelProviderRule = {
-  provider: AmigoLlmProvider;
+  provider: ModelProvider;
   modelNamePatterns: RegExp[];
 };
 
@@ -33,7 +33,7 @@ const getModelNameCandidates = (modelName: string): string[] => {
   return Array.from(new Set([normalized, modelSegment]));
 };
 
-export const resolveProviderFromModelName = (modelName: string): AmigoLlmProvider | null => {
+export const resolveProviderFromModelName = (modelName: string): ModelProvider | null => {
   const candidates = getModelNameCandidates(modelName);
 
   for (const rule of MODEL_PROVIDER_RULES) {

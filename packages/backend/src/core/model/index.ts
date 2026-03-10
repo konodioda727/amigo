@@ -1,3 +1,4 @@
+import { resolveModelConfig } from "./contextConfig";
 import {
   getProviderResolutionErrorMessage,
   resolveProviderFromModelName,
@@ -8,15 +9,17 @@ import type { AmigoLlm, LlmFactory } from "./types";
 
 export type {
   AmigoLlm,
-  AmigoLlmProvider,
   AmigoLlmStreamEvent,
   AmigoLlmStreamOptions,
   AmigoMessageContentPart,
   AmigoMessageRole,
   AmigoModelMessage,
   AmigoToolDefinition,
+  KnownModelProvider,
   LlmFactory,
+  ModelProvider,
 } from "./types";
+export { MODEL_PROVIDERS } from "./types";
 
 let injectedLlmFactory: LlmFactory | null = null;
 
@@ -28,7 +31,8 @@ const createDefaultLlm = (): AmigoLlm => {
   }
 
   const temperature = Number(process.env.LLM_TEMPERATURE) || 0;
-  const provider = resolveProviderFromModelName(modelName);
+  const configuredModel = resolveModelConfig(modelName);
+  const provider = configuredModel?.provider || resolveProviderFromModelName(modelName);
 
   if (!provider) {
     throw new Error(getProviderResolutionErrorMessage(modelName));
@@ -46,7 +50,8 @@ const createDefaultLlm = (): AmigoLlm => {
     return new OpenAICompatibleProvider({
       model: modelName,
       apiKey,
-      baseURL: process.env.MODEL_BASE_URL || "https://openrouter.ai/api/v1",
+      baseURL:
+        configuredModel?.baseURL || process.env.MODEL_BASE_URL || "https://openrouter.ai/api/v1",
       temperature,
     });
   }

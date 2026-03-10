@@ -12,7 +12,7 @@ import {
   type USER_SEND_MESSAGE_NAME,
   type WebSocketMessage,
 } from "@amigo-llm/types";
-import { getGlobalState } from "@/globalState";
+import { getTaskStoragePath } from "@/core/storage";
 import { logger } from "@/utils/logger";
 import { getTaskId } from "../templates/checklistParser";
 
@@ -46,7 +46,7 @@ export class FilePersistedMemory {
    * 检查任务是否存在于磁盘（通过检查 original.json 文件）
    */
   static exists(taskId: string): boolean {
-    const storagePath = path.join(getGlobalState("globalStoragePath") || process.cwd(), taskId);
+    const storagePath = getTaskStoragePath(taskId);
     const originalPath = path.join(storagePath, "messages", `${StorageType.ORIGINAL}.json`);
     return existsSync(originalPath);
   }
@@ -55,7 +55,7 @@ export class FilePersistedMemory {
    * 获取当前存储路径
    */
   get storagePath() {
-    return path.join(getGlobalState("globalStoragePath") || process.cwd(), this.taskId);
+    return getTaskStoragePath(this.taskId);
   }
 
   /**
@@ -294,6 +294,14 @@ export class FilePersistedMemory {
       this._messages.push({ ...message, updateTime: Date.now() });
     }
     this.saveOriginalToFile();
+  }
+
+  public insertMessageAt(index: number, message: ChatMessage): ChatMessage {
+    const safeIndex = Math.max(0, Math.min(index, this._messages.length));
+    const nextMessage = { ...message, updateTime: Date.now() };
+    this._messages.splice(safeIndex, 0, nextMessage);
+    this.saveOriginalToFile();
+    return nextMessage;
   }
 
   public addWebsocketMessage<K extends USER_SEND_MESSAGE_NAME | SERVER_SEND_MESSAGE_NAME>(

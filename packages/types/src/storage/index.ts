@@ -52,7 +52,6 @@ export interface ContextUsageStatus {
   isCompressing: boolean;
   compressionCount: number;
   lastCompressionAt?: string;
-  compressionAnchorUpdateTime?: number;
 }
 
 /**

@@ -5,11 +5,17 @@
  * Tool and Message types are imported from @amigo-llm/types package.
  */
 
+import path from "node:path";
 import { z } from "zod";
 
 // Re-export existing types from @amigo-llm/types package for convenience
 export type { ToolInterface, ToolParamDefinition } from "@amigo-llm/types";
-export type { AmigoLlm, LlmFactory } from "../../core/model";
+export type {
+  AmigoLlm,
+  KnownModelProvider,
+  LlmFactory,
+  ModelProvider,
+} from "../../core/model";
 
 // ============================================================================
 // Server Configuration (SDK-specific)
@@ -18,12 +24,18 @@ export type { AmigoLlm, LlmFactory } from "../../core/model";
 /**
  * Server configuration schema with validation
  */
-export const ServerConfigSchema = z.object({
-  port: z.number().int().min(1).max(65535).default(10013),
-  storagePath: z.string().default("./storage"),
-  maxConnections: z.number().int().positive().optional(),
-  heartbeatInterval: z.number().int().positive().optional(),
-});
+export const ServerConfigSchema = z
+  .object({
+    port: z.number().int().min(1).max(65535).default(10013),
+    cachePath: z.string().default("./.amigo"),
+    maxConnections: z.number().int().positive().optional(),
+    heartbeatInterval: z.number().int().positive().optional(),
+  })
+  .transform((config) => ({
+    ...config,
+    cachePath: path.resolve(config.cachePath),
+    storagePath: path.resolve(config.cachePath, "storage"),
+  }));
 
 export type ServerConfig = z.infer<typeof ServerConfigSchema>;
 

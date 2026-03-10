@@ -11,7 +11,7 @@ export enum LogLevel {
 /**
  * 日志配置
  */
-interface LoggerConfig {
+export interface LoggerConfig {
   level: LogLevel;
   enableTimestamp: boolean;
   enableColors: boolean;
@@ -116,8 +116,6 @@ class Logger {
 // 导出单例
 export const logger = new Logger();
 
-// 可以通过环境变量配置日志级别
-const logLevel = process.env.LOG_LEVEL?.toUpperCase();
-if (logLevel && logLevel in LogLevel) {
-  logger.configure({ level: LogLevel[logLevel as keyof typeof LogLevel] });
-}
+export const configureLogger = (config: Partial<LoggerConfig>) => {
+  logger.configure(config);
+};

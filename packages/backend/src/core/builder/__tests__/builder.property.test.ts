@@ -33,7 +33,7 @@ const validPortArb = fc.integer({ min: 1, max: 65535 });
 /**
  * 生成有效存储路径
  */
-const validStoragePathArb = fc.stringMatching(/^\.?[a-zA-Z0-9_\-./]{1,50}$/);
+const validCachePathArb = fc.stringMatching(/^\.?[a-zA-Z0-9_\-./]{1,50}$/);
 
 /**
  * 生成有效的工具名称（小写字母开头，包含字母/数字/下划线）
@@ -77,7 +77,7 @@ describe("构建器属性测试", () => {
    * **Feature: server-sdk, Property 9: Builder chaining**
    * **Validates: Requirements 4.1**
    *
-   * 对于任意构建器方法调用序列（port, storagePath, registerTool, registerMessage），
+   * 对于任意构建器方法调用序列（port, cachePath, registerTool, registerMessage），
    * 每个方法应当返回相同的构建器实例，以支持方法链式调用。
    */
   describe("属性 9: 构建器链式调用", () => {
@@ -92,11 +92,11 @@ describe("构建器属性测试", () => {
       );
     });
 
-    test("storagePath() 方法应返回相同的构建器实例", () => {
+    test("cachePath() 方法应返回相同的构建器实例", () => {
       fc.assert(
-        fc.property(validStoragePathArb, (path) => {
+        fc.property(validCachePathArb, (path) => {
           const builder = new AmigoServerBuilder();
-          const result = builder.storagePath(path);
+          const result = builder.cachePath(path);
           expect(result).toBe(builder);
         }),
         { numRuns: 100 },
@@ -151,14 +151,20 @@ describe("构建器属性测试", () => {
       expect(result).toBe(builder);
     });
 
+    test("loggerConfig() 方法应返回相同的构建器实例", () => {
+      const builder = new AmigoServerBuilder();
+      const result = builder.loggerConfig({ enableTimestamp: false });
+      expect(result).toBe(builder);
+    });
+
     test("链式调用多个方法应始终返回相同的构建器实例", () => {
       fc.assert(
         fc.property(
           validPortArb,
-          validStoragePathArb,
+          validCachePathArb,
           toolNameArb.filter((name) => name.length > 0),
           messageTypeArb.filter((type) => type.length > 0),
-          (port, storagePath, toolName, messageType) => {
+          (port, cachePath, toolName, messageType) => {
             const builder = new AmigoServerBuilder();
             const tool = createMockTool(toolName);
             const message = createMockMessage(messageType);
@@ -166,10 +172,11 @@ describe("构建器属性测试", () => {
             // 链式调用所有方法
             const result = builder
               .port(port)
-              .storagePath(storagePath)
+              .cachePath(cachePath)
               .registerTool(tool)
               .registerMessage(message)
               .sandboxManager(mockSandboxManager)
+              .loggerConfig({ enableTimestamp: false })
               .systemPrompts({ main: "main prompt" });
 
             expect(result).toBe(builder);
@@ -190,8 +197,8 @@ describe("构建器属性测试", () => {
   describe("属性 10: 构建器生成服务器", () => {
     test("build() 应返回 AmigoServer 实例", () => {
       fc.assert(
-        fc.property(validPortArb, validStoragePathArb, (port, storagePath) => {
-          const builder = new AmigoServerBuilder().port(port).storagePath(storagePath);
+        fc.property(validPortArb, validCachePathArb, (port, cachePath) => {
+          const builder = new AmigoServerBuilder().port(port).cachePath(cachePath);
 
           const server = builder.build();
 

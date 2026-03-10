@@ -6,7 +6,12 @@ import type { UserMessageAttachment } from "./userSend/message";
  * 系统保留标签
  * 用于标识特殊的系统消息类型
  */
-export type SYSTEM_RESERVED_TAGS = "think" | "interrupt" | "askFollowupQuestion" | "system";
+export type SYSTEM_RESERVED_TAGS =
+  | "think"
+  | "interrupt"
+  | "askFollowupQuestion"
+  | "system"
+  | "compaction";
 export const systemReservedTags: SYSTEM_RESERVED_TAGS[] = [
   "think",
   "interrupt",

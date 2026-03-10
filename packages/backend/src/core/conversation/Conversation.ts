@@ -68,6 +68,7 @@ export class Conversation {
         subTasks: this.memory.subTasks,
         autoApproveToolNames: this.memory.autoApproveToolNames,
         contextUsage: this.memory.contextUsage,
+        context: this.memory.context,
       } satisfies TaskStatusMapUpdatedData,
     };
     broadcaster.broadcast(this.id, message);

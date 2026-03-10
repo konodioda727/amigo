@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
-import { getGlobalState } from "@/globalState";
+import { getTaskStoragePath } from "@/core/storage";
 
 /**
  * 文档类型到文件名的映射
@@ -53,8 +53,7 @@ export function parseToolsFromDescription(description: string): {
  * 获取 taskDocs 存储路径
  */
 export function getTaskDocsPath(taskId: string): string {
-  const storagePath = getGlobalState("globalStoragePath") || process.cwd();
-  return path.join(storagePath, taskId, "taskDocs");
+  return path.join(getTaskStoragePath(taskId), "taskDocs");
 }
 
 /**
