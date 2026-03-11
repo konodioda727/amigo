@@ -4,5 +4,6 @@ export const CommonMessageSchema = z.object({
   type: z.literal("message"),
   data: z.object({
     message: z.string(),
+    taskId: z.string().optional(),
   }),
 });

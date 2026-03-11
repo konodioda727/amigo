@@ -8,7 +8,7 @@ export const EditFileSchema = z.object({
   name: z.literal("editFile"),
   params: z
     .object({
-      filePath: z.string().describe("文件路径（相对于沙箱工作目录）"),
+      filePath: z.string().describe("文件路径（支持相对于沙箱工作目录的路径或绝对路径）"),
       content: z.string().optional().describe("文件内容（create/overwrite 或行号 patch 时使用）"),
       mode: z
         .enum(["create", "overwrite", "patch"])

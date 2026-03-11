@@ -12,6 +12,7 @@ mock.module("@/utils/logger", () => ({
 mock.module("@/core/conversation/WebSocketBroadcaster", () => ({
   broadcaster: {
     broadcast: mock(),
+    broadcastConversation: mock(),
   },
 }));
 

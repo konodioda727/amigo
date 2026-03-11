@@ -110,10 +110,19 @@ const toolProcessor: MessageProcessor<"tool"> = ({ msg, res }) => {
     websocketData?: unknown;
   };
   const { toolName, params, result, error, toolCallId, websocketData } = parsed;
+  const sourceUpdateTime =
+    typeof msg.data.updateTime === "number" && Number.isFinite(msg.data.updateTime)
+      ? msg.data.updateTime
+      : undefined;
   const updateTime = getStableUpdateTime(msg.data.updateTime, res);
   const isPartial = msg.data.partial ?? false;
 
-  const existingIndex = findMatchingToolMessageIndex(res, toolName, toolCallId, updateTime);
+  const existingIndex = findMatchingToolMessageIndex(
+    res,
+    toolName,
+    toolCallId,
+    sourceUpdateTime ?? updateTime,
+  );
   const existingMessage = existingIndex >= 0 ? res[existingIndex] : undefined;
   const shouldMerge = existingMessage?.type === "tool";
 
@@ -126,6 +135,7 @@ const toolProcessor: MessageProcessor<"tool"> = ({ msg, res }) => {
       toolOutput: result as unknown as ToolResult<any>,
       websocketData: websocketData ?? existingMessage.websocketData,
       toolCallId: toolCallId || existingMessage.toolCallId,
+      sourceUpdateTime: existingMessage.sourceUpdateTime ?? sourceUpdateTime ?? updateTime,
       error,
       hasError: !!error,
       updateTime: existingMessage.updateTime,
@@ -140,6 +150,7 @@ const toolProcessor: MessageProcessor<"tool"> = ({ msg, res }) => {
       toolOutput: result as unknown as ToolResult<any>,
       websocketData,
       toolCallId,
+      sourceUpdateTime: sourceUpdateTime ?? updateTime,
       error,
       hasError: !!error,
       updateTime,
@@ -326,12 +337,18 @@ const findMatchingToolMessageIndex = (
   messages: DisplayMessageType[],
   toolName: string,
   toolCallId: string | undefined,
-  updateTime: number,
+  sourceUpdateTime: number,
 ): number => {
   if (toolCallId) {
     for (let i = messages.length - 1; i >= 0; i--) {
       const message = messages[i];
-      if (message.type === "tool" && message.toolCallId === toolCallId) {
+      // Some providers/history re-use toolCallId values like "readFile:0" across
+      // distinct calls, so the original websocket updateTime identifies one invocation.
+      if (
+        message.type === "tool" &&
+        message.toolCallId === toolCallId &&
+        (message.sourceUpdateTime ?? message.updateTime) === sourceUpdateTime
+      ) {
         return i;
       }
     }
@@ -342,7 +359,7 @@ const findMatchingToolMessageIndex = (
     if (
       message.type === "tool" &&
       message.toolName === toolName &&
-      message.updateTime === updateTime &&
+      (message.sourceUpdateTime ?? message.updateTime) === sourceUpdateTime &&
       message.partial === true
     ) {
       return i;

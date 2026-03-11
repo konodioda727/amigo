@@ -237,7 +237,7 @@ export async function bindGithubContextToTask(taskId: string, context: unknown):
 
 export async function getGithubSandboxBindingForTask(
   taskId: string,
-): Promise<Pick<GithubTaskBinding, "mirrorPath" | "branch" | "commitSha"> | null> {
+): Promise<Pick<GithubTaskBinding, "mirrorPath" | "branch" | "commitSha" | "repoUrl"> | null> {
   const taskStatusPath = getTaskStatusPath(taskId);
   if (!(await pathExists(taskStatusPath))) {
     return null;
@@ -274,6 +274,7 @@ export async function getGithubSandboxBindingForTask(
       mirrorPath,
       branch,
       commitSha,
+      repoUrl: githubInput.repoUrl,
     };
   } catch (error) {
     logger.warn(`[githubBootstrap] 读取 task=${taskId} 仓库绑定失败: ${error}`);

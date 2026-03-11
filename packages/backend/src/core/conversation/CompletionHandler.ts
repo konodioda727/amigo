@@ -99,7 +99,7 @@ export class CompletionHandler {
     clearConversationContinuations(conversation.id);
 
     // 广播 conversationOver
-    broadcaster.broadcast(conversation.id, {
+    broadcaster.broadcastConversation(conversation, {
       type: "conversationOver",
       data: {
         reason: "completeTask",
@@ -117,7 +117,7 @@ export class CompletionHandler {
   private handleAskFollowupQuestion(conversation: Conversation): boolean {
     conversation.userInput = "";
     conversation.status = "idle";
-    broadcaster.broadcast(conversation.id, {
+    broadcaster.broadcastConversation(conversation, {
       type: "conversationOver",
       data: {
         reason: "askFollowupQuestion",
@@ -138,10 +138,11 @@ export class CompletionHandler {
         content: `警告：你是一个子任务代理，必须使用工具来完成任务。
 
 请注意：
-1. 如果任务已完成，必须调用 completeTask
+1. 只有在任务范围内的问题已经真正解决、最终结果已经准备好、且没有未完成步骤/待验证项/阻塞项时，才能调用 completeTask
 2. 如果需要更多信息，必须调用 askFollowupQuestion
 3. 如果需要执行操作，必须调用相应工具（如 browserSearch、bash 等）
-4. 不要只输出普通文本消息
+4. 未完全解决、只完成一部分、还在排查、还缺证据时，禁止调用 completeTask
+5. 不要只输出普通文本消息
 
 请立即调用正确的工具。`,
         type: "message",
@@ -154,7 +155,7 @@ export class CompletionHandler {
     // 主任务允许普通对话，等待用户回复
     logger.info("\n主任务进行普通对话，等待用户回复");
     conversation.userInput = "";
-    broadcaster.broadcast(conversation.id, {
+    broadcaster.broadcastConversation(conversation, {
       type: "conversationOver",
       data: {
         reason: "message",

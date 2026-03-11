@@ -69,6 +69,12 @@ MODEL_BASE_URL=https://openrouter.ai/api/v1
 
 如果你要用搜索、OSS 或 Penpot，再补对应密钥。
 
+如果你希望 sandbox 里的仓库可以直接 `git push` 到 GitHub，再补：
+
+```env
+GITHUB_TOKEN=ghp_xxx
+```
+
 参考：
 
 - [packages/amigo/.env.example](/Users/lawkaiqing/code/amigo/packages/amigo/.env.example)
@@ -78,6 +84,8 @@ MODEL_BASE_URL=https://openrouter.ai/api/v1
 ```bash
 docker build -t ai_sandbox packages/amigo/assets
 ```
+
+该镜像会预装 `bash`、`bun`、`deno`、`pnpm` 和 `code-server`，其中 `npm` registry 默认指向淘宝镜像源，且只用于安装 `pnpm`；其余常用 JS 工具通过 `pnpm` 安装，供 `/sandbox` 内的项目直接使用。
 
 ### 4. 启动开发环境
 

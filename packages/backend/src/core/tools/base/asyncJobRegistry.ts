@@ -78,6 +78,10 @@ export class AsyncToolJobRegistry {
     return this.runningJobs.get(key)?.info || null;
   }
 
+  getRunningPromise(key: string): Promise<void> | null {
+    return this.runningJobs.get(key)?.promise || null;
+  }
+
   getLatest(key: string): AsyncToolJobInfo | null {
     return this.runningJobs.get(key)?.info || this.latestJobs.get(key) || null;
   }

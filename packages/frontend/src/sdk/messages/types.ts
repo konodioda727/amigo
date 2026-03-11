@@ -45,6 +45,7 @@ export interface FrontendToolMessageType<T extends ToolNames> extends MessageTyp
   toolOutput?: ToolResult<T>;
   websocketData?: unknown;
   toolCallId?: string;
+  sourceUpdateTime?: number;
   error?: string;
   hasError?: boolean;
   partial?: boolean;

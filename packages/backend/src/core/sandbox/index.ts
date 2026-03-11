@@ -7,6 +7,7 @@ import { getCacheRootPath } from "@/core/storage";
 import { getGlobalState } from "@/globalState";
 import { getGithubSandboxBindingForTask } from "@/integrations/github";
 import { logger } from "@/utils/logger";
+import { normalizeEditorOpenFilePath } from "./editorFilePath";
 import { type ResolvedSandboxOptions, resolveSandboxOptions } from "./options";
 import type { SandboxOptions } from "./types";
 
@@ -35,6 +36,7 @@ const PREVIEW_HTTP_PROBE_HOSTS = ["localhost", "127.0.0.1"] as const;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const shellQuote = (value: string): string => `'${value.replace(/'/g, `'"'"'`)}'`;
+const GITHUB_TOKEN_ENV_KEYS = ["GITHUB_TOKEN", "GH_TOKEN"] as const;
 
 const withAbortableTimeout = <T>(
   timeoutMs: number,
@@ -68,7 +70,7 @@ const canConnectToPort = (host: string, port: number, timeoutMs: number): Promis
     socket.once("error", () => finish(false));
   });
 
-type SupportedPackageManager = "pnpm" | "npm" | "yarn" | "bun" | "none";
+type SupportedPackageManager = "pnpm" | "npm" | "yarn" | "bun" | "custom" | "none";
 
 export interface DependencyInstallStatus {
   status: "idle" | "running" | "success" | "failed" | "not_required";
@@ -109,6 +111,28 @@ function getDependencyInstallLogPath(workingDir: string): string {
       ? "root"
       : workingDir.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") || "workspace";
   return `/tmp/amigo/dependency-install-${suffix}.log`;
+}
+
+function getForwardedSandboxEnvVars(): string[] {
+  return GITHUB_TOKEN_ENV_KEYS.map((key) => {
+    const value = process.env[key]?.trim();
+    return value ? `${key}=${value}` : "";
+  }).filter(Boolean);
+}
+
+function shouldConfigureGithubCredentialHelper(repoUrl: string): boolean {
+  try {
+    const parsed = new URL(repoUrl);
+    return parsed.protocol === "https:" && parsed.hostname === "github.com";
+  } catch {
+    return false;
+  }
+}
+
+function buildGithubCredentialHelperCommand(): string {
+  return `git config credential.helper ${shellQuote(
+    '!f() { if [ "$1" = get ]; then echo "username=x-access-token"; echo "password=${GITHUB_TOKEN:-${GH_TOKEN:-}}"; fi; }; f',
+  )}`;
 }
 
 const findAvailableHostPort = async (): Promise<number> =>
@@ -180,7 +204,8 @@ export class Sandbox {
 
     try {
       const exec = await this.container.exec({
-        Cmd: ["sh", "-c", cmd],
+        // Use bash so shell built-ins like `source` work consistently while preserving container env.
+        Cmd: ["bash", "-c", cmd],
         AttachStdout: true,
         AttachStderr: true,
         WorkingDir: "/sandbox",
@@ -281,6 +306,7 @@ export class Sandbox {
       this.editorHostPort = await findAvailableHostPort();
       this.previewHostPort = await findAvailableHostPort();
       const githubBinding = taskId ? await getGithubSandboxBindingForTask(taskId) : null;
+      const forwardedEnv = getForwardedSandboxEnvVars();
       const binds = githubBinding
         ? [`${githubBinding.mirrorPath}:${BOOTSTRAP_REPO_MOUNT_PATH}:ro`]
         : [];
@@ -301,6 +327,7 @@ export class Sandbox {
       this.container = await docker.createContainer({
         Image: this.options.imageName,
         Tty: false,
+        ...(forwardedEnv.length > 0 ? { Env: forwardedEnv } : {}),
         Labels: labels,
         HostConfig: {
           Runtime: this.options.runtime || (isLocal ? "runc" : "runsc"),
@@ -331,7 +358,11 @@ export class Sandbox {
 
       await this.container.start();
       if (githubBinding) {
-        await this.hydrateBootstrapRepository(githubBinding.branch, githubBinding.commitSha);
+        await this.hydrateBootstrapRepository(
+          githubBinding.branch,
+          githubBinding.commitSha,
+          githubBinding.repoUrl,
+        );
       }
       logger.info("[Sandbox] 容器已启动");
     } catch (error) {
@@ -457,15 +488,54 @@ export class Sandbox {
     return promise;
   }
 
+  async installDependenciesWithCommand(params: {
+    workingDir?: string;
+    installCommand: string;
+    abortSignal?: AbortSignal;
+    force?: boolean;
+  }): Promise<DependencyInstallStatus> {
+    if (!this.container) {
+      throw new Error("沙箱未运行，无法安装依赖");
+    }
+
+    const workingDir = normalizeSandboxWorkingDir(params.workingDir);
+    const installCommand = params.installCommand.trim();
+    if (!installCommand) {
+      throw new Error("installCommand 不能为空");
+    }
+
+    const existingPromise = this.dependencyInstallPromises.get(workingDir);
+    if (existingPromise) {
+      return existingPromise;
+    }
+
+    const existingState = this.getDependencyInstallStatus(workingDir);
+    if (!params.force) {
+      if (existingState.status === "success" || existingState.status === "not_required") {
+        return existingState;
+      }
+    }
+
+    const promise = this.runDependencyInstallCommand({
+      workingDir,
+      installCommand,
+      abortSignal: params.abortSignal,
+    }).finally(() => {
+      this.dependencyInstallPromises.delete(workingDir);
+    });
+    this.dependencyInstallPromises.set(workingDir, promise);
+
+    return promise;
+  }
+
   async queueEditorOpenFile(filePath: string, line?: number, column?: number): Promise<void> {
     if (!this.container) {
       throw new Error("沙箱未运行，无法下发编辑器打开文件指令");
     }
 
-    const normalizedPath = filePath.replace(/^(\.\/|\/)+/, "");
     const payload = JSON.stringify({
       nonce: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-      path: `/sandbox/${normalizedPath}`,
+      path: normalizeEditorOpenFilePath(filePath),
       ...(typeof line === "number" ? { line } : {}),
       ...(typeof column === "number" ? { column } : {}),
     });
@@ -540,7 +610,7 @@ export class Sandbox {
       "export CI=1",
       `export PNPM_STORE_DIR=${shellQuote(PNPM_STORE_CONTAINER_PATH)}`,
       `START_COMMAND=$(printf '%s' ${shellQuote(encodedCommand)} | base64 -d)`,
-      `nohup sh -lc "$START_COMMAND" >${shellQuote(PREVIEW_LOG_PATH)} 2>&1 &`,
+      `nohup bash -c "$START_COMMAND" >${shellQuote(PREVIEW_LOG_PATH)} 2>&1 &`,
       `echo $! > ${shellQuote(PREVIEW_PID_PATH)}`,
     ].join("\n");
 
@@ -572,8 +642,12 @@ export class Sandbox {
     return output.trim();
   }
 
-  private async hydrateBootstrapRepository(branch: string, commitSha: string): Promise<void> {
-    const command = [
+  private async hydrateBootstrapRepository(
+    branch: string,
+    commitSha: string,
+    repoUrl: string,
+  ): Promise<void> {
+    const commandLines = [
       `if [ ! -d ${shellQuote(BOOTSTRAP_REPO_MOUNT_PATH)} ]; then`,
       "  echo '__AMIGO_BOOTSTRAP_REPO_MISSING__';",
       "  exit 1;",
@@ -588,8 +662,17 @@ export class Sandbox {
       "fi",
       `git clone ${shellQuote(BOOTSTRAP_REPO_MOUNT_PATH)} /sandbox`,
       "cd /sandbox",
-      `git checkout -B ${shellQuote(branch)} ${shellQuote(commitSha)}`,
-    ].join("\n");
+      `git remote set-url origin ${shellQuote(repoUrl)}`,
+    ];
+    if (shouldConfigureGithubCredentialHelper(repoUrl)) {
+      commandLines.push(
+        'if [ -n "${GITHUB_TOKEN:-${GH_TOKEN:-}}" ]; then',
+        `  ${buildGithubCredentialHelperCommand()}`,
+        "fi",
+      );
+    }
+    commandLines.push(`git checkout -B ${shellQuote(branch)} ${shellQuote(commitSha)}`);
+    const command = commandLines.join("\n");
 
     const output = (await this.runCommand(command)) || "";
     if (output.includes("__AMIGO_BOOTSTRAP_REPO_MISSING__")) {
@@ -660,6 +743,61 @@ export class Sandbox {
         startedAt,
         finishedAt: new Date().toISOString(),
         installCommand: plan.installCommand,
+        logPath,
+        error: logTail || errorMessage,
+      };
+      this.dependencyInstallStates.set(params.workingDir, status);
+      throw new Error(logTail ? `依赖安装失败:\n${logTail}` : `依赖安装失败: ${errorMessage}`);
+    }
+  }
+
+  private async runDependencyInstallCommand(params: {
+    workingDir: string;
+    installCommand: string;
+    abortSignal?: AbortSignal;
+  }): Promise<DependencyInstallStatus> {
+    const startedAt = new Date().toISOString();
+    const logPath = getDependencyInstallLogPath(params.workingDir);
+    this.dependencyInstallStates.set(params.workingDir, {
+      status: "running",
+      packageManager: "custom",
+      startedAt,
+      installCommand: params.installCommand,
+      logPath,
+    });
+
+    const workingDirPath =
+      `/sandbox/${params.workingDir === "." ? "" : params.workingDir}`.replace(/\/$/, "") ||
+      "/sandbox";
+    const command = [
+      `cd ${shellQuote(workingDirPath)}`,
+      `export PNPM_STORE_DIR=${shellQuote(PNPM_STORE_CONTAINER_PATH)}`,
+      `(${params.installCommand}) >${shellQuote(logPath)} 2>&1`,
+    ].join("\n");
+
+    try {
+      await this.runCommand(command, params.abortSignal);
+      const status: DependencyInstallStatus = {
+        status: "success",
+        packageManager: "custom",
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        installCommand: params.installCommand,
+        logPath,
+      };
+      this.dependencyInstallStates.set(params.workingDir, status);
+      return { ...status };
+    } catch (error) {
+      const logTail = await this.readDependencyInstallLogTail(params.workingDir, 80).catch(
+        () => "",
+      );
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const status: DependencyInstallStatus = {
+        status: "failed",
+        packageManager: "custom",
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        installCommand: params.installCommand,
         logPath,
         error: logTail || errorMessage,
       };
@@ -822,6 +960,7 @@ export class Sandbox {
   }
 }
 
+export { normalizeEditorOpenFilePath } from "./editorFilePath";
 export { getSandboxManager } from "./manager";
 export { type ResolvedSandboxOptions, resolveSandboxOptions } from "./options";
 export { SandboxRegistry, sandboxRegistry } from "./SandboxRegistry";

@@ -65,7 +65,7 @@ function buildEditFileWebsocketData(
 }
 
 export const normalizeEditFilePath = (filePath: string): string =>
-  filePath.replace(/^(\.\/|\/)+/, "");
+  filePath.trim().replace(/^(\.\/)+/, "");
 
 export async function buildEditFilePreview(
   sandbox: Sandbox,
@@ -163,7 +163,7 @@ export const EditFile = createTool({
     {
       name: "filePath",
       optional: false,
-      description: "文件路径（相对于沙箱工作目录）",
+      description: "文件路径（支持相对于沙箱工作目录的路径或绝对路径）",
     },
     {
       name: "content",

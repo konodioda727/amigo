@@ -15,11 +15,14 @@ export const UpdateDevServerSchema = z.object({
     })
     .describe("dev server 启动参数"),
   result: z.object({
-    status: z.enum(["completed"]).describe("同步执行完成状态"),
+    status: z
+      .enum(["completed", "waiting_for_dependencies", "already_waiting_for_dependencies"])
+      .describe("同步完成，或因等待依赖安装而转入后台续跑"),
     port: z.number().int().positive().nullable().describe("对外暴露的预览端口"),
     workingDir: z.string().describe("启动目录（相对 /sandbox）"),
     startCommand: z.string().describe("实际执行的启动命令"),
     logPath: z.string().describe("容器内日志文件路径"),
+    jobId: z.string().optional().describe("等待依赖完成后自动启动 dev server 的后台任务编号"),
     dependencyStatus: z
       .enum(["pending", "running", "success", "failed", "not_required"])
       .describe("依赖安装状态"),

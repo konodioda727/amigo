@@ -4,6 +4,7 @@ import type { ToolInterface } from "@amigo-llm/types";
 import {
   enqueueConversationContinuation,
   flushConversationContinuationsIfIdle,
+  SubTaskInterruptedError,
   taskOrchestrator,
 } from "@/core/conversation";
 import { conversationRepository } from "@/core/conversation/ConversationRepository";
@@ -142,7 +143,7 @@ ${dependencyResults ? `\n**依赖任务 completeTask 结果（必须参考）：
 1. 只完成当前任务，避免重新拆分
 2. 参考父任务文档中的要求与设计，并按协作契约执行
 3. 使用提供的工具
-4. 完成后使用 completeTask 返回结果`;
+4. 只有在当前任务已经真正解决、最终结果已经准备好、且没有未完成步骤/待验证项/阻塞项时，才能使用 completeTask 返回结果`;
 };
 
 const getExistingSubTaskStatus = (
@@ -246,6 +247,7 @@ const startNewTask = ({
     });
 
     let summary: string;
+    let outcome: TaskExecutionResult["outcome"] = "failed";
     try {
       const result = await taskOrchestrator.runSubTask({
         subPrompt: subAgentPrompt,
@@ -257,13 +259,15 @@ const startNewTask = ({
       });
       summary = result.result;
       taskSucceeded = true;
+      outcome = "success";
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      summary = `任务执行失败: ${errorMsg}`;
+      const failureState = resolveSubTaskFailureState(error);
+      summary = failureState.summary;
+      outcome = failureState.outcome;
       parentConv.updateSubTaskStatus(cleanDescriptionForAgent, {
-        status: "failed",
-        error: errorMsg,
-        completedAt: new Date().toISOString(),
+        status: failureState.status,
+        error: failureState.error,
+        completedAt: failureState.completedAt,
       });
     }
 
@@ -279,6 +283,7 @@ const startNewTask = ({
     return {
       target: cleanDescription,
       success: taskSucceeded,
+      outcome,
       summary,
       invalidTools: invalidTools.length > 0 ? invalidTools : undefined,
     };
@@ -365,8 +370,34 @@ const getTaskPriority = (executionType: TaskExecutionType) => {
 type TaskExecutionResult = {
   target: string;
   success: boolean;
+  outcome: "success" | "failed" | "interrupted";
   summary: string;
   invalidTools?: string[];
+};
+
+const isInterruptedSubTaskError = (error: unknown): error is SubTaskInterruptedError =>
+  error instanceof SubTaskInterruptedError;
+
+export const resolveSubTaskFailureState = (error: unknown) => {
+  const errorMsg = error instanceof Error ? error.message : String(error);
+
+  if (isInterruptedSubTaskError(error)) {
+    return {
+      summary: "任务被用户打断，已保留为待审核状态。",
+      outcome: "interrupted" as const,
+      status: "wait_review" as const,
+      error: undefined,
+      completedAt: undefined,
+    };
+  }
+
+  return {
+    summary: `任务执行失败: ${errorMsg}`,
+    outcome: "failed" as const,
+    status: "failed" as const,
+    error: errorMsg,
+    completedAt: new Date().toISOString(),
+  };
 };
 
 const isTaskReady = ({
@@ -476,9 +507,13 @@ const buildExecutionMessage = ({
   pendingTasks: ReturnType<typeof parseChecklist>["items"];
 }) => {
   const hasInvalidTools = results.some((r) => r.invalidTools);
-  const successCount = results.filter((r) => r.success).length;
-  const failedCount = results.filter((r) => !r.success).length;
-  const blockedCount = Math.max(0, pendingTasks.length - successCount - failedCount);
+  const successCount = results.filter((r) => r.outcome === "success").length;
+  const failedCount = results.filter((r) => r.outcome === "failed").length;
+  const interruptedCount = results.filter((r) => r.outcome === "interrupted").length;
+  const blockedCount = Math.max(
+    0,
+    pendingTasks.length - successCount - failedCount - interruptedCount,
+  );
 
   let warningMessage = hasInvalidTools
     ? "\n⚠️ 警告：部分任务请求了不存在的工具，这些工具已被忽略。"
@@ -488,14 +523,20 @@ const buildExecutionMessage = ({
     warningMessage += `\n⚠️ 警告：有 ${failedCount} 个任务执行失败，已保留为未完成，可修复后重新调用 executeTaskList 重试。`;
   }
 
+  if (interruptedCount > 0) {
+    warningMessage += `\n⚠️ 提示：有 ${interruptedCount} 个任务被中断，已回退为待审核状态。`;
+  }
+
   if (blockedCount > 0) {
     warningMessage += `\n⚠️ 警告：有 ${blockedCount} 个任务未被执行（可能处于待审核、依赖未满足或配置错误）。`;
   }
 
-  return `✅ 自动执行完成（成功 ${successCount}/${pendingTasks.length}，失败 ${failedCount}）${warningMessage}\n\n${results
+  return `✅ 自动执行完成（成功 ${successCount}/${pendingTasks.length}，失败 ${failedCount}，中断 ${interruptedCount}）${warningMessage}\n\n${results
     .map(
       (r, i) =>
-        `任务 ${i + 1}: ${r.target}\n状态: ${r.success ? "成功" : "失败"}\n结果: ${r.summary}${r.invalidTools ? `\n⚠️ 无效工具: ${r.invalidTools.join(", ")}` : ""}`,
+        `任务 ${i + 1}: ${r.target}\n状态: ${
+          r.outcome === "success" ? "成功" : r.outcome === "interrupted" ? "待审核" : "失败"
+        }\n结果: ${r.summary}${r.invalidTools ? `\n⚠️ 无效工具: ${r.invalidTools.join(", ")}` : ""}`,
     )
     .join("\n\n")}`;
 };
@@ -507,21 +548,29 @@ const continueParentConversationIfNeeded = (
   if (parentConv.type !== "main") return;
   if (parentConv.isAborted || parentConv.status === "aborted") return;
 
+  const applyExecutionContinuation = (
+    conversation: NonNullable<ReturnType<typeof conversationRepository.load>>,
+  ) => {
+    conversation.isAborted = false;
+    conversation.memory.addMessage({
+      role: "user",
+      content: reason,
+      type: "userSendMessage",
+      partial: false,
+    });
+    conversation.userInput = reason;
+  };
+
   enqueueConversationContinuation({
     conversation: parentConv,
     reason,
     run: async (conversation) => {
-      conversation.isAborted = false;
-      conversation.memory.addMessage({
-        role: "user",
-        content: reason,
-        type: "userSendMessage",
-        partial: false,
-      });
-      conversation.userInput = reason;
-
+      applyExecutionContinuation(conversation);
       const executor = taskOrchestrator.getExecutor(conversation.id);
       await executor.execute(conversation);
+    },
+    injectBeforeNextTurn: (conversation) => {
+      applyExecutionContinuation(conversation);
     },
   });
   void flushConversationContinuationsIfIdle(parentConv);

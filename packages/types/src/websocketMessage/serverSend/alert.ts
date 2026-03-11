@@ -5,6 +5,7 @@ export const AlertMessageSchema = z.object({
   data: z.object({
     message: z.string(),
     severity: z.enum(["info", "warning", "error", "success"]),
+    taskId: z.string().optional(),
     toastOnly: z.boolean().optional(),
     updateTime: z.number(),
   }),

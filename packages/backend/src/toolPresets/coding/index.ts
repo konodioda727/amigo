@@ -1,4 +1,6 @@
 import type { Sandbox } from "@/core/sandbox";
+import { queueToolRetryAfterDependencies } from "@/core/tools/dependencyWorkflow";
+import { normalizeSandboxToolWorkingDir } from "@/core/tools/sandboxDependency";
 import { defineTool } from "@/sdk";
 import { logger } from "@/utils/logger";
 
@@ -367,9 +369,15 @@ export const repoSearchTool = defineTool({
 export const runChecksTool = defineTool({
   name: "runChecks",
   description: "统一运行 lint/test/typecheck/build 等检查，返回结构化结果。",
-  whenToUse: "代码改动后做验证闭环时使用。默认 preset=quick，完整验证用 all 或自定义 commands。",
+  whenToUse:
+    "代码改动后做验证闭环时使用。调用前先阅读目标目录的 package.json 和相关 README/文档；非必要不要用 npm，优先沿用项目自己的 bun/pnpm/yarn 脚本。优先把仓库里真实存在的脚本以 commands 显式传入，只有在脚本约定非常清晰时才使用 preset。若依赖尚未安装，不要让后端猜安装命令，应先调用 installDependencies 并传入你基于仓库事实决定的 installCommand。",
   params: [
-    { name: "preset", optional: true, description: "quick/lint/test/typecheck/build/all" },
+    {
+      name: "preset",
+      optional: true,
+      description:
+        "quick/lint/test/typecheck/build/all。仅在你已经确认仓库脚本命名足够常规时使用。",
+    },
     { name: "workingDir", optional: true, description: "工作目录（相对 /sandbox）" },
     { name: "stopOnFail", optional: true, description: "遇到失败是否停止（默认 false）" },
     { name: "timeoutMs", optional: true, description: "每步骤超时时间（毫秒，默认 120000）" },
@@ -382,8 +390,11 @@ export const runChecksTool = defineTool({
       name: "commands",
       optional: true,
       type: "array",
-      description: "自定义检查命令列表（覆盖 preset）",
-      params: [{ name: "command", optional: false, description: "单条检查命令" }],
+      description:
+        "自定义检查命令列表（覆盖 preset）。推荐在读过 package.json/README 后，把项目真实使用的 bun/pnpm/yarn 脚本显式传进来；只有项目明确要求时才使用 npm。",
+      params: [
+        { name: "command", optional: false, description: "单条检查命令，例如 `bun run lint`" },
+      ],
     },
   ],
   async invoke({ params, context }) {
@@ -392,15 +403,98 @@ export const runChecksTool = defineTool({
     const timeoutMs = toPositiveInt(params.timeoutMs, DEFAULT_CHECK_TIMEOUT_MS);
     const tailLines = toPositiveInt(params.includeOutputTailLines, DEFAULT_OUTPUT_TAIL_LINES);
     const customCommands = toStringArray(params.commands);
-    const workingDir =
-      (typeof params.workingDir === "string" ? params.workingDir : ".")
-        .replace(/^(\.\/|\/)+/, "")
-        .trim() || ".";
+    const workingDir = normalizeSandboxToolWorkingDir(
+      typeof params.workingDir === "string" ? params.workingDir : undefined,
+    );
 
     try {
       const sandbox = (await context.getSandbox()) as Sandbox;
       if (!sandbox || !sandbox.isRunning()) {
         const message = "沙箱未运行，无法执行 runChecks";
+        return {
+          message,
+          toolResult: {
+            success: false,
+            overallStatus: "failed",
+            preset: customCommands.length ? "custom" : preset,
+            workingDir,
+            failedSteps: [],
+            steps: [],
+            message,
+          },
+        };
+      }
+
+      const dependencyStatus = sandbox.getDependencyInstallStatus(workingDir);
+      const sandboxTaskId = context.parentId || context.taskId;
+      if (dependencyStatus.status === "running") {
+        const waitingJob = queueToolRetryAfterDependencies({
+          context,
+          sandbox,
+          sandboxTaskId,
+          toolName: "runChecks",
+          workingDir,
+          toolParams: {
+            preset,
+            workingDir,
+            stopOnFail,
+            timeoutMs,
+            includeOutputTailLines: tailLines,
+            ...(customCommands.length > 0 ? { commands: customCommands } : {}),
+          },
+          successPrompt: `依赖安装已完成。请立即继续之前等待的 runChecks 调用，参数如下：\n${JSON.stringify(
+            {
+              preset,
+              workingDir,
+              stopOnFail,
+              timeoutMs,
+              includeOutputTailLines: tailLines,
+              ...(customCommands.length > 0 ? { commands: customCommands } : {}),
+            },
+          )}\n不要再次请求用户确认，也不要重复安装依赖；先直接执行 runChecks，不要先单独向用户汇报“依赖已安装完成”。`,
+          failurePrompt: (errorMessage) =>
+            `之前等待的 runChecks 未执行，因为依赖安装失败。\n错误信息：${errorMessage}\n请先处理依赖安装问题，再决定下一步。`,
+        });
+        const message = waitingJob.started
+          ? "依赖正在下载中，runChecks 会在下载完成后自动运行。"
+          : "runChecks 正在等待依赖下载完成，完成后会自动运行。";
+
+        return {
+          message,
+          toolResult: {
+            success: false,
+            async: true,
+            overallStatus: "waiting_for_dependencies",
+            preset: customCommands.length ? "custom" : preset,
+            workingDir,
+            failedSteps: [],
+            steps: [],
+            dependencyStatus: dependencyStatus.status,
+            jobId: waitingJob.job.id,
+            message,
+          },
+        };
+      }
+
+      if (dependencyStatus.status === "idle") {
+        const message =
+          "依赖尚未安装。请先读取目标目录的 package.json/README/锁文件，确认真实安装方式后调用 installDependencies，并传入明确的 installCommand。";
+        return {
+          message,
+          toolResult: {
+            success: false,
+            overallStatus: "failed",
+            preset: customCommands.length ? "custom" : preset,
+            workingDir,
+            failedSteps: [],
+            steps: [],
+            message,
+          },
+        };
+      }
+
+      if (dependencyStatus.status === "failed") {
+        const message = `依赖安装失败，请先修复后再执行 runChecks。日志: ${dependencyStatus.logPath}${dependencyStatus.error ? `\n\n最近错误:\n${dependencyStatus.error}` : ""}`;
         return {
           message,
           toolResult: {

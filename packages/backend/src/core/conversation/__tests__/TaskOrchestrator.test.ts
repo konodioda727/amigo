@@ -26,6 +26,7 @@ mock.module("@/core/conversation/ConversationRepository", () => ({
 mock.module("@/core/conversation/WebSocketBroadcaster", () => ({
   broadcaster: {
     broadcast: mock(),
+    broadcastConversation: mock(),
   },
 }));
 

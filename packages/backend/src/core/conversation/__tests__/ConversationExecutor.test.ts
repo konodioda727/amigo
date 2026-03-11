@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
+import {
+  clearConversationContinuations,
+  enqueueConversationContinuation,
+} from "../asyncContinuations";
 import { ConversationExecutor } from "../ConversationExecutor";
 import { broadcaster } from "../WebSocketBroadcaster";
 
@@ -14,12 +18,17 @@ mock.module("@/utils/logger", () => ({
 mock.module("@/core/conversation/WebSocketBroadcaster", () => ({
   broadcaster: {
     broadcast: mock(),
+    broadcastConversation: mock(),
   },
 }));
 
 describe("ConversationExecutor waiting_tool_confirmation", () => {
   beforeEach(() => {
     (broadcaster.broadcast as ReturnType<typeof mock>).mockClear();
+    (broadcaster.broadcastConversation as ReturnType<typeof mock>).mockClear();
+    clearConversationContinuations("sub-task-reject");
+    clearConversationContinuations("sub-task-confirm");
+    clearConversationContinuations("main-task-active-continuation");
   });
 
   it("does not auto-complete sub tasks on non-confirm input", async () => {
@@ -27,6 +36,7 @@ describe("ConversationExecutor waiting_tool_confirmation", () => {
     const executeToolCall = mock(async () => {});
     const handleStream = mock(async () => "message");
     const handleStreamCompletion = mock(async (conversation: any) => {
+      conversation.userInput = "";
       conversation.status = "idle";
       return false;
     });
@@ -96,11 +106,77 @@ describe("ConversationExecutor waiting_tool_confirmation", () => {
 
     expect(executeToolCall).toHaveBeenCalledTimes(1);
     expect(conversation.status).toBe("completed");
-    expect(broadcaster.broadcast).toHaveBeenCalledWith("sub-task-confirm", {
+    expect(broadcaster.broadcastConversation).toHaveBeenCalledWith(conversation, {
       type: "conversationOver",
       data: {
         reason: "completeTask",
       },
     });
+  });
+
+  it("injects queued continuations before the next active loop turn without re-entering execute", async () => {
+    const executor = new ConversationExecutor();
+    const handleStream = mock(async (conversation: any) => {
+      expect(conversation.memory.addMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: "system",
+          content: "依赖安装已完成。",
+        }),
+      );
+      return "message";
+    });
+    const handleStreamCompletion = mock(async (conversation: any) => {
+      conversation.userInput = "";
+      conversation.status = "idle";
+      return false;
+    });
+
+    (executor as any).streamHandler.handleStream = handleStream;
+    (executor as any).completionHandler.handleStreamCompletion = handleStreamCompletion;
+
+    const addMessage = mock();
+    const conversation = {
+      id: "main-task-active-continuation",
+      type: "main",
+      status: "idle",
+      isAborted: false,
+      userInput: "继续处理当前任务",
+      pendingToolCall: null,
+      memory: {
+        addMessage,
+      },
+    } as any;
+
+    enqueueConversationContinuation({
+      conversation,
+      reason: "dependency notification",
+      run: async () => {
+        throw new Error("notification continuation should wait for idle");
+      },
+    });
+
+    enqueueConversationContinuation({
+      conversation,
+      reason: "dependency ready",
+      run: async () => {
+        throw new Error("idle run should not be used in active loop test");
+      },
+      injectBeforeNextTurn: (currentConversation) => {
+        currentConversation.memory.addMessage({
+          role: "system",
+          content: "依赖安装已完成。",
+          type: "system",
+          partial: false,
+        });
+        currentConversation.userInput = "__amigo_internal_dependency_continuation__";
+      },
+    });
+
+    await executor.execute(conversation);
+
+    expect(handleStream).toHaveBeenCalledTimes(1);
+    expect(handleStreamCompletion).toHaveBeenCalledTimes(1);
+    expect(addMessage).toHaveBeenCalledTimes(1);
+    expect(conversation.userInput).toBe("");
   });
 });

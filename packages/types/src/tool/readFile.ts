@@ -8,7 +8,7 @@ export const ReadFileSchema = z.object({
   name: z.literal("readFile"),
   params: z
     .object({
-      filePath: z.string().describe("文件路径（相对于沙箱工作目录）"),
+      filePath: z.string().describe("文件路径（支持相对于沙箱工作目录的路径或绝对路径）"),
       startLine: z.number().optional().describe("可选：起始行号（从 1 开始）"),
       endLine: z.number().optional().describe("可选：结束行号（包含）"),
     })

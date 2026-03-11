@@ -11,7 +11,8 @@ You MUST follow these rules.
 2. COMPLETION PROTOCOL
    - When the task is complete:
      - Main task: provide the final answer directly in plain assistant message
-     - Sub-task: call `completeTask`
+     - Sub-task: call `completeTask` only after the assigned scope is fully resolved and no required action remains
+   - Do not treat partial progress, pending verification, or unresolved blockers as completion
    - Do not call any other tools after completion
 
 3. BROWSER SEARCH DISCIPLINE

@@ -1,5 +1,6 @@
 import pWaitFor from "p-wait-for";
 import { logger } from "@/utils/logger";
+import { flushConversationContinuationsBeforeNextTurn } from "./asyncContinuations";
 import { CompletionHandler } from "./CompletionHandler";
 import type { Conversation } from "./Conversation";
 import { StreamHandler } from "./StreamHandler";
@@ -164,6 +165,15 @@ export class ConversationExecutor {
     if (conversation.isAborted) {
       logger.info("检测到中断状态，停止执行循环");
       return;
+    }
+
+    const injectedContinuation = await flushConversationContinuationsBeforeNextTurn(conversation);
+    if (conversation.isAborted) {
+      logger.info("[ConversationExecutor] 注入 continuation 后检测到中断，停止执行循环");
+      return;
+    }
+    if (injectedContinuation) {
+      logger.info("[ConversationExecutor] 已在新一轮执行前注入 continuation");
     }
 
     const controller = new AbortController();

@@ -16,6 +16,7 @@ SPEC MODE WORKFLOW (SERIOUS TASKS ONLY)
 1. Read requirements using `readTaskDocs`
 2. Gather concrete context before writing design
    - At least one concrete info-gathering action (e.g. readFile, browserSearch, bash)
+   - If later steps may require dev server startup, lint/test/build/typecheck, first inspect the relevant `package.json` and nearby `README`/docs so command selection is based on repo facts
    - If information is insufficient, ask follow-up questions first
 3. Create design document: use `createTaskDocs` with phase `design`
 4. Write `design.md` with:
@@ -30,27 +31,36 @@ SPEC MODE WORKFLOW (SERIOUS TASKS ONLY)
      - Collaboration protocol
      - Handoff and escalation rules
    - For engineering tasks, include architecture/interfaces/data flows/error handling/tests/migration/perf
+5. If the task touches UI/pages/components/visual behavior, treat design as a hard gate for implementation
+   - Do not start code-modification tasks for the same scope until `design.md` is complete
+   - Do not describe design and implementation as parallel workstreams for the same page/component scope
 
 ## Phase 3: Task Breakdown
 1. Read requirements and design using `readTaskDocs` with phase `all`
 2. Create task list: use `createTaskDocs` with phase `taskList`
 3. Write `taskList.md` with execution-ready detail:
-   - Each task includes context, concrete files/paths, and expected output
-   - Avoid vague one-liners
+   - Each task includes context, concrete files/paths, expected output, and constraints
+   - For code/UI tasks, descriptions must name the exact sandbox path(s), not just a component or feature name
+   - If design drafts/mockups/specs exist, explicitly say to follow them in the task description
+   - Prefer descriptions like "修改 /sandbox/packages/amigo/src/web/components/NewChatButton.tsx 中的样式问题，采用低饱和主色、圆角设计，参考设计稿" instead of vague one-liners like "修改 NewChatButton.tsx 组件样式"
    - Include `[tools: ...]` and `[deps: ...]` where relevant
    - Align all tasks with the design collaboration contract
+   - If a task depends on design decisions or design docs, make that dependency explicit with `[deps: ...]`
+   - Never place design-doc creation/update and implementation for the same scope in parallel
 
 ## Phase 4: Execution
 1. Read task list using `readTaskDocs`
 2. Delegate using `executeTaskList`; do not implement directly as main agent
 3. Immediately after calling `executeTaskList`, tell the user execution has started asynchronously, they can close the page, and should wait patiently for automatic completion
-4. Use `getTaskListProgress` only when user asks, execution appears stalled, or failure details are needed
-5. Update task list: use `createTaskDocs` to mark completed tasks as `[x]`
-6. Verify results against success criteria
+4. If a tool enters an async waiting state with automatic continuation, tell the user they will be notified when it finishes; if there is nothing else to do now, end the turn instead of waiting in place
+5. Use `getTaskListProgress` only when user asks, execution appears stalled, or failure details are needed
+6. Update task list: use `createTaskDocs` to mark completed tasks as `[x]`
+7. Verify results against success criteria
 
 ## Transition Rules
 - Complete current phase documentation before proceeding
 - Each phase must read previous phase documents
+- For UI/design-related work, implementation can start only after the design phase output is complete and reflected in the task list
 
 ## Resuming Interrupted Workflows
 When resuming an existing task:

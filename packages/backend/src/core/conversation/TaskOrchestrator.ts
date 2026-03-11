@@ -1,8 +1,4 @@
-import type {
-  SERVER_SEND_MESSAGE_NAME,
-  ToolInterface,
-  UserMessageAttachment,
-} from "@amigo-llm/types";
+import type { ToolInterface, UserMessageAttachment } from "@amigo-llm/types";
 import pWaitFor from "p-wait-for";
 import { logger } from "@/utils/logger";
 import { getLlm } from "../model";
@@ -21,6 +17,13 @@ export interface SubTaskParams {
   tools: ToolInterface<any>[];
   taskDescription?: string; // 可选：用于 SubTaskManager 记录状态
   subTaskId?: string; // 可选：复用已有子任务会话
+}
+
+export class SubTaskInterruptedError extends Error {
+  constructor(subTaskId: string) {
+    super(`子会话 ${subTaskId} 已被中断`);
+    this.name = "SubTaskInterruptedError";
+  }
 }
 
 export const resolveObservedSubTaskStatus = ({
@@ -177,7 +180,17 @@ export class TaskOrchestrator {
           }
         }
 
-        if (["aborted", "error"].includes(currentStatus)) {
+        if (currentStatus === "aborted") {
+          if (taskDescription && lastSyncedStatus !== "wait_review") {
+            parentConversation.updateSubTaskStatus(taskDescription, {
+              status: "wait_review",
+            });
+            lastSyncedStatus = "wait_review";
+          }
+          throw new SubTaskInterruptedError(subConversation.id);
+        }
+
+        if (currentStatus === "error") {
           throw new Error(`子会话 ${subConversation.id} 已停止，当前状态: ${currentStatus}`);
         }
 
@@ -275,9 +288,9 @@ export class TaskOrchestrator {
         },
       };
       conversation.memory.addWebsocketMessage(interruptMessage);
-      broadcaster.broadcast(conversation.id, interruptMessage);
+      broadcaster.broadcastConversation(conversation, interruptMessage);
 
-      broadcaster.broadcast(conversation.id, {
+      broadcaster.broadcastConversation(conversation, {
         type: "conversationOver",
         data: { reason: "interrupt" },
       });
@@ -313,12 +326,12 @@ export class TaskOrchestrator {
       },
     };
     conversation.memory.addWebsocketMessage(interruptMessage);
-    broadcaster.broadcast(conversation.id, interruptMessage);
+    broadcaster.broadcastConversation(conversation, interruptMessage);
 
     conversation.status = "aborted";
     conversation.userInput = "";
 
-    broadcaster.broadcast(conversation.id, {
+    broadcaster.broadcastConversation(conversation, {
       type: "conversationOver",
       data: { reason: "interrupt" },
     });

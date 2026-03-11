@@ -8,7 +8,7 @@ import {
   useWebSocketContext,
 } from "@amigo-llm/frontend";
 import type { ToolNames } from "@amigo-llm/types";
-import { FileEdit, FileText, Play, SquareArrowOutUpRight } from "lucide-react";
+import { Download, FileEdit, FileText, Play, SquareArrowOutUpRight } from "lucide-react";
 import type React from "react";
 import {
   getSandboxEditorUrl,
@@ -145,7 +145,9 @@ export const SandboxToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
         : undefined;
     const status = typeof toolOutput?.status === "string" ? toolOutput.status : "";
     const action =
-      !message.partial && previewUrl ? <OpenPreviewIconLink previewUrl={previewUrl} /> : undefined;
+      !message.partial && status === "completed" && previewUrl ? (
+        <OpenPreviewIconLink previewUrl={previewUrl} />
+      ) : undefined;
     const workingDir =
       typeof toolOutput?.workingDir === "string"
         ? toolOutput.workingDir
@@ -163,10 +165,10 @@ export const SandboxToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
     const dependencyStatus =
       typeof toolOutput?.dependencyStatus === "string" ? toolOutput.dependencyStatus : "";
     const statusText =
-      status === "already_running"
-        ? "后台任务已在运行"
-        : status === "started"
-          ? "后台任务已启动，预览可从右上角打开"
+      status === "waiting_for_dependencies"
+        ? "依赖安装中，开发预览会在完成后自动启动"
+        : status === "already_waiting_for_dependencies"
+          ? "开发预览正在等待依赖安装完成"
           : "开发预览已就绪";
 
     return (
@@ -194,6 +196,77 @@ export const SandboxToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
           {startCommand && (
             <div className="rounded-md bg-neutral-100 p-2 font-mono text-xs break-all">
               {startCommand}
+            </div>
+          )}
+          {logPath && <div className="text-xs text-neutral-500">日志: {logPath}</div>}
+        </div>
+      </ToolAccordion>
+    );
+  }
+
+  if (message.toolName === "installDependencies") {
+    const params = (message.params ?? {}) as Record<string, unknown>;
+    const toolOutput =
+      message.toolOutput && typeof message.toolOutput === "object"
+        ? (message.toolOutput as Record<string, unknown>)
+        : undefined;
+    const workingDir =
+      typeof toolOutput?.workingDir === "string"
+        ? toolOutput.workingDir
+        : typeof params.workingDir === "string"
+          ? params.workingDir
+          : ".";
+    const packageManager =
+      typeof toolOutput?.packageManager === "string" ? toolOutput.packageManager : "";
+    const installCommand =
+      typeof toolOutput?.installCommand === "string"
+        ? toolOutput.installCommand
+        : typeof params.installCommand === "string"
+          ? params.installCommand
+          : "";
+    const logPath = typeof toolOutput?.logPath === "string" ? toolOutput.logPath : "";
+    const status = typeof toolOutput?.status === "string" ? toolOutput.status : "";
+    const jobId = typeof toolOutput?.jobId === "string" ? toolOutput.jobId : "";
+    const dependencyStatus =
+      typeof toolOutput?.dependencyStatus === "string" ? toolOutput.dependencyStatus : "";
+    const statusText =
+      status === "started"
+        ? "依赖下载已开始，可先继续修改代码"
+        : status === "already_running"
+          ? "依赖正在下载中，可先继续修改代码"
+          : dependencyStatus === "not_required"
+            ? "当前目录无需安装依赖"
+            : "依赖已安装并可复用";
+
+    return (
+      <ToolAccordion
+        icon={<Download size={14} />}
+        title="安装项目依赖"
+        isLoading={message.partial !== undefined ? message.partial : !isCompleted}
+        hasError={message.hasError}
+        error={message.error}
+        isExpandedDefault={true}
+      >
+        <div className="space-y-2 text-sm text-neutral-700">
+          <div className="font-medium text-neutral-900">{statusText}</div>
+          <div>
+            <span className="font-medium text-neutral-900">目录:</span> {workingDir}
+          </div>
+          {dependencyStatus && (
+            <div>
+              <span className="font-medium text-neutral-900">依赖状态:</span>{" "}
+              {dependencyStatusLabelMap[dependencyStatus] || dependencyStatus}
+            </div>
+          )}
+          {packageManager && (
+            <div>
+              <span className="font-medium text-neutral-900">包管理器:</span> {packageManager}
+            </div>
+          )}
+          {jobId && <div className="text-xs text-neutral-500">任务编号: {jobId}</div>}
+          {installCommand && (
+            <div className="rounded-md bg-neutral-100 p-2 font-mono text-xs break-all">
+              {installCommand}
             </div>
           )}
           {logPath && <div className="text-xs text-neutral-500">日志: {logPath}</div>}

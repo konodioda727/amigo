@@ -377,4 +377,56 @@ describe("Property 5: Message Processing Order", () => {
       toolOutput: "final result",
     });
   });
+
+  test("Distinct tool calls stay separate when toolCallId is reused with different updateTime", () => {
+    const messages: WebSocketMessage<SERVER_SEND_MESSAGE_NAME>[] = [
+      {
+        type: "tool",
+        data: {
+          message: JSON.stringify({
+            toolName: "readFile",
+            toolCallId: "readFile:0",
+            params: { filePath: "/tmp/a.ts" },
+            result: { success: true, filePath: "/tmp/a.ts", content: "a", message: "ok" },
+          }),
+          partial: false,
+          updateTime: 1000,
+          taskId: "task-1",
+        },
+      },
+      {
+        type: "tool",
+        data: {
+          message: JSON.stringify({
+            toolName: "readFile",
+            toolCallId: "readFile:0",
+            params: { filePath: "/tmp/b.ts" },
+            result: { success: true, filePath: "/tmp/b.ts", content: "b", message: "ok" },
+          }),
+          partial: false,
+          updateTime: 1001,
+          taskId: "task-1",
+        },
+      },
+    ];
+
+    const combined = combineMessages(messages as any);
+    const toolMessages = combined.filter((message) => message.type === "tool");
+
+    expect(toolMessages).toHaveLength(2);
+    expect(toolMessages[0]).toMatchObject({
+      type: "tool",
+      toolName: "readFile",
+      toolCallId: "readFile:0",
+      updateTime: 1000,
+      params: { filePath: "/tmp/a.ts" },
+    });
+    expect(toolMessages[1]).toMatchObject({
+      type: "tool",
+      toolName: "readFile",
+      toolCallId: "readFile:0",
+      updateTime: 1001,
+      params: { filePath: "/tmp/b.ts" },
+    });
+  });
 });

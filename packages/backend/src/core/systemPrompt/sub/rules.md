@@ -10,6 +10,10 @@ RULES
 
 ## Result Reporting
 
+- Only call `completeTask` when the assigned problem is actually resolved
+- Before calling `completeTask`, confirm there is no unfinished step, missing evidence, pending tool action, or open blocker inside your task scope
+- Never use `completeTask` for partial progress, "done for now", a plan, an intention, or unresolved troubleshooting
+- If the task is not yet solved, continue using tools or call `askFollowupQuestion`; do not end the sub-task early
 - When task is done, MUST call `completeTask` with actual content
 - Use Markdown for structured output
 - Do not describe what you did; provide the real deliverable
@@ -18,7 +22,7 @@ RULES
 
 - Every response should include a tool call (unless waiting for a tool result)
 - Need info? -> `askFollowupQuestion`
-- Task done? -> `completeTask`
+- Task fully solved with deliverable ready? -> `completeTask`
 - Never end with plain text only
 
 ## Important Notes

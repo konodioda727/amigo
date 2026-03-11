@@ -179,12 +179,11 @@ export class StreamHandler {
             type: currentType,
             updateTime: pendingUpdateTime,
           };
-          broadcaster.broadcast(conversation.id, {
+          broadcaster.broadcastConversation(conversation, {
             type: "waiting_tool_call",
             data: {
               toolName: event.name,
               params: toolCall.arguments,
-              taskId: conversation.id,
               updateTime: pendingUpdateTime,
             },
           });
@@ -254,7 +253,7 @@ export class StreamHandler {
       content: error.message,
     });
 
-    broadcaster.broadcast(conversation.id, {
+    broadcaster.broadcastConversation(conversation, {
       type: "conversationOver",
       data: {
         reason: "error",

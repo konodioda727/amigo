@@ -14,6 +14,7 @@ import { Bash } from "./bash";
 import { BrowserSearch } from "./browserSearch";
 import { CompleteTask } from "./completeTask";
 import { EditFile } from "./editFile";
+import { InstallDependencies } from "./installDependencies";
 import { ReadFile } from "./readFile";
 import {
   CreateTaskDocs,
@@ -398,6 +399,7 @@ const SHARED_BASIC_TOOLS: GenericTool[] = [
   EditFile,
   ReadFile,
   Bash,
+  InstallDependencies,
   CreateTaskDocs,
   ReadTaskDocs,
   UpdateDevServer,
@@ -410,6 +412,7 @@ export const DEFAULT_MAIN_BASIC_TOOLS: GenericTool[] = [
   EditFile,
   ReadFile,
   Bash,
+  InstallDependencies,
   CreateTaskDocs,
   ReadTaskDocs,
   ExecuteTaskList,
@@ -422,6 +425,7 @@ export const DEFAULT_SUB_BASIC_TOOLS: GenericTool[] = [
   EditFile,
   ReadFile,
   Bash,
+  InstallDependencies,
   CreateTaskDocs,
   ReadTaskDocs,
   CompleteTask,
@@ -446,6 +450,7 @@ export {
   EditFile,
   ReadFile,
   Bash,
+  InstallDependencies,
   CreateTaskDocs,
   ReadTaskDocs,
   GetTaskListProgress,

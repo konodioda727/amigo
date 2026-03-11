@@ -70,7 +70,7 @@ export function createAmigoApp(options: AmigoAppOptions = {}): AmigoApp {
     targetRatio: 0.5,
   };
   const modelConfigs = options.modelConfigs || {
-    "doubao-seed-2.0-code": doubaoConfig,
+    "doubao-seed-2.0-pro": doubaoConfig,
   };
   let builder = new AmigoServerBuilder().port(port).cachePath(cachePath);
   if (options.loggerConfig) {

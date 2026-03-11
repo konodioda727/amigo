@@ -6,7 +6,7 @@ import { createTool } from "../base";
 import { DOC_TYPE_TO_FILENAME, ensureDirectoryExists, getTaskDocsPath } from "./utils";
 
 const TASK_LIST_LINE_EXAMPLE =
-  "- [ ] Task 1.1: 实现 XXX [tools: readFile, editFile] [deps: Task 1.0]";
+  "- [ ] Task 1.1: 修改 /sandbox/packages/amigo/src/web/components/NewChatButton.tsx 中的按钮样式问题，采用低饱和主色、圆角设计，并参考 design.md 中记录的设计稿约束 [tools: readFile, editFile] [deps: Task 1.0]";
 
 const validateTaskListContent = (content: string): string | null => {
   const parseResult = parseChecklist(content);
@@ -79,7 +79,7 @@ export const CreateTaskDocs = createTool({
       name: "content",
       optional: false,
       description:
-        '文档内容，使用 Markdown。若 phase=taskList，任务行必须严格为 checklist 且满足：1) 每条任务一行，格式 "- [ ] Task X.Y: 描述 [tools: tool1, tool2] [deps: Task 1.0, Task 1.1]"（deps 可省略）；2) Task ID 唯一；3) 每条任务必须包含 [tools: ...]。',
+        '文档内容，使用 Markdown。若 phase=taskList，任务行必须严格为 checklist 且满足：1) 每条任务一行，格式 "- [ ] Task X.Y: 描述 [tools: tool1, tool2] [deps: Task 1.0, Task 1.1]"（deps 可省略）；2) Task ID 唯一；3) 每条任务必须包含 [tools: ...]；4) 描述必须可直接执行，优先写明具体文件路径、修改目标、预期产出；如果有设计稿/设计文档，需在描述里明确写出参考约束。',
     },
   ],
 

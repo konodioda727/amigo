@@ -54,6 +54,29 @@ const PREVIEW_PROXY_HOP_BY_HOP_HEADERS = new Set([
   "host",
 ]);
 
+const normalizeEditorOpenFilePath = (filePath: string): string => {
+  const trimmed = filePath.trim();
+
+  if (!trimmed || trimmed === "." || trimmed === "/sandbox" || trimmed === "sandbox") {
+    return "/sandbox";
+  }
+
+  if (trimmed.startsWith("/sandbox/")) {
+    return trimmed;
+  }
+
+  if (trimmed.startsWith("sandbox/")) {
+    return `/sandbox/${trimmed.slice("sandbox/".length)}`;
+  }
+
+  if (trimmed.startsWith("/")) {
+    return trimmed;
+  }
+
+  const normalized = trimmed.replace(/^\.\/+/, "").replace(/^\/+/, "");
+  return `/sandbox/${normalized}`;
+};
+
 const routes: AppHttpRoute[] = [
   {
     method: "GET",
@@ -211,9 +234,6 @@ export const createAmigoHttpHandler = (
     return conversation.parentId || taskId;
   };
 
-  const normalizeSandboxFilePath = (filePath: string): string =>
-    filePath.replace(/^(\.\/|\/)+/, "");
-
   const parsePositiveInteger = (value: string | null): number | undefined => {
     if (!value) {
       return undefined;
@@ -237,7 +257,7 @@ export const createAmigoHttpHandler = (
 
     if (filePath) {
       try {
-        await sandbox.queueEditorOpenFile(normalizeSandboxFilePath(filePath), line, column);
+        await sandbox.queueEditorOpenFile(normalizeEditorOpenFilePath(filePath), line, column);
       } catch (error) {
         logger.warn("[AmigoApp] 写入编辑器打开文件指令失败，将仅打开工作区:", error);
       }
@@ -447,7 +467,7 @@ export const createAmigoHttpHandler = (
         try {
           const sandbox = await options.sandboxManager.getOrCreate(sandboxKey);
           await sandbox.queueEditorOpenFile(
-            normalizeSandboxFilePath(parsed.data.filePath),
+            normalizeEditorOpenFilePath(parsed.data.filePath),
             parsed.data.line,
             parsed.data.column,
           );

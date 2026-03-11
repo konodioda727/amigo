@@ -6,6 +6,7 @@ import { CompleteTaskSchema } from "./completeTask";
 import type { ToolExecutionContext } from "./context";
 import { EditDesignDocSchema, ReadDesignDocSchema } from "./designDoc";
 import { EditFileSchema } from "./editFile";
+import { InstallDependenciesSchema } from "./installDependencies";
 import { ReadFileSchema } from "./readFile";
 import {
   CreateTaskDocsSchema,
@@ -30,6 +31,7 @@ export const toolSchemas = z.discriminatedUnion("name", [
   EditDesignDocSchema,
   ReadDesignDocSchema,
   BashSchema,
+  InstallDependenciesSchema,
   UpdateDevServerSchema,
 ]);
 
@@ -42,6 +44,10 @@ export type {
   ReadDesignDocParams,
   ReadDesignDocResult,
 } from "./designDoc";
+export type {
+  InstallDependenciesParams,
+  InstallDependenciesResult,
+} from "./installDependencies";
 export type { UpdateDevServerParams, UpdateDevServerResult } from "./updateDevServer";
 
 /**

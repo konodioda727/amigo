@@ -19,6 +19,7 @@ export const ErrorMessageSchema = z.object({
   type: z.literal("error"),
   data: z.object({
     message: z.string(),
+    taskId: z.string().optional(),
     details: z.string().optional(),
   }),
 });

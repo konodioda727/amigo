@@ -10,6 +10,22 @@ import type { Conversation } from "./Conversation";
 export class WebSocketBroadcaster {
   private connections = new Map<string, ServerWebSocket[]>();
 
+  private withConversationTaskId<T extends SERVER_SEND_MESSAGE_NAME>(
+    conversation: Conversation,
+    message: WebSocketMessage<T>,
+  ): WebSocketMessage<T> {
+    return {
+      ...message,
+      data: {
+        ...message.data,
+        taskId:
+          (message.data as Record<string, unknown>).taskId === undefined
+            ? conversation.id
+            : (message.data as Record<string, unknown>).taskId,
+      } as WebSocketMessage<T>["data"],
+    };
+  }
+
   /**
    * 添加连接
    */
@@ -92,6 +108,13 @@ export class WebSocketBroadcaster {
     }
   }
 
+  broadcastConversation<T extends SERVER_SEND_MESSAGE_NAME>(
+    conversation: Conversation,
+    message: WebSocketMessage<T>,
+  ): void {
+    this.broadcast(conversation.id, this.withConversationTaskId(conversation, message));
+  }
+
   /**
    * 发送消息并同时保存到模型 memory / websocket 历史
    */
@@ -138,8 +161,9 @@ export class WebSocketBroadcaster {
     conversation: Conversation,
     message: WebSocketMessage<T>,
   ): void {
-    this.broadcast(conversation.id, message);
-    conversation.memory.addWebsocketMessage(message as WebSocketMessage<T>);
+    const scopedMessage = this.withConversationTaskId(conversation, message);
+    this.broadcast(conversation.id, scopedMessage);
+    conversation.memory.addWebsocketMessage(scopedMessage as WebSocketMessage<T>);
   }
 }
 

@@ -2,6 +2,8 @@ import type { Sandbox } from "@/core/sandbox";
 import { logger } from "@/utils/logger";
 import { createTool } from "./base";
 
+const normalizeReadFilePath = (filePath: string) => filePath.trim().replace(/^(\.\/)+/, "");
+
 const addLineNumbers = (content: string, startLine: number) =>
   content
     .split("\n")
@@ -22,7 +24,7 @@ export const ReadFile = createTool({
     {
       name: "filePath",
       optional: false,
-      description: "文件路径（相对于沙箱工作目录）",
+      description: "文件路径（支持相对于沙箱工作目录的路径或绝对路径）",
     },
     {
       name: "startLine",
@@ -47,7 +49,7 @@ export const ReadFile = createTool({
       };
     }
 
-    const cleanPath = filePath.replace(/^(\.\/|\/)+/, "");
+    const cleanPath = normalizeReadFilePath(filePath);
 
     try {
       const sandbox = (await context.getSandbox()) as Sandbox;
