@@ -24,6 +24,18 @@ export interface PenpotRpcFile {
         objects?: Record<string, PenpotRpcShape>;
       }
     >;
+    components?: Record<
+      string,
+      {
+        id?: string;
+        name?: string;
+        path?: string;
+        "main-instance-id"?: string;
+        "main-instance-page"?: string;
+        mainInstanceId?: string;
+        mainInstancePage?: string;
+      }
+    >;
   };
 }
 
@@ -35,11 +47,37 @@ export interface PenpotSyncResult {
   fileUrl: string;
 }
 
+export interface PenpotSemanticAnchor {
+  entityType: "section" | "node";
+  semanticId: string;
+  displayName: string;
+  nodeType?: DesignNode["type"];
+  assetUrl?: string;
+  imageFit?: DesignNode["imageFit"];
+}
+
+export type PenpotSemanticAnchorMap = Record<string, PenpotSemanticAnchor>;
+
+export interface PenpotMediaObject {
+  id: string;
+  width: number;
+  height: number;
+  mtype: string;
+  mediaId?: string;
+  thumbnailId?: string;
+  name?: string;
+  isLocal?: boolean;
+  createdAt?: string;
+}
+
 export interface PenpotTextStyle {
   color: string;
   fontFamily: string;
   fontSize: number;
   fontWeight: number;
+  lineHeight: number;
+  letterSpacing?: number;
+  align?: "left" | "center" | "right";
 }
 
 export interface PenpotPositionData {
@@ -55,23 +93,57 @@ export interface PenpotPositionData {
   textTransform: string;
   fontSize: string;
   fontWeight: string;
+  lineHeight?: string;
   textDecoration: string;
   letterSpacing: string;
   fills: Array<Record<string, unknown>>;
   direction: string;
   fontFamily: string;
   text: string;
+  textAlign?: string;
 }
 
 export interface PenpotRpcFill {
   "fill-color"?: string;
   "fill-opacity"?: number;
+  fillColor?: string;
+  fillOpacity?: number;
+  "fill-image"?: {
+    id?: string;
+    width?: number;
+    height?: number;
+    mtype?: string;
+    keepAspectRatio?: boolean;
+  };
+  fillImage?: {
+    id?: string;
+    width?: number;
+    height?: number;
+    mtype?: string;
+    keepAspectRatio?: boolean;
+  };
 }
 
 export interface PenpotRpcStroke {
   "stroke-color"?: string;
   "stroke-width"?: number;
   "stroke-opacity"?: number;
+}
+
+export interface PenpotRpcColor {
+  color?: string;
+  opacity?: number;
+}
+
+export interface PenpotRpcShadow {
+  id?: string | null;
+  style?: "drop-shadow" | "inner-shadow";
+  offsetX?: number;
+  offsetY?: number;
+  blur?: number;
+  spread?: number;
+  hidden?: boolean;
+  color?: PenpotRpcColor;
 }
 
 export interface PenpotRpcTextContent {
@@ -83,6 +155,7 @@ export interface PenpotRpcTextContent {
   "font-weight"?: string | number;
   "line-height"?: string | number;
   "letter-spacing"?: string | number;
+  "text-align"?: string;
 }
 
 export interface PenpotRpcShape {
@@ -96,6 +169,7 @@ export interface PenpotRpcShape {
   shapes?: string[];
   fills?: PenpotRpcFill[];
   strokes?: PenpotRpcStroke[];
+  shadow?: PenpotRpcShadow[];
   content?: PenpotRpcTextContent;
   positionData?: PenpotPositionData[];
   hidden?: boolean;
@@ -104,6 +178,16 @@ export interface PenpotRpcShape {
   r3?: number;
   r4?: number;
   background?: string;
+  "component-id"?: string;
+  "component-file"?: string;
+  "component-root"?: boolean;
+  "main-instance"?: boolean;
+  "shape-ref"?: string;
+  componentId?: string;
+  componentFile?: string;
+  componentRoot?: boolean;
+  mainInstance?: boolean;
+  shapeRef?: string;
 }
 
 export type DesignSection = ExecutableDesignDoc["sections"][number];
@@ -125,10 +209,14 @@ export interface PenpotTypographyStyle {
   fontWeight: number;
   lineHeight: number;
   letterSpacing?: number;
+  align?: "left" | "center" | "right";
 }
 
 export interface PenpotImportContext {
   objects: Record<string, PenpotRpcShape>;
+  anchors: PenpotSemanticAnchorMap;
+  existingNodeProps: Map<string, DesignNode["props"] | undefined>;
+  existingNodes: Map<string, DesignNode>;
   typography: ExecutableDesignDoc["designTokens"]["typography"];
   typographyIndex: Map<string, string>;
   colorHints: {

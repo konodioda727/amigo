@@ -8,7 +8,14 @@ import {
   useWebSocketContext,
 } from "@amigo-llm/frontend";
 import type { ToolNames } from "@amigo-llm/types";
-import { Download, FileEdit, FileText, Play, SquareArrowOutUpRight } from "lucide-react";
+import {
+  CheckCircle2,
+  Download,
+  FileEdit,
+  FileText,
+  Play,
+  SquareArrowOutUpRight,
+} from "lucide-react";
 import type React from "react";
 import {
   getSandboxEditorUrl,
@@ -22,6 +29,158 @@ const dependencyStatusLabelMap: Record<string, string> = {
   success: "已安装",
   failed: "安装失败",
   not_required: "无需安装",
+};
+
+const runChecksOverallStatusLabelMap: Record<string, string> = {
+  passed: "检查全部通过",
+  partial: "部分检查失败",
+  failed: "检查失败",
+  waiting_for_dependencies: "等待依赖安装后自动继续",
+};
+
+const runChecksStepStatusLabelMap: Record<string, string> = {
+  passed: "通过",
+  failed: "失败",
+  timeout: "超时",
+  blocked: "已拦截",
+  running: "运行中",
+};
+
+const asRecord = (value: unknown): Record<string, unknown> | undefined =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+
+const readStringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is string => typeof item === "string");
+};
+
+const RunChecksToolBody: React.FC<{
+  params: Record<string, unknown>;
+  toolOutput?: Record<string, unknown>;
+}> = ({ params, toolOutput }) => {
+  const workingDir =
+    typeof toolOutput?.workingDir === "string"
+      ? toolOutput.workingDir
+      : typeof params.workingDir === "string"
+        ? params.workingDir
+        : ".";
+  const preset =
+    typeof toolOutput?.preset === "string"
+      ? toolOutput.preset
+      : typeof params.preset === "string"
+        ? params.preset
+        : "quick";
+  const dependencyStatus =
+    typeof toolOutput?.dependencyStatus === "string" ? toolOutput.dependencyStatus : "";
+  const overallStatus =
+    typeof toolOutput?.overallStatus === "string" ? toolOutput.overallStatus : "";
+  const jobId = typeof toolOutput?.jobId === "string" ? toolOutput.jobId : "";
+  const summary =
+    typeof toolOutput?.message === "string"
+      ? toolOutput.message
+      : runChecksOverallStatusLabelMap[overallStatus] || "检查进行中";
+  const paramCommands = Array.isArray(params.commands)
+    ? params.commands
+        .map((item) => {
+          const row = asRecord(item);
+          return typeof row?.command === "string" ? row.command : undefined;
+        })
+        .filter((item): item is string => typeof item === "string")
+    : readStringArray(params.commands);
+  const steps = Array.isArray(toolOutput?.steps)
+    ? toolOutput.steps.map(asRecord).filter(Boolean)
+    : [];
+  const failedSteps = readStringArray(toolOutput?.failedSteps);
+
+  return (
+    <div className="space-y-3 text-sm text-neutral-700">
+      <div className="font-medium text-neutral-900">{summary}</div>
+      <div>
+        <span className="font-medium text-neutral-900">目录:</span> {workingDir}
+      </div>
+      <div>
+        <span className="font-medium text-neutral-900">检查集:</span> {preset}
+      </div>
+      {dependencyStatus && (
+        <div>
+          <span className="font-medium text-neutral-900">依赖状态:</span>{" "}
+          {dependencyStatusLabelMap[dependencyStatus] || dependencyStatus}
+        </div>
+      )}
+      {jobId && <div className="text-xs text-neutral-500">任务编号: {jobId}</div>}
+      {paramCommands.length > 0 && (
+        <div className="space-y-1">
+          <div className="font-medium text-neutral-900">命令</div>
+          {paramCommands.map((command) => (
+            <div
+              key={command}
+              className="rounded-md bg-neutral-100 p-2 font-mono text-xs break-all"
+            >
+              {command}
+            </div>
+          ))}
+        </div>
+      )}
+      {failedSteps.length > 0 && (
+        <div className="text-xs text-red-600">失败步骤: {failedSteps.join(", ")}</div>
+      )}
+      {steps.length > 0 && (
+        <div className="space-y-2">
+          <div className="font-medium text-neutral-900">执行结果</div>
+          {steps.map((step, index) => {
+            const name = typeof step?.name === "string" ? step.name : `step_${index + 1}`;
+            const command = typeof step?.command === "string" ? step.command : "";
+            const status = typeof step?.status === "string" ? step.status : "";
+            const durationMs = typeof step?.durationMs === "number" ? step.durationMs : undefined;
+            const outputTail = typeof step?.outputTail === "string" ? step.outputTail : "";
+            const exitCode = typeof step?.exitCode === "number" ? step.exitCode : undefined;
+            const statusLabel = runChecksStepStatusLabelMap[status] || status || "未知";
+            const statusClassName =
+              status === "passed"
+                ? "bg-green-100 text-green-700"
+                : status === "running"
+                  ? "bg-blue-100 text-blue-700"
+                  : "bg-red-100 text-red-700";
+
+            return (
+              <div
+                key={`${name}-${command || "no-command"}`}
+                className="rounded-lg border border-neutral-200 p-3"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="font-medium text-neutral-900">{name}</div>
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] ${statusClassName}`}>
+                    {statusLabel}
+                  </span>
+                  {typeof durationMs === "number" && (
+                    <span className="text-xs text-neutral-500">{durationMs}ms</span>
+                  )}
+                  {typeof exitCode === "number" && (
+                    <span className="text-xs text-neutral-500">exit {exitCode}</span>
+                  )}
+                </div>
+                {command && (
+                  <div className="mt-2 rounded-md bg-neutral-100 p-2 font-mono text-xs break-all">
+                    {command}
+                  </div>
+                )}
+                {outputTail && (
+                  <div className="mt-2 rounded-md bg-neutral-950 px-3 py-2 font-mono text-xs whitespace-pre-wrap break-all text-neutral-200">
+                    {outputTail}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 };
 
 const OpenExternalIconLink: React.FC<{
@@ -82,13 +241,14 @@ export const SandboxToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
   const { mainTaskId, currentTaskId } = useTasks();
   const { config } = useWebSocketContext();
   const sandboxId = mainTaskId || currentTaskId;
+  const toolName = String(message.toolName);
   const editorUrl = getSandboxEditorUrl(config.url, sandboxId);
   const openFileUrl = getSandboxOpenFileUrl(config.url, sandboxId);
   const previewUrl = getSandboxPreviewUrl(config.url, sandboxId);
-  const isCompleted = !!message.toolOutput;
-  const isLoading = message.partial !== undefined ? message.partial : !isCompleted;
+  const isCompleted = message.toolOutput !== undefined;
+  const isLoading = message.partial === true;
 
-  if (message.toolName === "editFile") {
+  if (toolName === "editFile") {
     const params = (message.params ?? {}) as Record<string, unknown>;
     const filePath = typeof params.filePath === "string" ? params.filePath : "";
     const hasEditPreview = typeof params.content === "string" || typeof params.replace === "string";
@@ -105,16 +265,18 @@ export const SandboxToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
         isLoading={isLoading}
         hasError={message.hasError}
         error={message.error}
-        isExpandedDefault={true}
       >
         {(isCompleted || hasEditPreview) && (
-          <EditFileResultBody message={message} isLatest={props.isLatest} />
+          <EditFileResultBody
+            message={message as React.ComponentProps<typeof EditFileResultBody>["message"]}
+            isLatest={props.isLatest}
+          />
         )}
       </ToolAccordion>
     );
   }
 
-  if (message.toolName === "readFile") {
+  if (toolName === "readFile") {
     const params = (message.params ?? {}) as Record<string, unknown>;
     const filePath = typeof params.filePath === "string" ? params.filePath : "";
     const action =
@@ -130,14 +292,18 @@ export const SandboxToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
         isLoading={isLoading}
         hasError={message.hasError}
         error={message.error}
-        isExpandedDefault={true}
       >
-        {isCompleted && <ReadFileResultBody message={message} isLatest={props.isLatest} />}
+        {isCompleted && (
+          <ReadFileResultBody
+            message={message as React.ComponentProps<typeof ReadFileResultBody>["message"]}
+            isLatest={props.isLatest}
+          />
+        )}
       </ToolAccordion>
     );
   }
 
-  if (message.toolName === "updateDevServer") {
+  if (toolName === "updateDevServer") {
     const params = (message.params ?? {}) as Record<string, unknown>;
     const toolOutput =
       message.toolOutput && typeof message.toolOutput === "object"
@@ -176,10 +342,9 @@ export const SandboxToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
         icon={<Play size={14} />}
         title="更新开发预览"
         action={action}
-        isLoading={message.partial !== undefined ? message.partial : !isCompleted}
+        isLoading={message.partial === true}
         hasError={message.hasError}
         error={message.error}
-        isExpandedDefault={true}
       >
         <div className="space-y-2 text-sm text-neutral-700">
           <div className="font-medium text-neutral-900">{statusText}</div>
@@ -204,7 +369,7 @@ export const SandboxToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
     );
   }
 
-  if (message.toolName === "installDependencies") {
+  if (toolName === "installDependencies") {
     const params = (message.params ?? {}) as Record<string, unknown>;
     const toolOutput =
       message.toolOutput && typeof message.toolOutput === "object"
@@ -242,10 +407,9 @@ export const SandboxToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
       <ToolAccordion
         icon={<Download size={14} />}
         title="安装项目依赖"
-        isLoading={message.partial !== undefined ? message.partial : !isCompleted}
+        isLoading={message.partial === true}
         hasError={message.hasError}
         error={message.error}
-        isExpandedDefault={true}
       >
         <div className="space-y-2 text-sm text-neutral-700">
           <div className="font-medium text-neutral-900">{statusText}</div>
@@ -271,6 +435,36 @@ export const SandboxToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
           )}
           {logPath && <div className="text-xs text-neutral-500">日志: {logPath}</div>}
         </div>
+      </ToolAccordion>
+    );
+  }
+
+  if (toolName === "runChecks" || toolName === "runTest") {
+    const params = asRecord(message.params) ?? {};
+    const toolOutput = asRecord(message.toolOutput);
+    const preset =
+      typeof toolOutput?.preset === "string"
+        ? toolOutput.preset
+        : typeof params.preset === "string"
+          ? params.preset
+          : "";
+    const title = preset === "test" || toolName === "runTest" ? "运行测试" : "运行检查";
+    const overallStatus =
+      typeof toolOutput?.overallStatus === "string" ? toolOutput.overallStatus : "";
+    const isExpandedDefault = overallStatus === "failed" || overallStatus === "partial";
+
+    return (
+      <ToolAccordion
+        icon={<CheckCircle2 size={14} />}
+        title={title}
+        isLoading={isLoading}
+        hasError={message.hasError}
+        error={message.error}
+        isExpandedDefault={isExpandedDefault}
+      >
+        {(isCompleted || Object.keys(params).length > 0) && (
+          <RunChecksToolBody params={params} toolOutput={toolOutput} />
+        )}
       </ToolAccordion>
     );
   }

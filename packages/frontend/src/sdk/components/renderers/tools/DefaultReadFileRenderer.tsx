@@ -13,7 +13,7 @@ export const ReadFileResultBody: React.FC<ToolMessageRendererProps<"readFile">> 
   return (
     <div className="space-y-2">
       <div className="text-xs text-neutral-500">{message.toolOutput.message}</div>
-      <pre className="max-h-80 overflow-auto rounded-lg bg-neutral-950 p-3 text-xs text-neutral-100">
+      <pre className="overflow-x-auto rounded-lg bg-neutral-950 p-3 text-xs text-neutral-100">
         <code>{readContent || "文件为空"}</code>
       </pre>
     </div>
@@ -24,8 +24,8 @@ export const DefaultReadFileRenderer: React.FC<ToolMessageRendererProps<"readFil
   message,
 }) => {
   const { params, toolOutput, error, hasError, partial } = message;
-  const isCompleted = !!toolOutput;
-  const isLoading = partial !== undefined ? partial : !isCompleted;
+  const isCompleted = toolOutput !== undefined;
+  const isLoading = partial === true;
 
   return (
     <ToolAccordion

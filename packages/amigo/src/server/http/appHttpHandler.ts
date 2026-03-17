@@ -2,6 +2,11 @@ import { conversationRepository, logger, type SandboxRegistry } from "@amigo-llm
 import { z } from "zod";
 import type { PreviewHostConfig } from "../config/previewHost";
 import {
+  getDesignAssetController,
+  listDesignAssetsController,
+  upsertDesignAssetController,
+} from "./controllers/designAssetController";
+import {
   getDesignDocController,
   listDesignDocsController,
 } from "./controllers/designDocController";
@@ -82,6 +87,21 @@ const routes: AppHttpRoute[] = [
     method: "GET",
     pattern: /^\/api\/tasks\/([^/]+)\/design-docs\/?$/,
     controller: listDesignDocsController,
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/tasks\/([^/]+)\/design-assets\/?$/,
+    controller: listDesignAssetsController,
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/tasks\/([^/]+)\/design-assets\/([^/]+)\/?$/,
+    controller: getDesignAssetController,
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/tasks\/([^/]+)\/design-assets\/?$/,
+    controller: upsertDesignAssetController,
   },
   {
     method: "GET",

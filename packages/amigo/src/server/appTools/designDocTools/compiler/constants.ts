@@ -1,0 +1,132 @@
+import type { MarkupTag } from "./types";
+
+export const DEFAULT_PAGE_WIDTH = 1440;
+export const DEFAULT_PAGE_MIN_HEIGHT = 1200;
+export const DEFAULT_FONT_SIZE = 16;
+export const DEFAULT_LINE_HEIGHT = 22;
+
+export const SUPPORTED_TAGS = new Set<MarkupTag>([
+  "page",
+  "components",
+  "section",
+  "div",
+  "text",
+  "button",
+  "img",
+  "br",
+  "shape",
+  "component",
+  "use",
+  "input",
+  "textarea",
+]);
+
+export const PRESENTATIONAL_STYLE_KEYS = [
+  "background",
+  "background-color",
+  "background-image",
+  "background-size",
+  "background-position",
+  "color",
+  "width",
+  "aspect-ratio",
+  "min-width",
+  "height",
+  "min-height",
+  "max-height",
+  "max-width",
+  "top",
+  "right",
+  "bottom",
+  "left",
+  "padding",
+  "padding-top",
+  "padding-right",
+  "padding-bottom",
+  "padding-left",
+  "gap",
+  "row-gap",
+  "column-gap",
+  "display",
+  "position",
+  "flex-direction",
+  "justify-content",
+  "align-items",
+  "border",
+  "outline",
+  "border-top",
+  "border-right",
+  "border-bottom",
+  "border-left",
+  "border-radius",
+  "box-shadow",
+  "font-size",
+  "font-weight",
+  "font-style",
+  "font-family",
+  "letter-spacing",
+  "text-decoration",
+  "line-height",
+  "text-align",
+  "white-space",
+  "text-overflow",
+  "list-style",
+  "object-fit",
+  "opacity",
+  "cursor",
+  "filter",
+  "transform",
+  "transition",
+  "animation",
+  "overflow",
+  "backdrop-filter",
+  "background-clip",
+  "-webkit-background-clip",
+  "-webkit-text-fill-color",
+  "z-index",
+  "flex",
+  "flex-grow",
+  "flex-shrink",
+  "flex-basis",
+  "flex-wrap",
+  "margin",
+  "margin-top",
+  "margin-right",
+  "margin-bottom",
+  "margin-left",
+  "grid-template-columns",
+];
+
+export const SUPPORTED_STYLE_PROPERTIES = new Set(PRESENTATIONAL_STYLE_KEYS);
+export const COMMON_ALLOWED_ATTRIBUTES = new Set(["id", "name", "style"]);
+export const STATE_STYLE_PREFIXES = ["hover-", "focus-", "active-"] as const;
+
+export const isStateStyleProperty = (key: string) =>
+  STATE_STYLE_PREFIXES.some((prefix) => key.startsWith(prefix));
+
+export const isVendorStyleProperty = (key: string) => key.startsWith("-webkit-");
+
+export const TAG_ALLOWED_ATTRIBUTES: Record<MarkupTag, Set<string>> = {
+  page: new Set([
+    "name",
+    "title",
+    "path",
+    "width",
+    "min-height",
+    "minheight",
+    "background",
+    "theme",
+  ]),
+  components: new Set([]),
+  section: new Set(["id", "name", "kind", "background"]),
+  div: new Set([]),
+  text: new Set([]),
+  button: new Set([]),
+  img: new Set(["asset", "src", "asseturl", "alt"]),
+  br: new Set([]),
+  shape: new Set(["kind", "type", "fill", "color"]),
+  component: new Set(["id", "name"]),
+  use: new Set(["component"]),
+  input: new Set(["placeholder", "value", "type", "disabled"]),
+  textarea: new Set(["placeholder", "value", "rows", "disabled"]),
+};

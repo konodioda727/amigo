@@ -1,9 +1,44 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { getTaskStoragePath } from "@amigo-llm/backend";
 import { getConfiguredPenpotConfig } from "../../config/runtimeConfig";
 
 const PENPOT_BINDINGS_DIRNAME = "penpotBindings";
+
+export interface PenpotSemanticAnchor {
+  entityType: "section" | "node";
+  semanticId: string;
+  displayName: string;
+}
+
+export type PenpotSemanticAnchorMap = Record<string, PenpotSemanticAnchor>;
+
+export interface PenpotMediaObjectBinding {
+  id: string;
+  mediaId?: string;
+  thumbnailId?: string;
+  name?: string;
+  width?: number;
+  height?: number;
+  mtype?: string;
+  isLocal?: boolean;
+  createdAt?: string;
+}
+
+export type PenpotMediaObjectMap = Record<string, PenpotMediaObjectBinding>;
+
+export interface PenpotComponentBinding {
+  componentId: string;
+  fileId: string;
+  pageId: string;
+  mainInstanceId: string;
+  sourceParentSeed: string;
+  sourceInstanceNodeId: string;
+  name?: string;
+  path?: string;
+}
+
+export type PenpotComponentMap = Record<string, PenpotComponentBinding>;
 
 export interface PenpotBinding {
   pageId: string;
@@ -14,6 +49,15 @@ export interface PenpotBinding {
   lastForwardSyncRevision?: number;
   lastReverseSyncRevision?: number;
   lastReverseSyncedAt?: string;
+  anchors?: PenpotSemanticAnchorMap;
+  mediaObjects?: PenpotMediaObjectMap;
+  components?: PenpotComponentMap;
+}
+
+export interface PenpotBindingEntry {
+  localPageId: string;
+  binding: PenpotBinding;
+  target: { fileId: string; pageId: string } | null;
 }
 
 export const getPenpotBaseUrl = () =>
@@ -88,10 +132,41 @@ export const readPenpotBinding = (taskId: string, pageId: string): PenpotBinding
           : undefined,
       lastReverseSyncedAt:
         typeof parsed.lastReverseSyncedAt === "string" ? parsed.lastReverseSyncedAt : undefined,
+      anchors: parsed.anchors && typeof parsed.anchors === "object" ? parsed.anchors : undefined,
+      mediaObjects:
+        parsed.mediaObjects && typeof parsed.mediaObjects === "object"
+          ? parsed.mediaObjects
+          : undefined,
+      components:
+        parsed.components && typeof parsed.components === "object" ? parsed.components : undefined,
     };
   } catch {
     return null;
   }
+};
+
+export const listPenpotBindings = (taskId: string): PenpotBindingEntry[] => {
+  const bindingsPath = getBindingsPath(taskId);
+  if (!existsSync(bindingsPath)) {
+    return [];
+  }
+
+  return readdirSync(bindingsPath)
+    .filter((name) => name.endsWith(".json"))
+    .map((name) => {
+      const localPageId = normalizePageId(name.replace(/\.json$/i, ""));
+      const binding = readPenpotBinding(taskId, localPageId);
+      if (!binding) {
+        return null;
+      }
+
+      return {
+        localPageId,
+        binding,
+        target: parsePenpotBindingUrl(binding.penpotUrl),
+      } satisfies PenpotBindingEntry;
+    })
+    .filter((entry): entry is PenpotBindingEntry => Boolean(entry));
 };
 
 export const writePenpotBinding = (
@@ -114,6 +189,9 @@ export const writePenpotBinding = (
     lastForwardSyncRevision: metadata?.lastForwardSyncRevision,
     lastReverseSyncRevision: metadata?.lastReverseSyncRevision,
     lastReverseSyncedAt: metadata?.lastReverseSyncedAt,
+    anchors: metadata?.anchors,
+    mediaObjects: metadata?.mediaObjects,
+    components: metadata?.components,
   };
 
   writeFileSync(filePath, `${JSON.stringify(record, null, 2)}\n`, "utf-8");

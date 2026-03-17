@@ -9,6 +9,8 @@ import type { Conversation } from "./Conversation";
  */
 export class WebSocketBroadcaster {
   private connections = new Map<string, ServerWebSocket[]>();
+  private partialBroadcastAt = new Map<string, number>();
+  private static readonly PARTIAL_BROADCAST_THROTTLE_MS = 250;
 
   private withConversationTaskId<T extends SERVER_SEND_MESSAGE_NAME>(
     conversation: Conversation,
@@ -49,6 +51,7 @@ export class WebSocketBroadcaster {
       }
       if (conns.length === 0) {
         this.connections.delete(conversationId);
+        this.clearPartialBroadcastStateForConversation(conversationId);
       }
     }
   }
@@ -94,6 +97,10 @@ export class WebSocketBroadcaster {
     conversationId: string,
     message: WebSocketMessage<T>,
   ): void {
+    if (this.shouldSkipPartialBroadcast(conversationId, message)) {
+      return;
+    }
+
     const conns = this.connections.get(conversationId) || [];
     const payload = JSON.stringify({
       type: message.type,
@@ -164,6 +171,68 @@ export class WebSocketBroadcaster {
     const scopedMessage = this.withConversationTaskId(conversation, message);
     this.broadcast(conversation.id, scopedMessage);
     conversation.memory.addWebsocketMessage(scopedMessage as WebSocketMessage<T>);
+  }
+
+  private getPartialBroadcastKey<T extends SERVER_SEND_MESSAGE_NAME>(
+    conversationId: string,
+    message: WebSocketMessage<T>,
+  ): string | null {
+    const data = message.data as Record<string, unknown>;
+    if (data.partial !== true) {
+      return null;
+    }
+
+    const updateTime = data.updateTime;
+    if (typeof updateTime !== "number" || !Number.isFinite(updateTime)) {
+      return null;
+    }
+
+    return `${conversationId}:${message.type}:${updateTime}`;
+  }
+
+  private shouldSkipPartialBroadcast<T extends SERVER_SEND_MESSAGE_NAME>(
+    conversationId: string,
+    message: WebSocketMessage<T>,
+  ): boolean {
+    const partialKey = this.getPartialBroadcastKey(conversationId, message);
+    if (!partialKey) {
+      this.clearMatchingPartialBroadcastKey(conversationId, message);
+      return false;
+    }
+
+    const now = Date.now();
+    const lastBroadcastAt = this.partialBroadcastAt.get(partialKey);
+    if (
+      typeof lastBroadcastAt === "number" &&
+      now - lastBroadcastAt < WebSocketBroadcaster.PARTIAL_BROADCAST_THROTTLE_MS
+    ) {
+      return true;
+    }
+
+    this.partialBroadcastAt.set(partialKey, now);
+    return false;
+  }
+
+  private clearMatchingPartialBroadcastKey<T extends SERVER_SEND_MESSAGE_NAME>(
+    conversationId: string,
+    message: WebSocketMessage<T>,
+  ): void {
+    const data = message.data as Record<string, unknown>;
+    const updateTime = data.updateTime;
+    if (typeof updateTime !== "number" || !Number.isFinite(updateTime)) {
+      return;
+    }
+
+    this.partialBroadcastAt.delete(`${conversationId}:${message.type}:${updateTime}`);
+  }
+
+  private clearPartialBroadcastStateForConversation(conversationId: string): void {
+    const prefix = `${conversationId}:`;
+    for (const key of this.partialBroadcastAt.keys()) {
+      if (key.startsWith(prefix)) {
+        this.partialBroadcastAt.delete(key);
+      }
+    }
   }
 }
 

@@ -7,8 +7,8 @@ export const DefaultReadTaskDocsRenderer: React.FC<ToolMessageRendererProps<"rea
   message,
 }) => {
   const { toolOutput, error, hasError, partial } = message;
-  const isCompleted = !!toolOutput;
-  const isLoading = partial !== undefined ? partial : !isCompleted;
+  const isCompleted = toolOutput !== undefined;
+  const isLoading = partial === true;
 
   return (
     <ToolAccordion

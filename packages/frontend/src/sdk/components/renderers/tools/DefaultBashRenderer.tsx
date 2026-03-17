@@ -6,8 +6,8 @@ import { ToolAccordion } from "./ToolAccordion";
 export const DefaultBashRenderer: React.FC<ToolMessageRendererProps<"bash">> = ({ message }) => {
   const { params, toolOutput, error, hasError, partial } = message;
   const { command } = params;
-  const isCompleted = !!toolOutput;
-  const isLoading = partial !== undefined ? partial : !isCompleted;
+  const isCompleted = toolOutput !== undefined;
+  const isLoading = partial === true;
 
   return (
     <ToolAccordion

@@ -1,9 +1,10 @@
 export { readPenpotSyncConfig } from "./config";
-export { buildReplacePageChanges } from "./exportBuilders";
+export { buildReplacePageChanges, buildReplaceSectionChanges } from "./exportBuilders";
 export { convertPenpotFileToDesignDoc } from "./importTransform";
 export {
   getPenpotRemoteState,
   importPenpotToDesignDoc,
+  syncDesignDocSectionToPenpot,
   syncDesignDocToPenpot,
 } from "./sync";
 export type {

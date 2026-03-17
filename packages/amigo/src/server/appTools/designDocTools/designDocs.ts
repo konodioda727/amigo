@@ -1,11 +1,23 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { defineTool, getTaskStoragePath, logger } from "@amigo-llm/backend";
-import { type ExecutableDesignDoc, validateExecutableDesignDoc } from "./designDocSchema";
+import { listAvailableDesignAssets, upsertStoredDesignComponent } from "./designAssets";
+import type { ExecutableDesignDoc } from "./designDocSchema";
+import { validateExecutableDesignDoc } from "./designDocSchema";
 import { resolveDesignDocOwnerTaskId } from "./designDocScope";
+import {
+  compileDesignDocFromMarkup,
+  compileDesignDocSectionsFromMarkup,
+  compileDesignSectionFromMarkup,
+  extractInlineComponentDefinitionsFromMarkup,
+  serializeDesignDocToMarkup,
+} from "./designMarkupCompiler";
+import { parsePenpotBindingUrl, readPenpotBinding } from "./penpotBindings";
 
 const DESIGN_DOCS_DIRNAME = "designDocs";
 const DESIGN_DOC_SCHEMA_VERSION = 3;
+const PLACEHOLDER_PATTERN =
+  /(todo|tbd|placeholder|lorem ipsum|示意|待补|后续补充|example\.com|picsum\.photos)/i;
 
 export interface StoredDesignDoc {
   schemaVersion: number;
@@ -15,15 +27,6 @@ export interface StoredDesignDoc {
   updatedAt: string;
   document: ExecutableDesignDoc | Record<string, unknown>;
 }
-
-export const writeStoredDesignDoc = (taskId: string, pageId: string, stored: StoredDesignDoc) => {
-  const docsPath = getDesignDocsPath(taskId);
-  const normalizedPageId = normalizePageId(pageId);
-  const filePath = path.join(docsPath, `${normalizedPageId}.json`);
-  ensureDirectoryExists(docsPath);
-  writeFileSync(filePath, `${JSON.stringify(stored, null, 2)}\n`, "utf-8");
-  return filePath;
-};
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -44,86 +47,14 @@ const ensureDirectoryExists = (directory: string) => {
   }
 };
 
-const parseDocumentContent = (
-  content: unknown,
-): { document: Record<string, unknown> | null; error?: string } => {
-  if (typeof content !== "string" || !content.trim()) {
-    return { document: null, error: "content 必须是非空 JSON 字符串" };
-  }
-
-  try {
-    const parsed = JSON.parse(content);
-    if (!isPlainObject(parsed)) {
-      return { document: null, error: "content 必须是 JSON object，不能是数组或基础类型" };
-    }
-    return { document: parsed };
-  } catch (error) {
-    return {
-      document: null,
-      error: `content 不是合法 JSON：${error instanceof Error ? error.message : String(error)}`,
-    };
-  }
+export const writeStoredDesignDoc = (taskId: string, pageId: string, stored: StoredDesignDoc) => {
+  const docsPath = getDesignDocsPath(taskId);
+  const normalizedPageId = normalizePageId(pageId);
+  const filePath = path.join(docsPath, `${normalizedPageId}.json`);
+  ensureDirectoryExists(docsPath);
+  writeFileSync(filePath, `${JSON.stringify(stored, null, 2)}\n`, "utf-8");
+  return filePath;
 };
-
-const deepMerge = (
-  base: Record<string, unknown>,
-  patch: Record<string, unknown>,
-): Record<string, unknown> => {
-  const result: Record<string, unknown> = { ...base };
-
-  for (const [key, value] of Object.entries(patch)) {
-    const existing = result[key];
-    if (isPlainObject(existing) && isPlainObject(value)) {
-      result[key] = deepMerge(existing, value);
-      continue;
-    }
-    result[key] = value;
-  }
-
-  return result;
-};
-
-const replaceLines = (
-  source: string,
-  replacement: string,
-  startLine: number,
-  endLine: number,
-): { content: string | null; error?: string } => {
-  const normalizedStart = Math.max(1, Math.trunc(startLine));
-  const normalizedEnd = Math.max(normalizedStart, Math.trunc(endLine));
-  const sourceLines = source.split("\n");
-
-  if (normalizedStart > sourceLines.length) {
-    return {
-      content: null,
-      error: `startLine 超出范围：当前设计稿只有 ${sourceLines.length} 行`,
-    };
-  }
-
-  if (normalizedEnd > sourceLines.length) {
-    return {
-      content: null,
-      error: `endLine 超出范围：当前设计稿只有 ${sourceLines.length} 行`,
-    };
-  }
-
-  const replacementLines = replacement.replace(/\r\n/g, "\n").split("\n");
-  const nextLines = [
-    ...sourceLines.slice(0, normalizedStart - 1),
-    ...replacementLines,
-    ...sourceLines.slice(normalizedEnd),
-  ];
-
-  return {
-    content: nextLines.join("\n"),
-  };
-};
-
-const addLineNumbers = (content: string) =>
-  content
-    .split("\n")
-    .map((line, index) => `${String(index + 1).padStart(4, " ")}| ${line}`)
-    .join("\n");
 
 const getStoredDocumentSummary = (document: StoredDesignDoc["document"]) => {
   const page = isPlainObject(document.page) ? document.page : null;
@@ -135,6 +66,166 @@ const getStoredDocumentSummary = (document: StoredDesignDoc["document"]) => {
     minHeight: typeof page?.minHeight === "number" ? page.minHeight : undefined,
     sectionCount: sections.length,
   };
+};
+
+const getPenpotBindingSummary = (taskId: string, pageId: string) => {
+  const binding = readPenpotBinding(taskId, pageId);
+  const target = binding ? parsePenpotBindingUrl(binding.penpotUrl) : null;
+  if (!binding || !target) {
+    return undefined;
+  }
+
+  return {
+    fileId: target.fileId,
+    penpotPageId: target.pageId,
+    fileUrl: binding.penpotUrl,
+  };
+};
+
+const collectDocumentIds = (
+  document: ExecutableDesignDoc,
+  excludedSectionIds?: Iterable<string> | string,
+) => {
+  const ids = new Set<string>();
+  const normalizedExcluded =
+    typeof excludedSectionIds === "string" ? [excludedSectionIds] : excludedSectionIds || [];
+  const excluded = new Set(normalizedExcluded);
+
+  const visitNodes = (nodes: ExecutableDesignDoc["sections"][number]["nodes"]) => {
+    for (const node of nodes) {
+      ids.add(node.id);
+      if (Array.isArray(node.children) && node.children.length > 0) {
+        visitNodes(node.children);
+      }
+    }
+  };
+
+  for (const section of document.sections) {
+    if (excluded.has(section.id)) {
+      continue;
+    }
+    ids.add(section.id);
+    visitNodes(section.nodes);
+  }
+
+  return ids;
+};
+
+const reflowSections = (sections: ExecutableDesignDoc["sections"]) => {
+  let currentY = 0;
+  return sections.map((section) => {
+    const nextSection = {
+      ...section,
+      y: currentY,
+    };
+    currentY += section.height;
+    return nextSection;
+  });
+};
+
+const collectFinalizeErrors = (document: ExecutableDesignDoc) => {
+  const errors: string[] = [];
+
+  for (const section of document.sections) {
+    if (section.nodes.length === 0) {
+      errors.push(`sections.${section.id}: 区块 nodes 不能为空`);
+    }
+  }
+
+  const walkNodes = (
+    nodes: ExecutableDesignDoc["sections"][number]["nodes"],
+    pathPrefix: string,
+    collectionName: "nodes" | "children" = "nodes",
+  ) => {
+    for (let index = 0; index < nodes.length; index += 1) {
+      const node = nodes[index];
+      const nodePath = `${pathPrefix}.${collectionName}.${index}`;
+
+      if ((node.type === "text" || node.type === "button") && typeof node.text === "string") {
+        if (PLACEHOLDER_PATTERN.test(node.text)) {
+          errors.push(`${nodePath}.text: 包含占位文本`);
+        }
+      }
+
+      if (node.type === "image" && !node.assetUrl) {
+        errors.push(`${nodePath}.assetUrl: 图片节点缺少素材地址`);
+      }
+
+      if (Array.isArray(node.children) && node.children.length > 0) {
+        walkNodes(node.children, nodePath, "children");
+      }
+    }
+  };
+
+  for (let sectionIndex = 0; sectionIndex < document.sections.length; sectionIndex += 1) {
+    walkNodes(document.sections[sectionIndex]?.nodes || [], `sections.${sectionIndex}`);
+  }
+
+  return errors;
+};
+
+const syncDesignDocWithPenpot = async (taskId: string, pageId: string) => {
+  try {
+    const { syncDesignDocToPenpot } = await import("./penpotSync");
+    const syncResult = await syncDesignDocToPenpot(taskId, pageId);
+    return {
+      success: true as const,
+      fileUrl: syncResult.fileUrl,
+    };
+  } catch (syncError) {
+    return {
+      success: false as const,
+      error: syncError instanceof Error ? syncError.message : String(syncError),
+    };
+  }
+};
+
+const syncDesignDocSectionWithPenpot = async (
+  taskId: string,
+  pageId: string,
+  sectionId: string,
+) => {
+  try {
+    const { syncDesignDocSectionToPenpot } = await import("./penpotSync");
+    const syncResult = await syncDesignDocSectionToPenpot(taskId, pageId, sectionId);
+    return {
+      success: true as const,
+      fileUrl: syncResult.fileUrl,
+    };
+  } catch (syncError) {
+    return {
+      success: false as const,
+      error: syncError instanceof Error ? syncError.message : String(syncError),
+    };
+  }
+};
+
+const persistValidatedDesignDoc = async ({
+  ownerTaskId,
+  pageId,
+  title,
+  existing,
+  document,
+}: {
+  ownerTaskId: string;
+  pageId: string;
+  title?: string;
+  existing?: StoredDesignDoc | null;
+  document: ExecutableDesignDoc;
+}) => {
+  const now = new Date().toISOString();
+  const stored: StoredDesignDoc = {
+    schemaVersion: DESIGN_DOC_SCHEMA_VERSION,
+    pageId,
+    title: title?.trim() || existing?.title || document.page.name,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+    document,
+  };
+
+  writeStoredDesignDoc(ownerTaskId, pageId, stored);
+  const penpotSync = await syncDesignDocWithPenpot(ownerTaskId, pageId);
+  return { stored, penpotSync };
 };
 
 export const loadStoredDesignDoc = (filePath: string): StoredDesignDoc | null => {
@@ -188,6 +279,10 @@ export const listStoredDesignDocs = (taskId: string) => {
         updatedAt: stored?.updatedAt || null,
         schemaVersion: stored?.schemaVersion || 0,
         valid: validation.valid,
+        penpotBinding: getPenpotBindingSummary(
+          taskId,
+          stored?.pageId || name.replace(/\.json$/i, ""),
+        ),
       };
     });
 };
@@ -206,246 +301,362 @@ export const readStoredDesignDoc = (taskId: string, pageId: string) => {
     filePath,
     stored,
     validation,
+    penpotBinding: getPenpotBindingSummary(taskId, normalizedPageId),
   };
 };
 
-export const editDesignDocTool = defineTool({
-  name: "editDesignDoc",
+const resolveDesignDocMutationContext = ({
+  taskId,
+  parentId,
+  pageId,
+}: {
+  taskId?: string;
+  parentId?: string;
+  pageId: unknown;
+}) => {
+  const ownerTaskId = resolveDesignDocOwnerTaskId(taskId, parentId);
+  if (!ownerTaskId) {
+    return {
+      ok: false as const,
+      message: "taskId 不能为空",
+    };
+  }
+
+  const normalizedPageId = normalizePageId(String(pageId || ""));
+  if (!normalizedPageId) {
+    return {
+      ok: false as const,
+      message: "pageId 不能为空，且只能包含可归一化的页面标识",
+    };
+  }
+
+  const docsPath = getDesignDocsPath(ownerTaskId);
+  const filePath = path.join(docsPath, `${normalizedPageId}.json`);
+
+  return {
+    ok: true as const,
+    ownerTaskId,
+    normalizedPageId,
+    docsPath,
+    filePath,
+    existing: loadStoredDesignDoc(filePath),
+  };
+};
+
+export const createDesignDocFromMarkupTool = defineTool({
+  name: "createDesignDocFromMarkup",
   description:
-    "为当前任务创建或更新页面设计稿 JSON 文件，要求使用可执行的 design doc v3 schema。若传入 startLine/endLine，则按 readDesignDoc 返回的 content 行号做局部替换。",
+    '使用受限的 HTML + inline CSS 生成设计稿；默认整页创建，传 update=true 时按 section.id 对已有页面做局部更新。调用前先用 listDesignAssets 查看当前可复用的设计资产，再决定是否需要通过 <use component="..."> 或 <img asset="..."> 引用它们。',
   whenToUse:
-    "在 UI/页面/组件实现前先产出设计稿；或在代码实现前需要更新既有页面设计决策时使用。设计稿必须可复用、可集成，不能只写自然语言描述。若页面已有设计稿，默认先 readDesignDoc；若只需小范围修改，优先用 startLine/endLine 局部替换；只有用户已同意的情况下，才整份重写。",
+    "当需要创建、整体重建，或按区块局部更新页面设计稿时使用。先调用 listDesignAssets 查看当前已有资产，再生成 markup。markupText 根节点必须是 <page>；<page> 下可以可选包含一个 <components> 块用于声明并产出 component 资产，其余直接子节点必须是 <section>。",
   params: [
     {
       name: "pageId",
       optional: false,
-      description: "页面或视图标识，推荐 kebab-case，例如 home-page、settings-profile",
+      description: "页面或视图标识，推荐 kebab-case，例如 home-page、blog-detail",
     },
     {
       name: "title",
       optional: true,
-      description: "设计稿标题，便于后续检索；可与页面名称一致",
+      description: "设计稿标题，便于后续检索；默认使用 <page name> 或 <page title>",
     },
     {
-      name: "content",
+      name: "markupText",
       optional: false,
       description:
-        "不传 startLine/endLine 时，这里填写完整设计稿 JSON 字符串，按 v3 schema 填写，根字段只能有 page、designTokens、sections。page 只填 name/path/width/minHeight/background；designTokens 只填 colors、spacing、radius、typography，字号/字重/行高/间距/圆角都使用 number，颜色全部使用十六进制，其中 typography.lineHeight 必须填写最终整数像素值，例如 24、32、72，不能写 1.2 这类倍率，也不能写 24.5 这类小数；sections 是页面区块数组，每个 section 都必须填写 id/name/kind/y/height/layout/nodes。layout.mode 只填 absolute/stack/grid，layout.direction 只填 horizontal/vertical，alignX/alignY 只填 start/center/end/stretch，layout.padding 写成 {top,right,bottom,left}。每个 node 都必须填写 id/name/type/x/y/width/height，其中 x/y/width/height 是最终可落到 Penpot 的绝对布局结果；type 只使用 container、text、button、image、shape；如果需要图层顺序可填写 zIndex；只有 section 才能写 nodes，普通 node 如果需要嵌套子节点，只能写 children，不能写 nodes；text/button 节点填写真实 text，image 节点填写 assetUrl，如需表达展示方式可填写 imageFit，值只填 cover/contain/fill；shape 节点如需表达具体形状可填写 shapeKind，值只填 rect/ellipse/line。style 只能填写 fill、fills、stroke、radius、opacity、textColor、fontToken、fontSize、fontWeight、align、shadow；文本对齐只能写 style.align，值只填 left/center/right，不能写 textAlign；如果需要填充色，style.fill 写成对象，例如 {type:'solid',color:'#B9924C',opacity:1}；如果需要描边，style.stroke 也必须写成对象，例如 {color:'#2A2F36',width:1,opacity:1}；如果需要阴影，style.shadow 也必须写成对象，例如 {x:0,y:12,blur:32,color:'#000000',opacity:0.18}；fill.color、stroke.color、shadow.color 都使用十六进制。若传入 startLine/endLine，这里改为填写用于替换对应行范围的 JSON 片段文本。",
+        '受限 HTML/CSS 字符串。调用本工具前先用 listDesignAssets 查看当前已有设计资产，再决定具体引用方式。支持 <page>、<components>、<component>、<section>、<div>、<text>、<button>、<img>、<shape>、<use>、<br>、<input>、<textarea>，以及常见语义标签如 h1-h6、p、span、label、a、header、footer、main、nav、article、aside、ul、ol、li。每个 <section> 必须显式写 id、name、kind，且 name 必须是简短的人类可读区块名。创建页面时必须显式写 <page width="...">，并让宽度匹配目标端；如果省略 width，系统会按桌面稿默认 1440 处理，所以移动端页面必须明确写出 375/390/393/414 等手机宽度。设计稿尺寸必须受控：page.width 需在 240-2560 之间，page.minHeight 需在 200-20000 之间，section 和 node 的宽高也必须保持在合理范围内，不能生成离谱的大尺寸。若要在本次生成里顺手产出 component 资产，可在 <page> 下添加 <components>，里面声明一个或多个 <component id="...">...</component>；页面里可以立刻通过 <use component="asset-id" id="instance-id" /> 复用这些内联组件。复用图片资产时优先写 <img asset="asset-id" ... />，没有真实资产时也可以先写占位 src URL。系统会先归一化成内部 markup，再计算 computedStyle 和布局。支持的样式包括 width/height/max-width/min-height/top/right/bottom/left/padding/padding-top/padding-right/padding-bottom/padding-left/gap/row-gap/column-gap/display:flex/display:grid/position/flex-direction/flex/flex-wrap/justify-content/align-items/margin/background/color/border/outline/border-top/border-right/border-bottom/border-left/border-radius/font-size/font-weight/font-style/font-family/letter-spacing/text-decoration/line-height/text-align/white-space/object-fit/opacity/cursor/transition/overflow/background-clip/z-index/grid-template-columns。长度只接受 number、px、百分比或 margin:auto；<br> 只用于文本换行，grid 目前只支持等列网格。当前是静态设计稿，不需要动效或复杂交互；hover-/focus-/active- 前缀属性会被透传为元数据，但不参与布局和渲染。不要使用 class、外部样式表、脚本或任意定位语法。转义后的 &lt;page&gt; / &lt;section&gt; 会被直接拒绝。',
     },
     {
-      name: "mergeWithExisting",
-      optional: true,
-      description: "是否与现有设计稿做对象级合并。默认 false；数组字段会整体替换。",
-    },
-    {
-      name: "startLine",
+      name: "update",
       optional: true,
       description:
-        "可选。若提供，则进入按行修改模式。行号基于 readDesignDoc 返回的 content，表示替换起始行（从 1 开始）。",
-    },
-    {
-      name: "endLine",
-      optional: true,
-      description:
-        "可选。若提供，则进入按行修改模式。行号基于 readDesignDoc 返回的 content，表示替换结束行（包含）；不传时默认等于 startLine。",
+        "是否按 section.id 对已有页面做局部更新。为 true 时，markupText 仍然必须是 <page> 根节点，但只需要包含要替换的部分 <section>；系统会保留未提供的其他 section。",
     },
   ],
   async invoke({ params, context }) {
-    const ownerTaskId = resolveDesignDocOwnerTaskId(context.taskId, context.parentId);
-    if (!ownerTaskId) {
-      const message = "taskId 不能为空";
+    const resolved = resolveDesignDocMutationContext({
+      taskId: context.taskId,
+      parentId: context.parentId,
+      pageId: params.pageId,
+    });
+
+    if (!resolved.ok) {
       return {
-        message,
+        message: resolved.message,
         toolResult: {
           success: false,
           pageId: "",
-          validationErrors: ["taskId 不能为空"],
-          message,
+          validationErrors: [resolved.message],
+          message: resolved.message,
         },
       };
     }
 
-    const normalizedPageId = normalizePageId(String(params.pageId || ""));
-    if (!normalizedPageId) {
-      const message = "pageId 不能为空，且只能包含可归一化的页面标识";
+    if (typeof params.markupText !== "string" || !params.markupText.trim()) {
+      const message = "markupText 必须是非空字符串";
       return {
         message,
         toolResult: {
           success: false,
-          pageId: "",
-          validationErrors: ["pageId 非法"],
+          pageId: resolved.normalizedPageId,
+          validationErrors: [message],
           message,
         },
       };
     }
-
-    const docsPath = getDesignDocsPath(ownerTaskId);
-    const filePath = path.join(docsPath, `${normalizedPageId}.json`);
-    const shouldMerge = params.mergeWithExisting === true || params.mergeWithExisting === "true";
-    const hasLineRange = params.startLine !== undefined || params.endLine !== undefined;
-    const startLine = params.startLine !== undefined ? Number(params.startLine) : undefined;
-    const endLine = params.endLine !== undefined ? Number(params.endLine) : undefined;
 
     try {
-      ensureDirectoryExists(docsPath);
-      const existing = loadStoredDesignDoc(filePath);
-      let mergedDocument: Record<string, unknown>;
+      const assets = listAvailableDesignAssets(resolved.ownerTaskId);
+      const components = assets
+        .filter((asset) => asset.type === "component")
+        .map((asset) => ({ id: asset.id, markupText: asset.markupText }));
+      const images = assets
+        .filter((asset) => asset.type === "image")
+        .map((asset) => ({
+          id: asset.id,
+          url: asset.url,
+          width: asset.width,
+          height: asset.height,
+        }));
+      const updateMode = params.update === true;
 
-      if (hasLineRange) {
-        if (
-          startLine === undefined ||
-          !Number.isFinite(startLine) ||
-          startLine < 1 ||
-          (endLine !== undefined && (!Number.isFinite(endLine) || endLine < startLine))
-        ) {
-          const message =
-            "startLine/endLine 非法，必须是从 1 开始的有效行号，且 endLine 不能小于 startLine";
+      if (updateMode) {
+        const existing = readStoredDesignDoc(resolved.ownerTaskId, resolved.normalizedPageId);
+        if (!existing || !existing.validation.valid || !existing.validation.document) {
+          const message = `未找到页面 ${resolved.normalizedPageId} 的有效设计稿，无法执行 update`;
           return {
             message,
             toolResult: {
               success: false,
-              pageId: normalizedPageId,
+              pageId: resolved.normalizedPageId,
               validationErrors: [message],
               message,
             },
           };
         }
 
-        if (!existing || !isPlainObject(existing.document)) {
-          const message = "按行修改设计稿前，必须先存在一份可读取的设计稿";
+        const initialPartial = compileDesignDocSectionsFromMarkup({
+          markupText: params.markupText,
+          pageWidth: existing.validation.document.page.width,
+          components,
+          images,
+        });
+
+        if (!initialPartial.sections || !initialPartial.root) {
+          const validationErrors =
+            initialPartial.errors.length > 0 ? initialPartial.errors : ["设计稿标记编译失败"];
+          const message = validationErrors[0] || "设计稿标记编译失败";
           return {
             message,
             toolResult: {
               success: false,
-              pageId: normalizedPageId,
-              validationErrors: [message],
+              pageId: resolved.normalizedPageId,
+              validationErrors,
               message,
             },
           };
         }
 
-        const currentDocumentContent = JSON.stringify(existing.document, null, 2);
-        const linePatch = replaceLines(
-          currentDocumentContent,
-          String(params.content ?? ""),
-          startLine,
-          endLine ?? startLine,
+        const sectionIds = initialPartial.sections.map((section) => section.id);
+        const missingSectionIds = sectionIds.filter(
+          (sectionId) =>
+            !existing.validation.document.sections.some((section) => section.id === sectionId),
         );
-
-        if (!linePatch.content) {
-          const message = linePatch.error || "按行修改设计稿失败";
+        if (missingSectionIds.length > 0) {
+          const message = `update 模式只能替换已有区块，未找到: ${missingSectionIds.join(", ")}`;
           return {
             message,
             toolResult: {
               success: false,
-              pageId: normalizedPageId,
+              pageId: resolved.normalizedPageId,
               validationErrors: [message],
               message,
             },
           };
         }
 
-        const patchedDocumentResult = parseDocumentContent(linePatch.content);
-        if (!patchedDocumentResult.document) {
-          const message = patchedDocumentResult.error || "按行修改后不是合法 JSON";
+        const partial = compileDesignDocSectionsFromMarkup({
+          markupText: params.markupText,
+          pageWidth: existing.validation.document.page.width,
+          reservedIds: collectDocumentIds(existing.validation.document, sectionIds),
+          components,
+          images,
+        });
+
+        if (!partial.sections || !partial.root) {
+          const validationErrors =
+            partial.errors.length > 0 ? partial.errors : ["设计稿标记编译失败"];
+          const message = validationErrors[0] || "设计稿标记编译失败";
           return {
             message,
             toolResult: {
               success: false,
-              pageId: normalizedPageId,
-              validationErrors: [message],
+              pageId: resolved.normalizedPageId,
+              validationErrors,
               message,
             },
           };
         }
 
-        mergedDocument = patchedDocumentResult.document;
-      } else {
-        const { document, error } = parseDocumentContent(params.content);
-        if (!document) {
-          const message = error || "设计稿解析失败";
+        const mergedSections = existing.validation.document.sections.map((section) => {
+          const replacement = partial.sections?.find((candidate) => candidate.id === section.id);
+          return replacement || section;
+        });
+        const reflowedSections = reflowSections(mergedSections);
+        const totalHeight = reflowedSections.reduce((sum, section) => sum + section.height, 0);
+        const nextDocument: ExecutableDesignDoc = {
+          ...existing.validation.document,
+          page: {
+            ...existing.validation.document.page,
+            ...(partial.root.attributes.name ? { name: partial.root.attributes.name } : {}),
+            ...(partial.root.attributes.path ? { path: partial.root.attributes.path } : {}),
+            minHeight: Math.max(existing.validation.document.page.minHeight, totalHeight),
+          },
+          sections: reflowedSections,
+        };
+
+        const validation = validateExecutableDesignDoc(nextDocument);
+        if (!validation.valid || !validation.document) {
+          const message = `设计稿未通过 v3 schema 校验，共 ${validation.errors.length} 个错误`;
           return {
             message,
             toolResult: {
               success: false,
-              pageId: normalizedPageId,
-              validationErrors: [message],
+              pageId: resolved.normalizedPageId,
+              validationErrors: validation.errors,
               message,
             },
           };
         }
 
-        mergedDocument =
-          shouldMerge && existing && isPlainObject(existing.document)
-            ? deepMerge(existing.document, document)
-            : document;
+        const finalizeErrors = collectFinalizeErrors(validation.document);
+        if (finalizeErrors.length > 0) {
+          const message = `设计稿尚未完成，共发现 ${finalizeErrors.length} 个问题`;
+          return {
+            message,
+            toolResult: {
+              success: false,
+              pageId: resolved.normalizedPageId,
+              validationErrors: finalizeErrors,
+              message,
+            },
+          };
+        }
+
+        const { stored, penpotSync } = await persistValidatedDesignDoc({
+          ownerTaskId: resolved.ownerTaskId,
+          pageId: resolved.normalizedPageId,
+          title: typeof params.title === "string" ? params.title : undefined,
+          existing: resolved.existing,
+          document: validation.document,
+        });
+
+        const inlineComponents = extractInlineComponentDefinitionsFromMarkup(params.markupText);
+        if (inlineComponents.errors.length === 0) {
+          for (const component of inlineComponents.components) {
+            upsertStoredDesignComponent(resolved.ownerTaskId, {
+              id: component.id,
+              markupText: component.markupText,
+            });
+          }
+        }
+
+        const updatedSectionIds = Array.from(sectionIds);
+        const message =
+          penpotSync.success === false
+            ? `设计稿已局部更新: ${updatedSectionIds.join(", ")}，但同步到 Penpot 失败`
+            : `设计稿已局部更新并同步到 Penpot: ${updatedSectionIds.join(", ")}`;
+
+        return {
+          message,
+          toolResult: {
+            success: true,
+            pageId: resolved.normalizedPageId,
+            title: stored.title,
+            updatedAt: stored.updatedAt,
+            summary: getStoredDocumentSummary(stored.document),
+            penpotSync,
+            validationErrors: [],
+            message,
+          },
+        };
       }
 
-      const validation = validateExecutableDesignDoc(mergedDocument);
+      const compiled = compileDesignDocFromMarkup(params.markupText, {
+        components,
+        images,
+      });
+      if (!compiled.document) {
+        const validationErrors =
+          compiled.errors.length > 0 ? compiled.errors : ["设计稿标记编译失败"];
+        const message = validationErrors[0] || "设计稿标记编译失败";
+        return {
+          message,
+          toolResult: {
+            success: false,
+            pageId: resolved.normalizedPageId,
+            validationErrors,
+            message,
+          },
+        };
+      }
 
+      const validation = validateExecutableDesignDoc(compiled.document);
       if (!validation.valid || !validation.document) {
         const message = `设计稿未通过 v3 schema 校验，共 ${validation.errors.length} 个错误`;
         return {
           message,
           toolResult: {
             success: false,
-            pageId: normalizedPageId,
+            pageId: resolved.normalizedPageId,
             validationErrors: validation.errors,
             message,
           },
         };
       }
 
-      const now = new Date().toISOString();
-      const stored: StoredDesignDoc = {
-        schemaVersion: DESIGN_DOC_SCHEMA_VERSION,
-        pageId: normalizedPageId,
-        title:
-          typeof params.title === "string" && params.title.trim()
-            ? params.title.trim()
-            : existing?.title || validation.document.page.name,
-        createdAt: existing?.createdAt || now,
-        updatedAt: now,
-        document: validation.document,
-      };
-
-      writeStoredDesignDoc(ownerTaskId, normalizedPageId, stored);
-      let penpotSync:
-        | {
-            success: true;
-            fileUrl: string;
-          }
-        | {
-            success: false;
-            error: string;
-          }
-        | undefined;
-
-      try {
-        const { syncDesignDocToPenpot } = await import("./penpotSync");
-        const syncResult = await syncDesignDocToPenpot(ownerTaskId, normalizedPageId);
-        penpotSync = {
-          success: true,
-          fileUrl: syncResult.fileUrl,
-        };
-      } catch (syncError) {
-        penpotSync = {
-          success: false,
-          error: syncError instanceof Error ? syncError.message : String(syncError),
+      const finalizeErrors = collectFinalizeErrors(validation.document);
+      if (finalizeErrors.length > 0) {
+        const message = `设计稿尚未完成，共发现 ${finalizeErrors.length} 个问题`;
+        return {
+          message,
+          toolResult: {
+            success: false,
+            pageId: resolved.normalizedPageId,
+            validationErrors: finalizeErrors,
+            message,
+          },
         };
       }
 
+      const { stored, penpotSync } = await persistValidatedDesignDoc({
+        ownerTaskId: resolved.ownerTaskId,
+        pageId: resolved.normalizedPageId,
+        title: typeof params.title === "string" ? params.title : undefined,
+        existing: resolved.existing,
+        document: validation.document,
+      });
+
+      const inlineComponents = extractInlineComponentDefinitionsFromMarkup(params.markupText);
+      if (inlineComponents.errors.length === 0) {
+        for (const component of inlineComponents.components) {
+          upsertStoredDesignComponent(resolved.ownerTaskId, {
+            id: component.id,
+            markupText: component.markupText,
+          });
+        }
+      }
+
       const message =
-        penpotSync?.success === false
-          ? `已保存设计稿: ${normalizedPageId}，但同步到 Penpot 失败`
-          : `已保存设计稿并同步到 Penpot: ${normalizedPageId}`;
+        penpotSync.success === false
+          ? `设计稿已生成: ${resolved.normalizedPageId}，但同步到 Penpot 失败`
+          : `设计稿已生成并同步到 Penpot: ${resolved.normalizedPageId}`;
+
       return {
         message,
         toolResult: {
           success: true,
-          pageId: normalizedPageId,
-          startLine: hasLineRange ? startLine : undefined,
-          endLine: hasLineRange ? (endLine ?? startLine) : undefined,
+          pageId: resolved.normalizedPageId,
           title: stored.title,
           updatedAt: stored.updatedAt,
           summary: getStoredDocumentSummary(stored.document),
@@ -454,14 +665,14 @@ export const editDesignDocTool = defineTool({
           message,
         },
       };
-    } catch (writeError) {
-      const message = `保存设计稿失败: ${writeError instanceof Error ? writeError.message : String(writeError)}`;
-      logger.error("[DesignDocs] editDesignDoc error:", writeError);
+    } catch (error) {
+      const message = `生成设计稿失败: ${error instanceof Error ? error.message : String(error)}`;
+      logger.error("[DesignDocs] createDesignDocFromMarkup error:", error);
       return {
         message,
         toolResult: {
           success: false,
-          pageId: normalizedPageId,
+          pageId: resolved.normalizedPageId,
           validationErrors: [message],
           message,
         },
@@ -470,17 +681,289 @@ export const editDesignDocTool = defineTool({
   },
 });
 
-export const readDesignDocTool = defineTool({
-  name: "readDesignDoc",
+export const replaceDesignSectionFromMarkupTool = defineTool({
+  name: "replaceDesignSectionFromMarkup",
   description:
-    "读取当前任务已保存的页面设计稿 JSON。若传入 pageId，返回该页面带行号的 content；若不传 pageId，则返回设计稿索引。",
+    '用受限的 <section> HTML + inline CSS 替换现有设计稿中的单个区块，并仅同步受影响的区块到 Penpot。调用前先用 listDesignAssets 查看当前可复用的设计资产，再决定是否需要通过 <use component="..."> 或 <img asset="..."> 引用它们。',
   whenToUse:
-    "在编写或修改 UI 代码前先读取对应页面设计稿。返回的 content 自带行号，可直接用于定位 startLine/endLine；或者先列出当前任务有哪些设计稿可复用。",
+    "当页面已存在设计稿，只需要修改某个 section，而不是整体重建页面时使用。先调用 listDesignAssets 查看当前已有资产，再生成 markup。markupText 根节点必须是 <section>。",
   params: [
     {
       name: "pageId",
-      optional: true,
-      description: "要读取的页面标识；为空时仅返回当前任务下的设计稿索引",
+      optional: false,
+      description: "页面或视图标识，推荐 kebab-case，例如 home-page、blog-detail",
+    },
+    {
+      name: "sectionId",
+      optional: false,
+      description: "要替换的区块 id，必须和现有设计稿中的 section.id 一致",
+    },
+    {
+      name: "markupText",
+      optional: false,
+      description:
+        '受限 HTML/CSS 字符串，根节点必须是 <section>。调用本工具前先用 listDesignAssets 查看当前已有设计资产，再决定具体引用方式。必须显式写 section 的 id、name、kind，且 name 必须是简短的人类可读区块名。支持的标签和样式范围与 createDesignDocFromMarkup 一致；复用设计组件时请写 <use component="asset-id" id="instance-id" />，复用图片资产时优先写 <img asset="asset-id" ... />，没有真实资产时也可以先写占位 src URL。支持 margin/margin-top/margin-right/margin-bottom/margin-left 和 margin:auto，<br> 可用于文本换行，display:grid + grid-template-columns 可用于等列网格；当前是静态设计稿，不需要动效或复杂交互；hover-/focus-/active- 前缀属性会被透传为元数据，但不参与布局和渲染。转义后的 &lt;section&gt; 会被直接拒绝。',
+    },
+  ],
+  async invoke({ params, context }) {
+    const resolved = resolveDesignDocMutationContext({
+      taskId: context.taskId,
+      parentId: context.parentId,
+      pageId: params.pageId,
+    });
+
+    if (!resolved.ok) {
+      return {
+        message: resolved.message,
+        toolResult: {
+          success: false,
+          pageId: "",
+          validationErrors: [resolved.message],
+          message: resolved.message,
+        },
+      };
+    }
+
+    const targetSectionId = typeof params.sectionId === "string" ? params.sectionId.trim() : "";
+    if (!targetSectionId) {
+      const message = "sectionId 不能为空";
+      return {
+        message,
+        toolResult: {
+          success: false,
+          pageId: resolved.normalizedPageId,
+          validationErrors: [message],
+          message,
+        },
+      };
+    }
+
+    if (typeof params.markupText !== "string" || !params.markupText.trim()) {
+      const message = "markupText 必须是非空字符串";
+      return {
+        message,
+        toolResult: {
+          success: false,
+          pageId: resolved.normalizedPageId,
+          validationErrors: [message],
+          message,
+        },
+      };
+    }
+
+    try {
+      const existing = readStoredDesignDoc(resolved.ownerTaskId, resolved.normalizedPageId);
+      if (!existing || !existing.validation.valid || !existing.validation.document) {
+        const message = `未找到页面 ${resolved.normalizedPageId} 的有效设计稿`;
+        return {
+          message,
+          toolResult: {
+            success: false,
+            pageId: resolved.normalizedPageId,
+            validationErrors: [message],
+            message,
+          },
+        };
+      }
+
+      const currentDocument = existing.validation.document;
+      const targetIndex = currentDocument.sections.findIndex(
+        (section) => section.id === targetSectionId,
+      );
+      if (targetIndex === -1) {
+        const message = `未找到区块 ${targetSectionId}`;
+        return {
+          message,
+          toolResult: {
+            success: false,
+            pageId: resolved.normalizedPageId,
+            validationErrors: [
+              message,
+              `可用区块: ${currentDocument.sections.map((section) => section.id).join(", ")}`,
+            ],
+            message,
+          },
+        };
+      }
+
+      const assets = listAvailableDesignAssets(resolved.ownerTaskId);
+      const compiled = compileDesignSectionFromMarkup({
+        markupText: params.markupText,
+        pageWidth: currentDocument.page.width,
+        startY: currentDocument.sections[targetIndex]?.y || 0,
+        reservedIds: collectDocumentIds(currentDocument, targetSectionId),
+        components: assets
+          .filter((asset) => asset.type === "component")
+          .map((asset) => ({ id: asset.id, markupText: asset.markupText })),
+        images: assets
+          .filter((asset) => asset.type === "image")
+          .map((asset) => ({
+            id: asset.id,
+            url: asset.url,
+            width: asset.width,
+            height: asset.height,
+          })),
+      });
+
+      if (!compiled.section) {
+        const validationErrors =
+          compiled.errors.length > 0 ? compiled.errors : ["设计稿区块标记编译失败"];
+        const message = validationErrors[0] || "设计稿区块标记编译失败";
+        return {
+          message,
+          toolResult: {
+            success: false,
+            pageId: resolved.normalizedPageId,
+            validationErrors,
+            message,
+          },
+        };
+      }
+
+      const compiledSection = compiled.section;
+      const nextSections = currentDocument.sections.map((section, index) =>
+        index === targetIndex ? compiledSection : section,
+      );
+      const reflowedSections = reflowSections(nextSections);
+      const totalHeight = reflowedSections.reduce((sum, section) => sum + section.height, 0);
+      const nextDocument: ExecutableDesignDoc = {
+        ...currentDocument,
+        page: {
+          ...currentDocument.page,
+          minHeight: Math.max(currentDocument.page.minHeight, totalHeight),
+        },
+        sections: reflowedSections,
+      };
+
+      const validation = validateExecutableDesignDoc(nextDocument);
+      if (!validation.valid || !validation.document) {
+        const message = `设计稿未通过 v3 schema 校验，共 ${validation.errors.length} 个错误`;
+        return {
+          message,
+          toolResult: {
+            success: false,
+            pageId: resolved.normalizedPageId,
+            validationErrors: validation.errors,
+            message,
+          },
+        };
+      }
+
+      const finalizeErrors = collectFinalizeErrors(validation.document);
+      if (finalizeErrors.length > 0) {
+        const message = `设计稿尚未完成，共发现 ${finalizeErrors.length} 个问题`;
+        return {
+          message,
+          toolResult: {
+            success: false,
+            pageId: resolved.normalizedPageId,
+            validationErrors: finalizeErrors,
+            message,
+          },
+        };
+      }
+
+      const now = new Date().toISOString();
+      const stored: StoredDesignDoc = {
+        schemaVersion: existing.stored.schemaVersion,
+        pageId: resolved.normalizedPageId,
+        title: existing.stored.title || validation.document.page.name,
+        createdAt: existing.stored.createdAt,
+        updatedAt: now,
+        document: validation.document,
+      };
+
+      writeStoredDesignDoc(resolved.ownerTaskId, resolved.normalizedPageId, stored);
+      const affectedSectionIds = validation.document.sections
+        .slice(targetIndex)
+        .map((section) => section.id);
+      const penpotSync = await syncDesignDocSectionWithPenpot(
+        resolved.ownerTaskId,
+        resolved.normalizedPageId,
+        affectedSectionIds[0] || targetSectionId,
+      );
+
+      const message =
+        penpotSync.success === false
+          ? `设计稿区块已更新: ${targetSectionId}，但同步到 Penpot 失败`
+          : `设计稿区块已更新并同步到 Penpot: ${targetSectionId}`;
+
+      return {
+        message,
+        toolResult: {
+          success: true,
+          pageId: resolved.normalizedPageId,
+          title: stored.title,
+          updatedAt: stored.updatedAt,
+          summary: getStoredDocumentSummary(stored.document),
+          penpotSync,
+          validationErrors: [],
+          message,
+        },
+      };
+    } catch (error) {
+      const message = `更新设计稿区块失败: ${error instanceof Error ? error.message : String(error)}`;
+      logger.error("[DesignDocs] replaceDesignSectionFromMarkup error:", error);
+      return {
+        message,
+        toolResult: {
+          success: false,
+          pageId: resolved.normalizedPageId,
+          validationErrors: [message],
+          message,
+        },
+      };
+    }
+  },
+});
+
+export const listDesignDocsTool = defineTool({
+  name: "listDesignDocs",
+  description: "列出当前任务下已有的设计稿页面，便于选择后续要读取或复用的页面。",
+  whenToUse: "在读取具体设计稿前，先查看当前任务下有多少设计稿、分别对应哪些页面时使用。",
+  params: [],
+  async invoke({ context }) {
+    const ownerTaskId = resolveDesignDocOwnerTaskId(context.taskId, context.parentId);
+    if (!ownerTaskId) {
+      const message = "taskId 不能为空";
+      return {
+        message,
+        toolResult: {
+          success: false,
+          availableDocs: [],
+          validationErrors: ["taskId 不能为空"],
+          message,
+        },
+      };
+    }
+
+    const availableDocs = listStoredDesignDocs(ownerTaskId);
+    const message =
+      availableDocs.length === 0
+        ? "当前任务还没有任何设计稿"
+        : `当前任务共有 ${availableDocs.length} 份设计稿`;
+
+    return {
+      message,
+      toolResult: {
+        success: availableDocs.length > 0,
+        availableDocs,
+        validationErrors: [],
+        message,
+      },
+    };
+  },
+});
+
+export const readDesignDocTool = defineTool({
+  name: "readDesignDoc",
+  description: "读取当前任务中指定页面的设计稿 JSON。调用前应先通过 listDesignDocs 确认可用页面。",
+  whenToUse: "在编写或修改 UI 代码前读取某一份具体设计稿时使用；必须显式提供 pageId。",
+  params: [
+    {
+      name: "pageId",
+      optional: false,
+      description: "要读取的页面标识，必须来自 listDesignDocs 返回的 availableDocs.pageId",
     },
   ],
   async invoke({ params, context }) {
@@ -491,10 +974,24 @@ export const readDesignDocTool = defineTool({
         message,
         toolResult: {
           success: false,
+          pageId: String(params.pageId || ""),
+          content: "",
+          validationErrors: ["taskId 不能为空"],
+          message,
+        },
+      };
+    }
+
+    const pageId = typeof params.pageId === "string" ? normalizePageId(params.pageId) : "";
+    if (!pageId) {
+      const message = "pageId 不能为空，且必须先通过 listDesignDocs 选择具体页面";
+      return {
+        message,
+        toolResult: {
+          success: false,
           pageId: "",
           content: "",
-          availableDocs: [],
-          validationErrors: ["taskId 不能为空"],
+          validationErrors: [message],
           message,
         },
       };
@@ -507,37 +1004,15 @@ export const readDesignDocTool = defineTool({
         message,
         toolResult: {
           success: false,
-          pageId: "",
+          pageId,
           content: "",
-          availableDocs: [],
           validationErrors: [],
           message,
         },
       };
     }
 
-    const pageId = typeof params.pageId === "string" ? normalizePageId(params.pageId) : "";
-
     try {
-      if (!pageId) {
-        const availableDocs = listStoredDesignDocs(ownerTaskId);
-        const message =
-          availableDocs.length === 0
-            ? "当前任务还没有任何设计稿"
-            : `当前任务共有 ${availableDocs.length} 份设计稿`;
-        return {
-          message,
-          toolResult: {
-            success: availableDocs.length > 0,
-            pageId: "",
-            content: "",
-            availableDocs,
-            validationErrors: [],
-            message,
-          },
-        };
-      }
-
       const readResult = readStoredDesignDoc(ownerTaskId, pageId);
       if (!readResult) {
         const message = `未找到页面 ${pageId} 的设计稿`;
@@ -547,14 +1022,16 @@ export const readDesignDocTool = defineTool({
             success: false,
             pageId,
             content: "",
-            availableDocs: [],
+            penpotBinding: undefined,
             validationErrors: [message],
             message,
           },
         };
       }
 
-      const content = addLineNumbers(JSON.stringify(readResult.stored.document, null, 2));
+      const content = readResult.validation.document
+        ? serializeDesignDocToMarkup(readResult.validation.document)
+        : "";
       const message = readResult.validation.valid
         ? `已读取设计稿: ${pageId}`
         : `已读取设计稿: ${pageId}，但未通过 v3 schema 校验`;
@@ -569,7 +1046,7 @@ export const readDesignDocTool = defineTool({
             ...getStoredDocumentSummary(readResult.stored.document),
             updatedAt: readResult.stored.updatedAt,
           },
-          availableDocs: [],
+          penpotBinding: readResult.penpotBinding,
           validationErrors: readResult.validation.errors,
           message,
         },
@@ -583,7 +1060,7 @@ export const readDesignDocTool = defineTool({
           success: false,
           pageId,
           content: "",
-          availableDocs: [],
+          penpotBinding: undefined,
           validationErrors: [message],
           message,
         },

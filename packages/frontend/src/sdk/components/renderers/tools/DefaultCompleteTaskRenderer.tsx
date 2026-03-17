@@ -2,6 +2,7 @@ import { CheckCircle2 } from "lucide-react";
 import type React from "react";
 import { Streamdown } from "streamdown";
 import type { ToolMessageRendererProps } from "../../../types/renderers";
+import { prepareStreamdownContent } from "../streamdownContent";
 import { ToolAccordion } from "./ToolAccordion";
 
 const getPreviewContent = (message: ToolMessageRendererProps<"completeTask">["message"]) => {
@@ -24,6 +25,7 @@ export const CompleteTaskResultBody: React.FC<ToolMessageRendererProps<"complete
   message,
 }) => {
   const { summary, result, achievements, usage, hasPreview } = getPreviewContent(message);
+  const resultContent = prepareStreamdownContent(result);
 
   if (!hasPreview) {
     return <div className="text-sm text-neutral-600">任务已被标记为完成。</div>;
@@ -34,7 +36,7 @@ export const CompleteTaskResultBody: React.FC<ToolMessageRendererProps<"complete
       {summary && <div className="text-sm font-medium text-neutral-800">{summary}</div>}
       {result && (
         <div className="prose prose-sm max-w-none prose-p:my-2 prose-pre:my-2">
-          <Streamdown>{result}</Streamdown>
+          <Streamdown>{resultContent}</Streamdown>
         </div>
       )}
       {achievements && (
@@ -58,8 +60,8 @@ export const DefaultCompleteTaskRenderer: React.FC<ToolMessageRendererProps<"com
 }) => {
   const { toolOutput, error, hasError, partial } = message;
   const hasPreview = getPreviewContent(message).hasPreview;
-  const isCompleted = !!toolOutput;
-  const isLoading = partial !== undefined ? partial : !isCompleted;
+  const isCompleted = toolOutput !== undefined;
+  const isLoading = partial === true;
 
   return (
     <ToolAccordion

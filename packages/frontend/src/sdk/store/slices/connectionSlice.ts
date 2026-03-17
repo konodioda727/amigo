@@ -21,7 +21,8 @@ export interface ConnectionSliceConfig {
 export const createConnectionSlice =
   (config?: ConnectionSliceConfig): StateCreator<WebSocketStore, [], [], ConnectionSlice> =>
   (set, get) => {
-    const defaultUrl = `${isLocalhost() ? "ws" : "wss"}://${window.location.hostname}:10013`;
+    const defaultHostname = typeof window === "undefined" ? "localhost" : window.location.hostname;
+    const defaultUrl = `${isLocalhost() ? "ws" : "wss"}://${defaultHostname}:10013`;
     const wsUrl = config?.url || defaultUrl;
     const reconnectEnabled = config?.reconnect ?? true;
     const reconnectInterval = config?.reconnectInterval ?? 3000;

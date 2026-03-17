@@ -4,7 +4,14 @@ import { BashSchema } from "./bash";
 import { BrowserSearchSchema } from "./browserSearch";
 import { CompleteTaskSchema } from "./completeTask";
 import type { ToolExecutionContext } from "./context";
-import { EditDesignDocSchema, ReadDesignDocSchema } from "./designDoc";
+import {
+  CreateDesignDocFromMarkupSchema,
+  ListDesignAssetsSchema,
+  ListDesignDocsSchema,
+  ReadDesignAssetSchema,
+  ReadDesignDocSchema,
+  ReplaceDesignSectionFromMarkupSchema,
+} from "./designDoc";
 import { EditFileSchema } from "./editFile";
 import { InstallDependenciesSchema } from "./installDependencies";
 import { ReadFileSchema } from "./readFile";
@@ -28,7 +35,11 @@ export const toolSchemas = z.discriminatedUnion("name", [
   ExecuteTaskListSchema,
   EditFileSchema,
   ReadFileSchema,
-  EditDesignDocSchema,
+  ListDesignAssetsSchema,
+  ListDesignDocsSchema,
+  ReadDesignAssetSchema,
+  CreateDesignDocFromMarkupSchema,
+  ReplaceDesignSectionFromMarkupSchema,
   ReadDesignDocSchema,
   BashSchema,
   InstallDependenciesSchema,
@@ -39,10 +50,18 @@ export type ToolNames = z.infer<typeof toolSchemas>["name"];
 
 export type ToolSchema = z.infer<typeof toolSchemas>;
 export type {
-  EditDesignDocParams,
-  EditDesignDocResult,
+  CreateDesignDocFromMarkupParams,
+  CreateDesignDocFromMarkupResult,
+  ListDesignAssetsParams,
+  ListDesignAssetsResult,
+  ListDesignDocsParams,
+  ListDesignDocsResult,
+  ReadDesignAssetParams,
+  ReadDesignAssetResult,
   ReadDesignDocParams,
   ReadDesignDocResult,
+  ReplaceDesignSectionFromMarkupParams,
+  ReplaceDesignSectionFromMarkupResult,
 } from "./designDoc";
 export type {
   InstallDependenciesParams,

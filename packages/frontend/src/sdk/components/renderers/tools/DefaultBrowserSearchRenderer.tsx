@@ -23,9 +23,8 @@ export const DefaultBrowserSearchRenderer: React.FC<ToolMessageRendererProps<"br
   }
 
   const { query } = params;
-  const isCompleted = !!toolOutput;
-  // Use partial status if available, fallback to !isCompleted
-  const isLoading = partial !== undefined ? partial : !isCompleted;
+  const isCompleted = toolOutput !== undefined;
+  const isLoading = partial === true;
 
   return (
     <div className="flex flex-col mb-2 px-2 max-w-[85%]">
@@ -34,8 +33,12 @@ export const DefaultBrowserSearchRenderer: React.FC<ToolMessageRendererProps<"br
         onClick={() => setIsExpanded(!isExpanded)}
         className="flex items-center gap-2 text-xs text-neutral-400 hover:text-neutral-600 transition-colors w-fit pb-1"
       >
-        <Globe size={14} className={isLoading ? "animate-pulse" : ""} />
-        <span className="truncate max-w-[200px] text-left">搜索: {query}</span>
+        <span className="shrink-0">
+          <Globe size={14} />
+        </span>
+        <span className="truncate max-w-[200px] text-left">
+          <span className={isLoading ? "loading-shimmer" : ""}>{`搜索: ${query}`}</span>
+        </span>
         {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
       </button>
 

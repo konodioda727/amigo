@@ -7,8 +7,8 @@ export const DefaultExecuteTaskListRenderer: React.FC<
   ToolMessageRendererProps<"executeTaskList">
 > = ({ message }) => {
   const { toolOutput, error, hasError, partial } = message;
-  const isCompleted = !!toolOutput;
-  const isLoading = partial !== undefined ? partial : !isCompleted;
+  const isCompleted = toolOutput !== undefined;
+  const isLoading = partial === true;
   const executionId =
     toolOutput && typeof toolOutput === "object" && typeof toolOutput.executionId === "string"
       ? toolOutput.executionId

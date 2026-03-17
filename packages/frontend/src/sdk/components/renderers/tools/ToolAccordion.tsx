@@ -42,15 +42,17 @@ export const ToolAccordion: React.FC<ToolAccordionProps> = ({
           onClick={() => setIsExpanded(!isExpanded)}
           className="flex min-w-0 items-center gap-2 text-xs text-neutral-400 hover:text-neutral-600 transition-colors"
         >
-          <div className={isLoading ? "animate-pulse" : ""}>{icon}</div>
-          <span className="truncate max-w-[200px] text-left">{title}</span>
+          <span className="shrink-0">{icon}</span>
+          <span className="truncate max-w-[200px] text-left">
+            <span className={isLoading ? "loading-shimmer" : ""}>{title}</span>
+          </span>
           {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
         </button>
         {action ? <div className="ml-1 shrink-0">{action}</div> : null}
       </div>
 
       {isExpanded && children && (
-        <div className="transition-all duration-300 ease-in-out border-l-2 border-neutral-200 ml-1.5 pl-4 py-1 text-sm text-neutral-500 flex flex-col gap-2 overflow-hidden">
+        <div className="transition-all duration-300 ease-in-out border-l-2 border-neutral-200 ml-1.5 pl-4 py-1 text-sm text-neutral-500 flex flex-col gap-2 max-h-[min(28rem,60vh)] overflow-y-auto overscroll-contain pr-2">
           {children}
         </div>
       )}

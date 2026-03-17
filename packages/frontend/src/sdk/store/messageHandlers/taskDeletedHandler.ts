@@ -6,23 +6,22 @@ export function handleTaskDeleted(
   store: WebSocketStore,
 ): boolean {
   const { taskId, deletedSubTaskIds } = message.data;
-
-  // Remove all deleted tasks from store
   const allDeletedIds = [taskId, ...deletedSubTaskIds];
+  const remainingHistories = store.taskHistories.filter(
+    (history) => !allDeletedIds.includes(history.taskId),
+  );
 
   for (const id of allDeletedIds) {
-    // Remove from tasks
-    if (store.tasks[id]) {
-      delete store.tasks[id];
-    }
-
-    // Remove from task histories
-    store.taskHistories = store.taskHistories.filter((history) => history.taskId !== id);
+    store.unregisterTask(id);
   }
 
-  // If the deleted task was the main task, clear it
+  store.handleSessionHistories(remainingHistories);
+
   if (store.mainTaskId === taskId) {
-    store.mainTaskId = "";
+    store.createNewConversation();
+  } else if (store.activeTaskId && allDeletedIds.includes(store.activeTaskId)) {
+    store.setActiveTask(store.mainTaskId || null);
   }
+
   return false;
 }

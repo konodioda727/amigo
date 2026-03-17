@@ -1,7 +1,7 @@
 import { useConnection, useWebSocketContext } from "@amigo-llm/frontend";
 import { ChevronLeft, RefreshCw, SquareArrowOutUpRight } from "lucide-react";
 import type React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { getHttpBaseUrlFromWebSocketUrl } from "@/utils/sandboxEditor";
 import { toast } from "@/utils/toast";
@@ -59,8 +59,6 @@ const DesignPage: React.FC = () => {
   const [error, setError] = useState("");
   const [syncStatus, setSyncStatus] = useState("");
   const [isImporting, setIsImporting] = useState(false);
-  const isImportingRef = useRef(false);
-  const lastAutoImportedRevisionRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (taskId && isConnected) {
@@ -99,7 +97,6 @@ const DesignPage: React.FC = () => {
     if (!taskId || !pageId || isImporting) return;
 
     setIsImporting(true);
-    isImportingRef.current = true;
     setError("");
 
     try {
@@ -109,9 +106,6 @@ const DesignPage: React.FC = () => {
         typeof data.remoteRevision === "number"
           ? `已回写到 design doc · rev ${data.remoteRevision}`
           : "已回写到 design doc";
-      if (typeof data.remoteRevision === "number") {
-        lastAutoImportedRevisionRef.current = data.remoteRevision;
-      }
       setSyncStatus(nextStatus);
       if (manual) {
         toast.success("Penpot 修改已回写到 design doc");
@@ -124,7 +118,6 @@ const DesignPage: React.FC = () => {
       }
     } finally {
       setIsImporting(false);
-      isImportingRef.current = false;
     }
   };
 
@@ -155,49 +148,13 @@ const DesignPage: React.FC = () => {
           if (bindingData.syncState.hasRemoteChanges) {
             setSyncStatus(
               typeof remoteRevision === "number"
-                ? `检测到 Penpot 新变更 · rev ${remoteRevision}`
-                : "检测到 Penpot 新变更",
+                ? `检测到 Penpot 新变更 · rev ${remoteRevision}，请手动回写`
+                : "检测到 Penpot 新变更，请手动回写",
             );
-
-            const shouldAutoImport =
-              typeof remoteRevision === "number" &&
-              document.visibilityState === "visible" &&
-              !isImportingRef.current &&
-              lastAutoImportedRevisionRef.current !== remoteRevision;
-
-            if (shouldAutoImport) {
-              lastAutoImportedRevisionRef.current = remoteRevision;
-              setIsImporting(true);
-              isImportingRef.current = true;
-              try {
-                const data = await postPenpotImport(httpBaseUrl, taskId, pageId);
-                if (cancelled) return;
-                setSyncStatus(
-                  typeof data.remoteRevision === "number"
-                    ? `已回写到 design doc · rev ${data.remoteRevision}`
-                    : "已回写到 design doc",
-                );
-                if (typeof data.remoteRevision === "number") {
-                  lastAutoImportedRevisionRef.current = data.remoteRevision;
-                }
-              } catch (importError) {
-                if (!cancelled) {
-                  setError(
-                    importError instanceof Error ? importError.message : String(importError),
-                  );
-                }
-              } finally {
-                if (!cancelled) {
-                  setIsImporting(false);
-                  isImportingRef.current = false;
-                }
-              }
-            }
             return;
           }
 
           if (typeof bindingData.syncState.lastReverseSyncRevision === "number") {
-            lastAutoImportedRevisionRef.current = bindingData.syncState.lastReverseSyncRevision;
             setSyncStatus(
               `design doc 已跟上 Penpot · rev ${bindingData.syncState.lastReverseSyncRevision}`,
             );

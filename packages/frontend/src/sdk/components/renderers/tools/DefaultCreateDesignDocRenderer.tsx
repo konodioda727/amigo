@@ -39,10 +39,10 @@ interface CreateDesignDocRendererProps {
 export const DefaultCreateDesignDocRenderer: React.FC<CreateDesignDocRendererProps> = ({
   message,
 }) => {
-  const { params, toolOutput, error, hasError, partial } = message;
-  const isCompleted = !!toolOutput;
-  const isLoading = partial !== undefined ? partial : !isCompleted;
-  const isEditMode = params?.startLine !== undefined || params?.endLine !== undefined;
+  const { toolName, params, toolOutput, error, hasError, partial } = message;
+  const isCompleted = toolOutput !== undefined;
+  const isLoading = partial === true;
+  const isEditMode = toolName === "replaceDesignSectionFromMarkup" || Boolean(params?.update);
   const storedDoc =
     toolOutput?.document && typeof toolOutput.document === "object"
       ? toolOutput.document
@@ -50,17 +50,21 @@ export const DefaultCreateDesignDocRenderer: React.FC<CreateDesignDocRendererPro
   const validationErrors = Array.isArray(toolOutput?.validationErrors)
     ? toolOutput.validationErrors
     : [];
-  const validationPassed = !!toolOutput && validationErrors.length === 0;
+  const validationPassed = toolOutput?.success === true && validationErrors.length === 0;
+  const validationFailed = !!toolOutput && !validationPassed;
+  const shouldAutoExpand = !isLoading && (hasError || validationFailed);
+  const expansionKey = validationFailed ? "failed" : hasError ? "error" : "default";
 
   return (
     <ToolAccordion
+      key={`${toolName}-${params?.pageId || storedDoc?.pageId || "unknown"}-${expansionKey}`}
       icon={<NotebookPen size={14} />}
       title={`${isEditMode ? "修改设计稿" : "创建设计稿"}: ${String(params?.pageId || storedDoc?.pageId || "未命名")}`}
       action={<OpenDesignDocButton pageId={String(params?.pageId || storedDoc?.pageId || "")} />}
       isLoading={isLoading}
       hasError={hasError}
       error={error}
-      isExpandedDefault={true}
+      isExpandedDefault={shouldAutoExpand}
     >
       <div className="space-y-2 text-xs text-neutral-600">
         {!isCompleted ? (

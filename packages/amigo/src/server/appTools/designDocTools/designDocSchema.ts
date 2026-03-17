@@ -1,5 +1,13 @@
 import { z } from "zod";
 
+const MIN_PAGE_WIDTH = 240;
+const MAX_PAGE_WIDTH = 2560;
+const MIN_PAGE_HEIGHT = 200;
+const MAX_PAGE_HEIGHT = 20000;
+const MAX_SECTION_DIMENSION = 12000;
+const MAX_NODE_DIMENSION = 12000;
+const MAX_ABSOLUTE_POSITION = 20000;
+
 const HexColorSchema = z
   .string()
   .regex(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/, "必须是十六进制颜色值");
@@ -63,6 +71,7 @@ const NodeStyleSchema = z
     fontToken: z.string().min(1).optional(),
     fontSize: z.number().positive().optional(),
     fontWeight: z.number().int().positive().optional(),
+    letterSpacing: z.number().optional(),
     align: z.enum(["left", "center", "right"]).optional(),
     shadow: z
       .object({
@@ -76,17 +85,29 @@ const NodeStyleSchema = z
   })
   .strict();
 
-type DesignNode = z.infer<typeof BaseNodeSchema> & { children?: DesignNode[] };
+type RecursiveDesignNode = z.infer<typeof BaseNodeSchema> & { children?: RecursiveDesignNode[] };
 
 const BaseNodeSchema = z
   .object({
     id: z.string().min(1),
     name: z.string().min(1),
     type: z.enum(["container", "text", "button", "image", "shape"]),
-    x: z.number(),
-    y: z.number(),
-    width: z.number().positive(),
-    height: z.number().positive(),
+    x: z
+      .number()
+      .min(-MAX_ABSOLUTE_POSITION, `x 不能小于 -${MAX_ABSOLUTE_POSITION}`)
+      .max(MAX_ABSOLUTE_POSITION, `x 不能大于 ${MAX_ABSOLUTE_POSITION}`),
+    y: z
+      .number()
+      .min(-MAX_ABSOLUTE_POSITION, `y 不能小于 -${MAX_ABSOLUTE_POSITION}`)
+      .max(MAX_ABSOLUTE_POSITION, `y 不能大于 ${MAX_ABSOLUTE_POSITION}`),
+    width: z
+      .number()
+      .positive("width 必须大于 0")
+      .max(MAX_NODE_DIMENSION, `width 不能大于 ${MAX_NODE_DIMENSION}`),
+    height: z
+      .number()
+      .positive("height 必须大于 0")
+      .max(MAX_NODE_DIMENSION, `height 不能大于 ${MAX_NODE_DIMENSION}`),
     zIndex: z.number().int().optional(),
     text: z.string().optional(),
     assetUrl: z.string().url().optional(),
@@ -98,49 +119,81 @@ const BaseNodeSchema = z
   })
   .strict();
 
-export const DesignNodeSchema: z.ZodType<DesignNode> = BaseNodeSchema.extend({
+export const DesignNodeSchema: z.ZodType<RecursiveDesignNode> = BaseNodeSchema.extend({
   children: z.lazy(() => DesignNodeSchema.array()).optional(),
 });
 
-export const ExecutableDesignDocSchema = z
+export const DesignDocPageSchema = z
   .object({
-    page: z
-      .object({
-        name: z.string().min(1),
-        path: z.string().min(1).optional(),
-        width: z.number().positive(),
-        minHeight: z.number().positive(),
-        background: HexColorSchema,
-      })
-      .strict(),
-    designTokens: z
-      .object({
-        colors: z.record(z.string(), HexColorSchema).default({}),
-        spacing: z.record(z.string(), z.number().min(0)).default({}),
-        radius: z.record(z.string(), z.number().min(0)).default({}),
-        typography: z.record(z.string(), TypographyTokenSchema).default({}),
-      })
-      .strict(),
-    sections: z
-      .array(
-        z
-          .object({
-            id: z.string().min(1),
-            name: z.string().min(1),
-            kind: z.string().min(1),
-            y: z.number().min(0),
-            height: z.number().positive(),
-            background: HexColorSchema.optional(),
-            layout: LayoutSchema,
-            nodes: z.array(DesignNodeSchema),
-          })
-          .strict(),
-      )
-      .min(1),
+    name: z.string().min(1),
+    path: z.string().min(1).optional(),
+    theme: z.string().min(1).optional(),
+    width: z
+      .number()
+      .min(MIN_PAGE_WIDTH, `page.width 不能小于 ${MIN_PAGE_WIDTH}`)
+      .max(MAX_PAGE_WIDTH, `page.width 不能大于 ${MAX_PAGE_WIDTH}`),
+    minHeight: z
+      .number()
+      .min(MIN_PAGE_HEIGHT, `page.minHeight 不能小于 ${MIN_PAGE_HEIGHT}`)
+      .max(MAX_PAGE_HEIGHT, `page.minHeight 不能大于 ${MAX_PAGE_HEIGHT}`),
+    background: HexColorSchema,
   })
   .strict();
 
+export const DesignDocTokensSchema = z
+  .object({
+    colors: z.record(z.string(), HexColorSchema).default({}),
+    spacing: z.record(z.string(), z.number().min(0)).default({}),
+    radius: z.record(z.string(), z.number().min(0)).default({}),
+    typography: z.record(z.string(), TypographyTokenSchema).default({}),
+  })
+  .strict();
+
+export const DesignDocSectionSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    kind: z.string().min(1),
+    x: z
+      .number()
+      .min(0)
+      .max(MAX_ABSOLUTE_POSITION, `section.x 不能大于 ${MAX_ABSOLUTE_POSITION}`)
+      .optional(),
+    y: z.number().min(0).max(MAX_ABSOLUTE_POSITION, `section.y 不能大于 ${MAX_ABSOLUTE_POSITION}`),
+    width: z
+      .number()
+      .positive("section.width 必须大于 0")
+      .max(MAX_SECTION_DIMENSION, `section.width 不能大于 ${MAX_SECTION_DIMENSION}`)
+      .optional(),
+    height: z.number().positive(),
+    background: HexColorSchema.optional(),
+    layout: LayoutSchema,
+    nodes: z.array(DesignNodeSchema),
+  })
+  .strict()
+  .superRefine((section, ctx) => {
+    if (section.height > MAX_SECTION_DIMENSION) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["height"],
+        message: `section.height 不能大于 ${MAX_SECTION_DIMENSION}`,
+      });
+    }
+  });
+
+export const ExecutableDesignDocSchema = z
+  .object({
+    page: DesignDocPageSchema,
+    designTokens: DesignDocTokensSchema,
+    sections: z.array(DesignDocSectionSchema).min(1),
+  })
+  .strict();
+
+export type DesignNode = z.infer<typeof DesignNodeSchema>;
 export type ExecutableDesignDoc = z.infer<typeof ExecutableDesignDocSchema>;
+export type DesignDocPage = z.infer<typeof DesignDocPageSchema>;
+export type DesignDocTokens = z.infer<typeof DesignDocTokensSchema>;
+export type DesignDocSection = z.infer<typeof DesignDocSectionSchema>;
 
 export const validateExecutableDesignDoc = (document: Record<string, unknown>) => {
   const result = ExecutableDesignDocSchema.safeParse(document);

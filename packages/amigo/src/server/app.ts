@@ -11,13 +11,13 @@ import {
 import dotenv from "dotenv";
 import {
   USER_CODING_AGENT_AUTO_APPROVE_TOOLS,
-  USER_CODING_AGENT_SYSTEM_PROMPT_APPENDIX,
   USER_CODING_AGENT_TOOLS,
 } from "./appTools/codingAgentTools";
 import type { PenpotSyncConfig } from "./appTools/designDocTools/penpotSync/types";
 import type { PreviewHostConfig } from "./config/previewHost";
 import { configureAppRuntimeConfig } from "./config/runtimeConfig";
 import { createAmigoHttpHandler } from "./http/appHttpHandler";
+import { AMIGO_APP_SYSTEM_PROMPT_APPENDIX } from "./prompts/amigoAppPrompt";
 import { AmigoAppServer } from "./runtime/appServer";
 import type { OssUploadConfig } from "./utils/ossUpload";
 
@@ -82,7 +82,7 @@ export function createAmigoApp(options: AmigoAppOptions = {}): AmigoApp {
 
   const runtimeServer = builder
     .addAutoApproveTools([...USER_CODING_AGENT_AUTO_APPROVE_TOOLS])
-    .appendSystemPrompt(USER_CODING_AGENT_SYSTEM_PROMPT_APPENDIX)
+    .appendSystemPrompt(AMIGO_APP_SYSTEM_PROMPT_APPENDIX)
     .modelConfigs(modelConfigs)
     .cachePath("./.amigo")
     .sandboxManager(sandboxManager)

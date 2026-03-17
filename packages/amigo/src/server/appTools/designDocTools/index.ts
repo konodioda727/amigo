@@ -1,3 +1,4 @@
+export * from "./designAssets";
 export * from "./designDocPrompt";
 export * from "./designDocSchema";
 export * from "./designDocScope";

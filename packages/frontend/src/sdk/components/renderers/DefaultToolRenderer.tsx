@@ -10,6 +10,9 @@ import { DefaultCreateTaskDocsRenderer } from "./tools/DefaultCreateTaskDocsRend
 import { DefaultEditFileRenderer } from "./tools/DefaultEditFileRenderer";
 import { DefaultExecuteTaskListRenderer } from "./tools/DefaultExecuteTaskListRenderer";
 import { DefaultGetTaskListProgressRenderer } from "./tools/DefaultGetTaskListProgressRenderer";
+import { DefaultListDesignAssetsRenderer } from "./tools/DefaultListDesignAssetsRenderer";
+import { DefaultListDesignDocsRenderer } from "./tools/DefaultListDesignDocsRenderer";
+import { DefaultReadDesignAssetRenderer } from "./tools/DefaultReadDesignAssetRenderer";
 import { DefaultReadDesignDocRenderer } from "./tools/DefaultReadDesignDocRenderer";
 import { DefaultReadFileRenderer } from "./tools/DefaultReadFileRenderer";
 import { DefaultReadTaskDocsRenderer } from "./tools/DefaultReadTaskDocsRenderer";
@@ -44,8 +47,8 @@ const toolRendererMap: {
 const GenericToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> = ({ message }) => {
   const { toolName, params, toolOutput, error, hasError, partial } = message;
   const paramsStr = JSON.stringify(params, null, 2);
-  const isCompleted = !!toolOutput;
-  const isLoading = partial !== undefined ? partial : !isCompleted;
+  const isCompleted = toolOutput !== undefined;
+  const isLoading = partial === true;
 
   return (
     <ToolAccordion
@@ -74,7 +77,10 @@ const GenericToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> = ({ me
 export const DefaultToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> = (props) => {
   const { message } = props;
 
-  if (message.toolName === "editDesignDoc") {
+  if (
+    String(message.toolName) === "createDesignDocFromMarkup" ||
+    String(message.toolName) === "replaceDesignSectionFromMarkup"
+  ) {
     return (
       <DefaultCreateDesignDocRenderer
         {...(props as unknown as React.ComponentProps<typeof DefaultCreateDesignDocRenderer>)}
@@ -86,6 +92,30 @@ export const DefaultToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
     return (
       <DefaultReadDesignDocRenderer
         {...(props as unknown as React.ComponentProps<typeof DefaultReadDesignDocRenderer>)}
+      />
+    );
+  }
+
+  if (message.toolName === "listDesignDocs") {
+    return (
+      <DefaultListDesignDocsRenderer
+        {...(props as unknown as React.ComponentProps<typeof DefaultListDesignDocsRenderer>)}
+      />
+    );
+  }
+
+  if (message.toolName === "listDesignAssets") {
+    return (
+      <DefaultListDesignAssetsRenderer
+        {...(props as unknown as React.ComponentProps<typeof DefaultListDesignAssetsRenderer>)}
+      />
+    );
+  }
+
+  if (message.toolName === "readDesignAsset") {
+    return (
+      <DefaultReadDesignAssetRenderer
+        {...(props as unknown as React.ComponentProps<typeof DefaultReadDesignAssetRenderer>)}
       />
     );
   }

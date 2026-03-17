@@ -6,19 +6,11 @@ import type {
 import { UserSendMessageSchema, type UserSendWebSocketMessage } from "@amigo-llm/types";
 import type { ServerWebSocket } from "bun";
 import { v4 as uuidV4 } from "uuid";
-import { broadcaster, conversationRepository, taskOrchestrator } from "@/core/conversation";
+import { broadcaster, conversationRepository } from "@/core/conversation";
 import { getResolver } from "@/core/messageResolver";
 import { getSessionHistories } from "@/utils/getSessions";
 import { logger } from "@/utils/logger";
 import type { MessageRegistry } from "../registry";
-
-const NON_INTERRUPTIBLE_STATUS_LIST: ConversationStatus[] = [
-  "completed",
-  "waiting_tool_confirmation",
-  "idle",
-  "error",
-  "aborted",
-];
 
 type SocketErrorCode =
   | "TASK_NOT_FOUND"
@@ -92,16 +84,6 @@ export class ServerWebSocketMessageHandler {
     }
 
     broadcaster.removeConnection(conversationId, ws);
-
-    const conversation = conversationRepository.get(conversationId);
-    const isLastConnection = broadcaster.getConnectionCount(conversationId) === 0;
-    const isActiveStatus = !NON_INTERRUPTIBLE_STATUS_LIST.includes(
-      conversation?.status as ConversationStatus,
-    );
-
-    if (isLastConnection && isActiveStatus && conversation) {
-      taskOrchestrator.interrupt(conversation);
-    }
   }
 
   private async handleLoadTaskMessage(

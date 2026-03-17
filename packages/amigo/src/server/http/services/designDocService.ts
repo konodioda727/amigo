@@ -21,6 +21,7 @@ export const getDesignDocDetail = (taskId: string, pageId: string) => {
     taskId,
     pageId: result.pageId,
     filePath: result.filePath,
+    penpotBinding: result.penpotBinding,
     validationErrors: result.validation.errors,
     item: result.stored,
   };

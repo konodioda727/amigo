@@ -130,8 +130,8 @@ export const DefaultEditFileRenderer: React.FC<ToolMessageRendererProps<"editFil
 }) => {
   const { params, toolOutput, error, hasError, partial } = message;
   const hasPreview = getPreviewContent(message).source !== "none";
-  const isCompleted = !!toolOutput;
-  const isLoading = partial !== undefined ? partial : !isCompleted;
+  const isCompleted = toolOutput !== undefined;
+  const isLoading = partial === true;
 
   return (
     <ToolAccordion

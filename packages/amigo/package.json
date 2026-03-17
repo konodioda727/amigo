@@ -19,13 +19,16 @@
     "@amigo-llm/frontend": "workspace:*",
     "@amigo-llm/types": "workspace:*",
     "concurrently": "^9.2.1",
+    "css-tree": "^3.2.1",
     "dotenv": "^17.2.3",
+    "htmlparser2": "^10.1.0",
     "lucide-react": "^0.544.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hot-toast": "^2.6.0",
     "react-router-dom": "^7.12.0",
     "streamdown": "^1.3.0",
+    "yoga-layout": "^3.2.1",
     "zod": "^4.1.13"
   },
   "devDependencies": {

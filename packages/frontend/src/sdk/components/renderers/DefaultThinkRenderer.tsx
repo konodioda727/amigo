@@ -1,8 +1,9 @@
 import { Brain, ChevronDown, ChevronUp } from "lucide-react";
 import type React from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 import type { ThinkRendererProps } from "../../types/renderers";
+import { prepareStreamdownContent } from "./streamdownContent";
 
 /**
  * Default renderer for think message type
@@ -10,13 +11,14 @@ import type { ThinkRendererProps } from "../../types/renderers";
 export const DefaultThinkRenderer: React.FC<ThinkRendererProps> = ({ message }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const thinkContent = useMemo(() => prepareStreamdownContent(message.think), [message.think]);
 
   // Auto-scroll to bottom when collapsed and content updates
   useEffect(() => {
     if (!isExpanded && contentRef.current) {
       contentRef.current.scrollTop = contentRef.current.scrollHeight;
     }
-  }, [message.think, isExpanded]);
+  }, [thinkContent, isExpanded]);
 
   return (
     <div className="flex flex-col mb-2 px-2 max-w-[85%]">
@@ -36,8 +38,7 @@ export const DefaultThinkRenderer: React.FC<ThinkRendererProps> = ({ message }) 
         <div
           ref={contentRef}
           className={`
-            overflow-y-hidden
-            ${isExpanded ? "max-h-[800px] overflow-y-auto" : "max-h-[3rem] pointer-events-none"}
+            ${isExpanded ? "max-h-[min(28rem,60vh)] overflow-y-auto overscroll-contain pr-2" : "max-h-[3rem] overflow-hidden pointer-events-none"}
           `}
           style={{
             maskImage: isExpanded
@@ -46,10 +47,11 @@ export const DefaultThinkRenderer: React.FC<ThinkRendererProps> = ({ message }) 
             WebkitMaskImage: isExpanded
               ? "none"
               : "linear-gradient(to bottom, transparent 0%, black 30%, black 70%, transparent 100%)",
+            scrollbarGutter: isExpanded ? "stable" : undefined,
           }}
         >
           <div className="opacity-80">
-            <Streamdown>{message.think}</Streamdown>
+            <Streamdown mode="static">{thinkContent}</Streamdown>
           </div>
         </div>
       </div>

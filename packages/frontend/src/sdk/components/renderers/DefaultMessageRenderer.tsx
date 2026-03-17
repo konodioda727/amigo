@@ -3,12 +3,14 @@ import type React from "react";
 import { useState } from "react";
 import { Streamdown } from "streamdown";
 import type { CommonMessageRendererProps } from "../../types/renderers";
+import { prepareStreamdownContent } from "./streamdownContent";
 
 /**
  * Default renderer for common message type
  */
 export const DefaultMessageRenderer: React.FC<CommonMessageRendererProps> = ({ message }) => {
   const [copied, setCopied] = useState(false);
+  const messageContent = prepareStreamdownContent(message.message);
 
   const handleCopy = () => {
     if (message.message) {
@@ -21,7 +23,7 @@ export const DefaultMessageRenderer: React.FC<CommonMessageRendererProps> = ({ m
   return (
     <div className="chat chat-start group">
       <div className="chat-bubble bg-[#f7f7f7] border border-[#ececec] text-neutral-900 rounded-xl px-4 py-3 shadow-none max-w-[85%] break-words overflow-hidden">
-        <Streamdown>{message.message}</Streamdown>
+        <Streamdown>{messageContent}</Streamdown>
       </div>
       <div className="chat-footer opacity-50 mt-1 flex gap-2 items-center min-h-[24px]">
         {message.updateTime && <span>{new Date(message.updateTime).toLocaleTimeString()}</span>}
