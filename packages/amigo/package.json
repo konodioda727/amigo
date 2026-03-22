@@ -11,13 +11,14 @@
     "dev:web": "bun run src/web/dev.ts",
     "start:web": "bun run src/web/index.ts",
     "build": "bun run build:server && bun run build:web",
-    "build:server": "bun build ./src/server/index.ts --outdir ./dist/server --target='bun'",
+    "build:server": "bun run buildServer.ts",
     "build:web": "bun run build.ts"
   },
   "dependencies": {
     "@amigo-llm/backend": "workspace:*",
     "@amigo-llm/frontend": "workspace:*",
     "@amigo-llm/types": "workspace:*",
+    "@larksuiteoapi/node-sdk": "^1.59.0",
     "concurrently": "^9.2.1",
     "css-tree": "^3.2.1",
     "dotenv": "^17.2.3",

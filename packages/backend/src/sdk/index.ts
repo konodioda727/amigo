@@ -38,6 +38,12 @@ export type { ModelConfig, ModelContextConfig } from "../core/model/contextConfi
 // Registries (advanced usage)
 export { MessageRegistry, RegistrationError, ToolRegistry } from "../core/registry";
 export type { SandboxManager } from "../core/sandbox";
+export type {
+  ConversationMessageHookPayload,
+  CreateTaskConfig,
+  CreateTaskConfigResolver,
+} from "../core/server";
+export * from "../core/skills";
 export type { LoggerConfig } from "../utils/logger";
 export { configureLogger, LogLevel } from "../utils/logger";
 // Helper functions

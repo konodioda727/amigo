@@ -36,7 +36,6 @@ export const DefaultListDesignAssetsRenderer: React.FC<ListDesignAssetsRendererP
   message,
 }) => {
   const { toolOutput, error, hasError, partial } = message;
-  const isCompleted = toolOutput !== undefined;
   const isLoading = partial === true;
   const assets = Array.isArray(toolOutput?.assets) ? toolOutput.assets : [];
 

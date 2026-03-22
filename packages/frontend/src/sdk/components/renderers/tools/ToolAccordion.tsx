@@ -35,7 +35,7 @@ export const ToolAccordion: React.FC<ToolAccordionProps> = ({
   }
 
   return (
-    <div className="flex flex-col mb-2 px-2 max-w-[85%]">
+    <div className="flex flex-col mb-2 px-2 max-w-[80%]">
       <div className="flex items-center gap-1 pb-1">
         <button
           type="button"

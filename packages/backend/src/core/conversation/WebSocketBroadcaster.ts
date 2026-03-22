@@ -1,6 +1,8 @@
 import type { ChatMessage, SERVER_SEND_MESSAGE_NAME, WebSocketMessage } from "@amigo-llm/types";
 import type { ServerWebSocket } from "bun";
+import { getGlobalState } from "@/globalState";
 import { isWhitespaceOnly } from "@/utils/isWhiteSpaceOnly";
+import { logger } from "@/utils/logger";
 import type { Conversation } from "./Conversation";
 
 /**
@@ -135,6 +137,22 @@ export class WebSocketBroadcaster {
     conversation.memory.addMessage(message);
 
     const lastMessage = conversation.memory.lastMessage!;
+    const onConversationMessage = getGlobalState("onConversationMessage");
+    if (onConversationMessage) {
+      void Promise.resolve(
+        onConversationMessage({
+          taskId: conversation.id,
+          message: lastMessage,
+          context: conversation.memory.context,
+        }),
+      ).catch((error) => {
+        logger.error(
+          `[WebSocketBroadcaster] onConversationMessage hook 失败 taskId=${conversation.id}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      });
+    }
 
     const wsMessage: WebSocketMessage<SERVER_SEND_MESSAGE_NAME> = {
       type: message.type as SERVER_SEND_MESSAGE_NAME,

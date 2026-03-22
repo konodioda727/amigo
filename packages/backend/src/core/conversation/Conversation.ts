@@ -142,13 +142,14 @@ export class Conversation {
    * 创建新会话
    */
   static create(params: {
+    id?: string;
     toolService: ToolService;
     llm: AmigoLlm;
     type?: ConversationType;
     parentId?: string;
     customPrompt?: string;
   }): Conversation {
-    const id = uuidV4();
+    const id = params.id || uuidV4();
     const memory = new FilePersistedMemory(id, params.parentId);
     const type = params.type || "main";
 
@@ -175,11 +176,8 @@ export class Conversation {
       content: systemPrompt,
     });
 
-    // 保存工具名称用于恢复
-    if (type === "sub") {
-      const toolNames = params.toolService.customedTools.map((t) => t.name);
-      memory.setToolNames(toolNames);
-    }
+    const toolNames = params.toolService.getAllTools().map((tool) => tool.name);
+    memory.setToolNames(toolNames);
 
     return conversation;
   }
@@ -237,18 +235,23 @@ export class Conversation {
     // 根据任务类型过滤基础工具
     const baseTools = getBaseTools(type);
 
-    // 恢复工具配置
+    // 恢复工具配置。旧任务可能只保存了自定义工具名，
+    // 这种情况下仍回退为完整基础工具集合以兼容历史数据。
     const toolNames = memory.toolNames;
-    const totalTools = baseTools.concat(allCustomTools);
-    const userCustomedTools = toolNames
-      .map((name) => totalTools.find((tool) => tool.name === name))
-      // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
-      .filter((tool): tool is ToolInterface<any> => tool !== undefined);
+    const baseToolNames = new Set(baseTools.map((tool) => tool.name));
+    const hasExplicitBaseToolSelection = toolNames.some((name) => baseToolNames.has(name));
 
-    const toolService = new ToolService(
-      baseTools,
-      type === "main" ? allCustomTools : userCustomedTools,
-    );
+    const selectedBaseTools =
+      toolNames.length > 0 && hasExplicitBaseToolSelection
+        ? baseTools.filter((tool) => toolNames.includes(tool.name))
+        : baseTools;
+
+    const selectedCustomTools =
+      toolNames.length > 0
+        ? allCustomTools.filter((tool) => toolNames.includes(tool.name))
+        : allCustomTools;
+
+    const toolService = new ToolService(selectedBaseTools, selectedCustomTools);
 
     const conversation = new Conversation({
       id: taskId,
@@ -274,11 +277,8 @@ export class Conversation {
         content: systemPrompt,
       });
 
-      // 保存工具名称用于恢复
-      if (type === "sub") {
-        const toolNames = toolService.customedTools.map((t) => t.name);
-        memory.setToolNames(toolNames);
-      }
+      const initialToolNames = toolService.getAllTools().map((tool) => tool.name);
+      memory.setToolNames(initialToolNames);
     }
 
     return conversation;

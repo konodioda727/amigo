@@ -45,7 +45,9 @@ export const UpdateDevServer = createTool({
       `[updateDevServer] 同步执行 sandbox=${sandboxTaskId} workingDir=${workingDir} command=${startCommand}`,
     );
 
-    const installStatus = sandbox.getDependencyInstallStatus(workingDir);
+    const installStatus = await sandbox.resolveDependencyInstallStatus({
+      workingDir,
+    });
     if (installStatus.status === "running") {
       const waitingJob = queueToolRetryAfterDependencies({
         context,

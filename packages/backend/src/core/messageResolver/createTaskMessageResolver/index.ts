@@ -17,11 +17,12 @@ export class CreateTaskMessageResolver extends BaseMessageResolver<"createTask">
     taskOrchestrator.setUserInput(this.conversation, message.message, message.attachments);
 
     const onConversationCreate = getGlobalState("onConversationCreate");
+    const resolvedContext = this.conversation.memory.context ?? message.context;
     if (onConversationCreate) {
       try {
         await onConversationCreate({
           taskId: this.conversation.id,
-          context: message.context,
+          context: resolvedContext,
         });
       } catch (error) {
         logger.error("[CreateTaskMessageResolver] onConversationCreate 执行失败:", error);

@@ -1,0 +1,15 @@
+amigo.kbkbk.xyz {
+  encode zstd gzip
+
+  @backend path /api/* /ws
+  reverse_proxy @backend 127.0.0.1:10013
+
+  root * /var/www/amigo/frontend
+  try_files {path} /index.html
+  file_server
+}
+
+*.preview.amigo.kbkbk.xyz {
+  encode zstd gzip
+  reverse_proxy 127.0.0.1:10013
+}

@@ -13,7 +13,9 @@ export type MarkupTag =
   | "component"
   | "use"
   | "input"
-  | "textarea";
+  | "textarea"
+  | "select"
+  | "option";
 
 export interface ComponentAssetDefinition {
   id: string;
@@ -86,6 +88,7 @@ export interface ComputedStyle {
   flexWrap?: "wrap" | "nowrap";
   justifyContent?: string;
   alignItems?: string;
+  verticalAlign?: string;
   margin?: Margins;
   backgroundColor?: string;
   backgroundOpacity?: number;
@@ -117,10 +120,12 @@ export interface ComputedStyle {
   transform?: string;
   transition?: string;
   animation?: string;
+  boxSizing?: string;
   backdropFilter?: string;
   backgroundClip?: string;
   webkitTextFillColor?: string;
   overflow?: string;
+  overflowY?: string;
   position?: "relative" | "absolute";
   top?: LengthValue;
   right?: LengthValue;

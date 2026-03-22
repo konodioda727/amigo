@@ -437,17 +437,17 @@ describe("design doc markup flow", () => {
     expect(compiled.errors[0]).toContain("不能是转义后的 HTML");
   });
 
-  it("rejects unsupported style properties early", () => {
+  it("rejects unknown style properties inside inline style declarations", () => {
     const compiled = compileDesignDocFromMarkup(`
       <page name="Broken">
-        <section id="hero" name="Hero" kind="hero" style="position:sticky;clip-path:circle(50%)">
-          <text id="title">Hello</text>
+        <section id="hero" name="Hero" kind="hero">
+          <text id="title" style="clip-path:circle(50%);overflow:hidden;box-sizing:border-box">Hello</text>
         </section>
       </page>
     `);
 
     expect(compiled.document).toBeNull();
-    expect(compiled.errors[0]).toContain("不支持的样式属性");
+    expect(compiled.errors[0]).toContain("style 不支持的属性: clip-path");
   });
 
   it("rejects unsupported presentational attributes early", () => {
@@ -734,6 +734,59 @@ describe("design doc markup flow", () => {
     });
   });
 
+  it("supports select controls by compiling them into control containers", async () => {
+    const compiled = compileDesignDocFromMarkup(`
+      <page name="Form Page" width="1200" background="#ffffff">
+        <section id="contact" name="联系表单" kind="content" padding="32" gap="16">
+          <select id="category" value="tech">
+            <option value="life">生活</option>
+            <option value="tech" selected>技术</option>
+          </select>
+        </section>
+      </page>
+    `);
+
+    expect(compiled.errors).toEqual([]);
+    const node = compiled.document?.sections[0]?.nodes[0];
+    expect(node).toMatchObject({
+      id: "category",
+      type: "container",
+      props: {
+        controlType: "select",
+        selectedValue: "tech",
+      },
+    });
+    expect(node?.children?.[0]).toMatchObject({
+      type: "text",
+      text: "技术",
+    });
+
+    await createDesignDocFromMarkupTool.invoke({
+      context: createContext(),
+      params: {
+        pageId: "select-page",
+        markupText: `
+          <page name="Form Page" width="1200" background="#ffffff">
+            <section id="contact" name="联系表单" kind="content" padding="32" gap="16">
+              <select id="category" value="tech">
+                <option value="life">生活</option>
+                <option value="tech" selected>技术</option>
+              </select>
+            </section>
+          </page>
+        `.trim(),
+      },
+    });
+
+    const readResult = await readDesignDocTool.invoke({
+      context: createContext(),
+      params: { pageId: "select-page" },
+    });
+    expect(String(readResult.toolResult.content || "")).toContain("<select ");
+    expect(String(readResult.toolResult.content || "")).toContain('value="tech"');
+    expect(String(readResult.toolResult.content || "")).toContain(">技术</option>");
+  });
+
   it("supports simple equal-column grid layout", () => {
     const compiled = compileDesignDocFromMarkup(`
       <page name="Grid Page" width="1200" background="#121212">
@@ -958,6 +1011,32 @@ describe("design doc markup flow", () => {
     });
   });
 
+  it("supports box-sizing but rejects unknown CSS declarations in tool input", async () => {
+    const createResult = await createDesignDocFromMarkupTool.invoke({
+      context: createContext(),
+      params: {
+        pageId: "passthrough-style-page",
+        markupText: `
+          <page name="透传样式页" width="1200" background="#FFFFFF">
+            <section id="content" name="内容区" kind="content" style="padding:32px">
+              <div
+                id="card"
+                style="width:320px;height:120px;padding:16px;box-sizing:border-box;mix-blend-mode:screen;isolation:isolate;background:#111827;color:#FFFFFF"
+              >
+                透传样式内容
+              </div>
+            </section>
+          </page>
+        `.trim(),
+      },
+    });
+
+    expect(createResult.toolResult.success).toBe(false);
+    expect(createResult.toolResult.validationErrors[0]).toContain(
+      "style 不支持的属性: mix-blend-mode",
+    );
+  });
+
   it("supports absolute positioning, z-index, overflow, and background-clip", () => {
     const compiled = compileDesignDocFromMarkup(`
       <page name="Positioned Page" width="1200" background="#101010">
@@ -1158,6 +1237,53 @@ describe("design doc markup flow", () => {
     expect(String(readResult.toolResult.content || "")).toContain("background-position:center top");
     expect(String(readResult.toolResult.content || "")).toContain("box-shadow:0px 24px 48px");
     expect(String(readResult.toolResult.content || "")).toContain("text-overflow:ellipsis");
+  });
+
+  it("supports vertical-align and overflow-y and preserves them in markup", async () => {
+    const createResult = await createDesignDocFromMarkupTool.invoke({
+      params: {
+        pageId: "vertical-overflow-page",
+        markupText: `
+          <page name="Vertical Overflow Page" width="1200" background="#FFFFFF">
+            <section id="content" name="内容区" kind="content" padding="32">
+              <div
+                id="scroll-panel"
+                width="320"
+                height="120"
+                overflow-y="auto"
+                background="#F8FAFC"
+                border="1px solid #E2E8F0"
+              >
+                <text id="label" vertical-align="middle" color="#0F172A" font-size="16">
+                  可滚动容器标题
+                </text>
+              </div>
+            </section>
+          </page>
+        `,
+      },
+      context: createContext(),
+    });
+
+    expect(createResult.toolResult.success).toBe(true);
+
+    const stored = readStoredDesignDoc("task-1", "vertical-overflow-page");
+    expect(stored?.validation.document?.sections[0]?.nodes[0]?.props).toMatchObject({
+      overflowY: "auto",
+    });
+    expect(stored?.validation.document?.sections[0]?.nodes[0]?.children?.[0]?.props).toMatchObject({
+      textGrowType: "fixed",
+      verticalAlign: "middle",
+    });
+
+    const readResult = await readDesignDocTool.invoke({
+      params: { pageId: "vertical-overflow-page" },
+      context: createContext(),
+    });
+
+    expect(readResult.toolResult.success).toBe(true);
+    expect(String(readResult.toolResult.content || "")).toContain("overflow-y:auto");
+    expect(String(readResult.toolResult.content || "")).toContain("vertical-align:middle");
   });
 
   it("supports white-space and preserves it in markup", async () => {
@@ -1631,6 +1757,46 @@ describe("design doc markup flow", () => {
 
     expect(result.toolResult.success).toBe(false);
     expect(result.toolResult.validationErrors[0]).toContain("height");
+  });
+
+  it("rejects unsupported float-based section layouts", async () => {
+    const result = await createDesignDocFromMarkupTool.invoke({
+      params: {
+        pageId: "float-layout-page",
+        markupText: `
+          <page name="Float Layout" width="1440" min-height="900" background="#FFFFFF">
+            <section id="sidebar" name="侧边栏" kind="sidebar" style="width:240px;height:600px;float:left;background:#F8FAFC"></section>
+          </page>
+        `,
+      },
+      context: createContext(),
+    });
+
+    expect(result.toolResult.success).toBe(false);
+    expect(result.toolResult.validationErrors[0]).toContain("style 不支持的属性: float");
+  });
+
+  it("rejects nested sections that are not direct page children", async () => {
+    const result = await createDesignDocFromMarkupTool.invoke({
+      params: {
+        pageId: "nested-section-page",
+        markupText: `
+          <page name="Nested Sections" width="1440" min-height="900" background="#FFFFFF">
+            <section id="main" name="主内容区" kind="content" style="padding:24px">
+              <section id="nested" name="嵌套区块" kind="content" style="padding:16px">
+                <text id="title">不合法嵌套</text>
+              </section>
+            </section>
+          </page>
+        `,
+      },
+      context: createContext(),
+    });
+
+    expect(result.toolResult.success).toBe(false);
+    expect(result.toolResult.validationErrors[0]).toContain(
+      "<section> 只能作为 <page> 的直接子节点",
+    );
   });
 
   it("creates and stores a design doc from markup", async () => {

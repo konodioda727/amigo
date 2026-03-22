@@ -235,7 +235,8 @@ const toMarkupElement = (node: Element): MarkupElement => {
     tagName === "component" ||
     tagName === "use" ||
     tagName === "textarea" ||
-    tagName === "input";
+    tagName === "input" ||
+    tagName === "select";
 
   return {
     tagName,
@@ -247,8 +248,19 @@ const toMarkupElement = (node: Element): MarkupElement => {
 
 const buildControlElement = (element: MarkupElement): MarkupElement => {
   const controlType = element.tagName;
+  const selectedOption =
+    controlType === "select"
+      ? element.children.find(
+          (child) =>
+            child.tagName === "option" &&
+            (child.attributes.selected !== undefined ||
+              (element.attributes.value && child.attributes.value === element.attributes.value)),
+        ) || element.children.find((child) => child.tagName === "option")
+      : null;
   const textValue =
-    normalizeTextPreservingBreaks(element.attributes.value || "") ||
+    normalizeTextPreservingBreaks(
+      controlType === "select" ? selectedOption?.textContent || "" : element.attributes.value || "",
+    ) ||
     normalizeTextPreservingBreaks(element.textContent || "") ||
     normalizeTextPreservingBreaks(element.attributes.placeholder || "");
   const placeholder = normalizeWhitespace(element.attributes.placeholder || "");
@@ -279,6 +291,7 @@ const buildControlElement = (element: MarkupElement): MarkupElement => {
     rows: _rows,
     type: _type,
     disabled: _disabled,
+    selected: _selected,
     ...restAttributes
   } = element.attributes;
 
@@ -292,6 +305,9 @@ const buildControlElement = (element: MarkupElement): MarkupElement => {
       ...(element.attributes.value ? { "data-value": element.attributes.value } : {}),
       ...(controlType === "textarea" ? { "data-rows": String(rows) } : {}),
       ...(element.attributes.type ? { "data-input-type": element.attributes.type } : {}),
+      ...(controlType === "select" && selectedOption?.attributes.value
+        ? { "data-selected-value": selectedOption.attributes.value }
+        : {}),
       ...(element.attributes.disabled !== undefined ? { "data-disabled": "true" } : {}),
     },
     children: textChild ? [textChild] : [],
@@ -361,7 +377,7 @@ const normalizeMarkupTree = (element: MarkupElement): MarkupElement => {
   const next = cloneMarkupElement(element);
   next.children = next.children.map(normalizeMarkupTree);
 
-  if (next.tagName === "input" || next.tagName === "textarea") {
+  if (next.tagName === "input" || next.tagName === "textarea" || next.tagName === "select") {
     return buildControlElement(next);
   }
 

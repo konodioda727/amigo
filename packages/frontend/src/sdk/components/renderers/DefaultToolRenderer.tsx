@@ -15,7 +15,9 @@ import { DefaultListDesignDocsRenderer } from "./tools/DefaultListDesignDocsRend
 import { DefaultReadDesignAssetRenderer } from "./tools/DefaultReadDesignAssetRenderer";
 import { DefaultReadDesignDocRenderer } from "./tools/DefaultReadDesignDocRenderer";
 import { DefaultReadFileRenderer } from "./tools/DefaultReadFileRenderer";
+import { DefaultReadSkillBundleRenderer } from "./tools/DefaultReadSkillBundleRenderer";
 import { DefaultReadTaskDocsRenderer } from "./tools/DefaultReadTaskDocsRenderer";
+import { DefaultUpsertAutomationRenderer } from "./tools/DefaultUpsertAutomationRenderer";
 import { ToolAccordion } from "./tools/ToolAccordion";
 
 // Tool-specific renderer map
@@ -116,6 +118,22 @@ export const DefaultToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
     return (
       <DefaultReadDesignAssetRenderer
         {...(props as unknown as React.ComponentProps<typeof DefaultReadDesignAssetRenderer>)}
+      />
+    );
+  }
+
+  if (String(message.toolName) === "readSkillBundle") {
+    return (
+      <DefaultReadSkillBundleRenderer
+        {...(props as unknown as React.ComponentProps<typeof DefaultReadSkillBundleRenderer>)}
+      />
+    );
+  }
+
+  if (String(message.toolName) === "upsertAutomation") {
+    return (
+      <DefaultUpsertAutomationRenderer
+        {...(props as unknown as React.ComponentProps<typeof DefaultUpsertAutomationRenderer>)}
       />
     );
   }

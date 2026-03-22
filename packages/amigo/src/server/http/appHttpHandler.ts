@@ -1,6 +1,17 @@
 import { conversationRepository, logger, type SandboxRegistry } from "@amigo-llm/backend";
 import { z } from "zod";
+import type { AutomationScheduler } from "../automations/automationScheduler";
+import type { AutomationStore } from "../automations/automationStore";
 import type { PreviewHostConfig } from "../config/previewHost";
+import type { SkillHubMarketClient } from "../skills/skillHubMarket";
+import type { SkillStore } from "../skills/skillStore";
+import {
+  deleteAutomationController,
+  getAutomationController,
+  listAutomationsController,
+  runAutomationController,
+  upsertAutomationController,
+} from "./controllers/automationController";
 import {
   getDesignAssetController,
   listDesignAssetsController,
@@ -24,6 +35,18 @@ import {
   syncPenpotController,
   updatePenpotBindingController,
 } from "./controllers/penpotController";
+import {
+  deleteSkillController,
+  getSkillController,
+  listSkillsController,
+  upsertSkillController,
+} from "./controllers/skillController";
+import {
+  browseSkillMarketController,
+  getSkillMarketStatusController,
+  importSkillFromMarketController,
+  searchSkillMarketController,
+} from "./controllers/skillMarketController";
 import { noContentResponse } from "./shared/response";
 
 interface AppHttpRoute {
@@ -42,6 +65,10 @@ export interface AmigoHttpHandler {
 interface CreateAmigoHttpHandlerOptions {
   sandboxManager: SandboxRegistry;
   previewHostConfig?: PreviewHostConfig;
+  skillStore: SkillStore;
+  skillHubMarketClient: SkillHubMarketClient;
+  automationStore: AutomationStore;
+  automationScheduler: AutomationScheduler;
 }
 
 const TASK_EDITOR_OPEN_FILE_PATH_PATTERN = /^\/api\/tasks\/([^/]+)\/editor\/open-file\/?$/;
@@ -158,19 +185,6 @@ const editorOpenFileRequestSchema = z.object({
 
 const hasRequestBody = (method: string) => !["GET", "HEAD"].includes(method.toUpperCase());
 
-const matchRoute = (method: string, pathname: string) => {
-  for (const route of routes) {
-    if (route.method !== method) {
-      continue;
-    }
-    const match = pathname.match(route.pattern);
-    if (match) {
-      return { route, match };
-    }
-  }
-  return null;
-};
-
 const normalizeBaseDomain = (value: string | undefined): string =>
   (value || "").trim().toLowerCase().replace(/^\.+/, "").replace(/\.+$/, "");
 
@@ -189,12 +203,6 @@ const jsonResponse = (data: unknown, init?: ResponseInit): Response => {
     },
   });
 };
-
-const matchesAnyRoute = (pathname: string) =>
-  routes.some((route) => route.pattern.test(pathname)) ||
-  TASK_EDITOR_OPEN_FILE_PATH_PATTERN.test(pathname) ||
-  TASK_EDITOR_PATH_PATTERN.test(pathname) ||
-  TASK_PREVIEW_PATH_PATTERN.test(pathname);
 
 const getPreviewBaseDomain = (config?: PreviewHostConfig): string | null => {
   const domain = normalizeBaseDomain(config?.baseDomain);
@@ -245,6 +253,106 @@ const resolveSandboxIdFromPreviewHostname = (
 export const createAmigoHttpHandler = (
   options: CreateAmigoHttpHandlerOptions,
 ): AmigoHttpHandler => {
+  const appRoutes: AppHttpRoute[] = [
+    ...routes,
+    {
+      method: "GET",
+      pattern: /^\/api\/skills\/market\/status\/?$/,
+      controller: () => getSkillMarketStatusController(options.skillHubMarketClient),
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/skills\/market\/catalog\/?$/,
+      controller: (req) => browseSkillMarketController(req, options.skillHubMarketClient),
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/skills\/market\/search\/?$/,
+      controller: (req) => searchSkillMarketController(req, options.skillHubMarketClient),
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/skills\/market\/import\/?$/,
+      controller: (req) =>
+        importSkillFromMarketController(req, options.skillHubMarketClient, options.skillStore),
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/skills\/?$/,
+      controller: () => listSkillsController(options.skillStore),
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/skills\/([^/]+)\/?$/,
+      controller: (_req, match) =>
+        getSkillController(options.skillStore, decodeURIComponent(match[1] || "").trim()),
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/skills\/?$/,
+      controller: (req) => upsertSkillController(req, options.skillStore),
+    },
+    {
+      method: "DELETE",
+      pattern: /^\/api\/skills\/([^/]+)\/?$/,
+      controller: (_req, match) =>
+        deleteSkillController(options.skillStore, decodeURIComponent(match[1] || "").trim()),
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/automations\/?$/,
+      controller: () => listAutomationsController(options.automationStore),
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/automations\/([^/]+)\/?$/,
+      controller: (_req, match) =>
+        getAutomationController(options.automationStore, decodeURIComponent(match[1] || "").trim()),
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/automations\/?$/,
+      controller: (req) => upsertAutomationController(req, options.automationStore),
+    },
+    {
+      method: "DELETE",
+      pattern: /^\/api\/automations\/([^/]+)\/?$/,
+      controller: (_req, match) =>
+        deleteAutomationController(
+          options.automationStore,
+          decodeURIComponent(match[1] || "").trim(),
+        ),
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/automations\/([^/]+)\/run\/?$/,
+      controller: (_req, match) =>
+        runAutomationController(
+          options.automationScheduler,
+          decodeURIComponent(match[1] || "").trim(),
+        ),
+    },
+  ];
+
+  const matchAppRoute = (method: string, pathname: string) => {
+    for (const route of appRoutes) {
+      if (route.method !== method) {
+        continue;
+      }
+      const match = pathname.match(route.pattern);
+      if (match) {
+        return { route, match };
+      }
+    }
+    return null;
+  };
+
+  const matchesAppRoute = (pathname: string) =>
+    appRoutes.some((route) => route.pattern.test(pathname)) ||
+    TASK_EDITOR_OPEN_FILE_PATH_PATTERN.test(pathname) ||
+    TASK_EDITOR_PATH_PATTERN.test(pathname) ||
+    TASK_PREVIEW_PATH_PATTERN.test(pathname);
+
   const resolveSandboxKey = (taskId: string): string | null => {
     const conversation = conversationRepository.load(taskId);
     if (!conversation) {
@@ -436,10 +544,10 @@ export const createAmigoHttpHandler = (
       }
 
       if (req.method === "OPTIONS") {
-        return matchesAnyRoute(url.pathname) ? noContentResponse() : null;
+        return matchesAppRoute(url.pathname) ? noContentResponse() : null;
       }
 
-      const matchedRoute = matchRoute(req.method, url.pathname);
+      const matchedRoute = matchAppRoute(req.method, url.pathname);
       if (matchedRoute) {
         return matchedRoute.route.controller(req, matchedRoute.match);
       }

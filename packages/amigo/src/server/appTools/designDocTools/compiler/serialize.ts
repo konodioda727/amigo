@@ -94,14 +94,23 @@ const styleToAttribute = (node: DesignNode) => {
   if (typeof node.props?.outline === "string") {
     declarations.push(`outline:${node.props.outline}`);
   }
+  if (typeof node.props?.verticalAlign === "string") {
+    declarations.push(`vertical-align:${node.props.verticalAlign}`);
+  }
   if (typeof node.props?.transform === "string") {
     declarations.push(`transform:${node.props.transform}`);
   }
   if (typeof node.props?.filter === "string") {
     declarations.push(`filter:${node.props.filter}`);
   }
+  if (typeof node.props?.boxSizing === "string") {
+    declarations.push(`box-sizing:${node.props.boxSizing}`);
+  }
   if (typeof node.props?.overflow === "string") {
     declarations.push(`overflow:${node.props.overflow}`);
+  }
+  if (typeof node.props?.overflowY === "string") {
+    declarations.push(`overflow-y:${node.props.overflowY}`);
   }
   if (typeof node.props?.animation === "string") {
     declarations.push(`animation:${node.props.animation}`);
@@ -130,6 +139,12 @@ const styleToAttribute = (node: DesignNode) => {
       continue;
     }
     declarations.push(`${key}:${value}`);
+  }
+  for (const [key, value] of Object.entries(node.props || {})) {
+    if (!key.startsWith("css:") || typeof value !== "string" || !value.trim()) {
+      continue;
+    }
+    declarations.push(`${key.slice(4)}:${value}`);
   }
 
   return declarations.join(";");
@@ -187,7 +202,11 @@ const serializeNode = (node: DesignNode, indent: string): string => {
     })} />`;
   }
 
-  if (node.props?.controlType === "input" || node.props?.controlType === "textarea") {
+  if (
+    node.props?.controlType === "input" ||
+    node.props?.controlType === "textarea" ||
+    node.props?.controlType === "select"
+  ) {
     const tagName = node.props.controlType;
     const attributes = {
       ...common,
@@ -197,9 +216,27 @@ const serializeNode = (node: DesignNode, indent: string): string => {
       ...(typeof node.props.value === "string" ? { value: node.props.value } : {}),
       ...(typeof node.props.inputType === "string" ? { type: node.props.inputType } : {}),
       ...(typeof node.props.rows === "number" ? { rows: String(node.props.rows) } : {}),
+      ...(typeof node.props.selectedValue === "string" ? { value: node.props.selectedValue } : {}),
       ...(node.props.disabled === true ? { disabled: "true" } : {}),
       ...getStateAttributes(node),
     };
+    if (tagName === "select") {
+      const optionLabel =
+        typeof node.children?.[0]?.text === "string" && node.children[0].text.trim()
+          ? node.children[0].text
+          : typeof node.text === "string" && node.text.trim()
+            ? node.text
+            : typeof node.name === "string"
+              ? node.name
+              : "";
+      const selectedValue =
+        typeof node.props.selectedValue === "string" && node.props.selectedValue.trim()
+          ? node.props.selectedValue
+          : optionLabel;
+      return `${indent}<select ${renderAttributes(attributes)}><option value="${escapeAttribute(
+        selectedValue,
+      )}" selected="true">${escapeText(optionLabel)}</option></select>`;
+    }
     return tagName === "textarea"
       ? `${indent}<textarea ${renderAttributes(attributes)}></textarea>`
       : `${indent}<input ${renderAttributes(attributes)} />`;

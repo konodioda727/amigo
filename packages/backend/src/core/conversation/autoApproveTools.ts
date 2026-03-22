@@ -4,6 +4,7 @@ export const DEFAULT_AUTO_APPROVE_TOOL_NAMES = [
   "askFollowupQuestion",
   "completeTask",
   "browserSearch",
+  "readSkillBundle",
 ] as const;
 
 const getDefaultAutoApproveToolNames = (): readonly string[] => {

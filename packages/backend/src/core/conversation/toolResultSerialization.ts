@@ -175,7 +175,7 @@ export const serializeToolResultForMemory = (toolName: string, result: unknown):
     const maxLength =
       toolName === "browserSearch"
         ? 60_000
-        : toolName === "readDesignDoc" || toolName === "readFile"
+        : toolName === "readDesignDoc" || toolName === "readFile" || toolName === "readSkillBundle"
           ? 120_000
           : 20_000;
     if (serialized.length <= maxLength) {

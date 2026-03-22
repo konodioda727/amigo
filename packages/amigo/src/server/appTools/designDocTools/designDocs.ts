@@ -346,9 +346,9 @@ const resolveDesignDocMutationContext = ({
 export const createDesignDocFromMarkupTool = defineTool({
   name: "createDesignDocFromMarkup",
   description:
-    '使用受限的 HTML + inline CSS 生成设计稿；默认整页创建，传 update=true 时按 section.id 对已有页面做局部更新。调用前先用 listDesignAssets 查看当前可复用的设计资产，再决定是否需要通过 <use component="..."> 或 <img asset="..."> 引用它们。',
+    "使用受限的 HTML + inline CSS 生成或扩展页面设计稿；传 update=true 时按 section.id 对已有页面做局部更新。这个工具的 <page> 根节点只是当前这一步 section 集合的容器，不等于必须一次提交完整页。",
   whenToUse:
-    "当需要创建、整体重建，或按区块局部更新页面设计稿时使用。先调用 listDesignAssets 查看当前已有资产，再生成 markup。markupText 根节点必须是 <page>；<page> 下可以可选包含一个 <components> 块用于声明并产出 component 资产，其余直接子节点必须是 <section>。",
+    "当需要创建、扩展、整体重建，或按区块局部更新页面设计稿时使用。复杂页面首次创建时，默认先只提交 1 个 section 或一组强耦合 section，不要一开始就整页提交。先调用 listDesignAssets 查看当前已有资产，再生成 markup。",
   params: [
     {
       name: "pageId",
@@ -364,7 +364,7 @@ export const createDesignDocFromMarkupTool = defineTool({
       name: "markupText",
       optional: false,
       description:
-        '受限 HTML/CSS 字符串。调用本工具前先用 listDesignAssets 查看当前已有设计资产，再决定具体引用方式。支持 <page>、<components>、<component>、<section>、<div>、<text>、<button>、<img>、<shape>、<use>、<br>、<input>、<textarea>，以及常见语义标签如 h1-h6、p、span、label、a、header、footer、main、nav、article、aside、ul、ol、li。每个 <section> 必须显式写 id、name、kind，且 name 必须是简短的人类可读区块名。创建页面时必须显式写 <page width="...">，并让宽度匹配目标端；如果省略 width，系统会按桌面稿默认 1440 处理，所以移动端页面必须明确写出 375/390/393/414 等手机宽度。设计稿尺寸必须受控：page.width 需在 240-2560 之间，page.minHeight 需在 200-20000 之间，section 和 node 的宽高也必须保持在合理范围内，不能生成离谱的大尺寸。若要在本次生成里顺手产出 component 资产，可在 <page> 下添加 <components>，里面声明一个或多个 <component id="...">...</component>；页面里可以立刻通过 <use component="asset-id" id="instance-id" /> 复用这些内联组件。复用图片资产时优先写 <img asset="asset-id" ... />，没有真实资产时也可以先写占位 src URL。系统会先归一化成内部 markup，再计算 computedStyle 和布局。支持的样式包括 width/height/max-width/min-height/top/right/bottom/left/padding/padding-top/padding-right/padding-bottom/padding-left/gap/row-gap/column-gap/display:flex/display:grid/position/flex-direction/flex/flex-wrap/justify-content/align-items/margin/background/color/border/outline/border-top/border-right/border-bottom/border-left/border-radius/font-size/font-weight/font-style/font-family/letter-spacing/text-decoration/line-height/text-align/white-space/object-fit/opacity/cursor/transition/overflow/background-clip/z-index/grid-template-columns。长度只接受 number、px、百分比或 margin:auto；<br> 只用于文本换行，grid 目前只支持等列网格。当前是静态设计稿，不需要动效或复杂交互；hover-/focus-/active- 前缀属性会被透传为元数据，但不参与布局和渲染。不要使用 class、外部样式表、脚本或任意定位语法。转义后的 &lt;page&gt; / &lt;section&gt; 会被直接拒绝。',
+        '受限 HTML/CSS 字符串。根节点必须是 <page>；<page> 的直接子节点必须是 <section>，并且每个 <section> 都要显式写 id、name、kind。<section> 只能作为 <page> 的直接子节点；左右分栏、卡片网格、侧边栏与主内容并排等布局，请在某个顶层 section 内用 div + flex / grid 表达，不要使用 float、fixed、sticky。不要使用 SVG；图标、插画和品牌图形统一优先通过 <use component="asset-id" id="instance-id" /> 或 <img asset="asset-id" /> 复用设计资产。复杂页面首次创建时，默认先只提交 1 个 section 或一组强耦合 section；如果这一步已经把多个 section 放进 page，那么这些 section 都必须细化完成，不能只停在骨架或 outline。创建页面时必须显式写 <page width="...">，并让宽度匹配目标端；移动端页面不要沿用 1440。设计稿尺寸必须受控：page.width 需在 240-2560 之间，page.minHeight 需在 200-20000 之间，section 和 node 的宽高也必须保持在合理范围内。若要在本次生成里顺手产出 component 资产，可在 <page> 下添加 <components>，里面声明一个或多个 <component id="...">...</component>；页面里可以立刻通过 <use component="asset-id" id="instance-id" /> 复用这些内联组件。支持 <page>、<components>、<component>、<section>、<div>、<text>、<button>、<img>、<shape>、<use>、<br>、<input>、<textarea> 及常见语义文本标签；支持的样式范围以工具白名单为准。不要使用 class、外部样式表、脚本或任意定位语法。转义后的 &lt;page&gt; / &lt;section&gt; 会被直接拒绝。',
     },
     {
       name: "update",

@@ -7,9 +7,9 @@ import { getCacheRootPath } from "@/core/storage";
 import { getGlobalState } from "@/globalState";
 import { getGithubSandboxBindingForTask } from "@/integrations/github";
 import { logger } from "@/utils/logger";
+import { getSandboxContainerName } from "./containerIdentity";
 import { normalizeEditorOpenFilePath } from "./editorFilePath";
 import { type ResolvedSandboxOptions, resolveSandboxOptions } from "./options";
-import type { SandboxOptions } from "./types";
 
 let docker: Docker | null;
 try {
@@ -71,6 +71,7 @@ const canConnectToPort = (host: string, port: number, timeoutMs: number): Promis
   });
 
 type SupportedPackageManager = "pnpm" | "npm" | "yarn" | "bun" | "custom" | "none";
+type DependencyArtifactState = "no_package_json" | "no_dependencies" | "installed" | "missing";
 
 export interface DependencyInstallStatus {
   status: "idle" | "running" | "success" | "failed" | "not_required";
@@ -111,6 +112,10 @@ function getDependencyInstallLogPath(workingDir: string): string {
       ? "root"
       : workingDir.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") || "workspace";
   return `/tmp/amigo/dependency-install-${suffix}.log`;
+}
+
+function normalizeInstallCommandForComparison(command: string | undefined): string {
+  return (command || "").trim().replace(/\s+/g, " ");
 }
 
 function getForwardedSandboxEnvVars(): string[] {
@@ -293,6 +298,87 @@ export class Sandbox {
     }
   }
 
+  async writeFile(
+    filePath: string,
+    content: Buffer | string,
+    options?: { mode?: number },
+  ): Promise<void> {
+    if (!this.container) {
+      throw new Error("沙箱未运行，无法写入文件");
+    }
+
+    const normalizedPath = filePath.trim().startsWith("/sandbox/")
+      ? filePath.trim()
+      : `/sandbox/${filePath.trim().replace(/^\/+/, "")}`;
+    const targetDir = path.posix.dirname(normalizedPath);
+    const bufferContent = typeof content === "string" ? Buffer.from(content, "utf-8") : content;
+
+    const exec = await this.container.exec({
+      Cmd: [
+        "bash",
+        "-lc",
+        `mkdir -p ${shellQuote(targetDir)} && cat > ${shellQuote(normalizedPath)}`,
+      ],
+      AttachStdin: true,
+      AttachStdout: true,
+      AttachStderr: true,
+      WorkingDir: "/sandbox",
+    });
+
+    const stream = await exec.start({ hijack: true, stdin: true });
+
+    await new Promise<void>((resolve, reject) => {
+      const stdout = new PassThrough();
+      const stderr = new PassThrough();
+      let stderrOutput = "";
+      let settled = false;
+
+      const finish = (error?: Error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      };
+
+      stderr.on("data", (chunk: Buffer) => {
+        stderrOutput += chunk.toString("utf8");
+      });
+
+      docker!.modem.demuxStream(stream, stdout, stderr);
+
+      stream.on("error", (error: Error) => {
+        finish(error);
+      });
+
+      stream.on("end", () => {
+        if (stderrOutput.trim()) {
+          finish(new Error(stderrOutput.trim()));
+          return;
+        }
+        finish();
+      });
+
+      stream.write(bufferContent);
+      stream.end();
+    });
+
+    const inspectResult = await exec.inspect();
+    if ((inspectResult.ExitCode || 0) !== 0) {
+      throw new Error(`写入文件失败: ${normalizedPath}（exitCode=${inspectResult.ExitCode}）`);
+    }
+
+    if (options?.mode !== undefined) {
+      await this.runCommand(
+        `chmod ${options.mode.toString(8)} ${shellQuote(normalizedPath.replace(/^\/sandbox\//, ""))}`,
+      );
+    }
+  }
+
   /**
    * 容器初始化
    */
@@ -324,7 +410,7 @@ export class Sandbox {
         labels["amigo.taskId"] = taskId;
       }
 
-      this.container = await docker.createContainer({
+      const createContainerOptions = {
         Image: this.options.imageName,
         Tty: false,
         ...(forwardedEnv.length > 0 ? { Env: forwardedEnv } : {}),
@@ -354,7 +440,10 @@ export class Sandbox {
           [PREVIEW_CONTAINER_PORT_KEY]: {},
         },
         WorkingDir: "/sandbox",
-      });
+        ...(taskId ? { name: getSandboxContainerName(taskId) } : {}),
+      } as Docker.ContainerCreateOptions & { name?: string };
+
+      this.container = await docker.createContainer(createContainerOptions);
 
       await this.container.start();
       if (githubBinding) {
@@ -455,6 +544,50 @@ export class Sandbox {
     };
   }
 
+  async resolveDependencyInstallStatus(params?: {
+    workingDir?: string;
+    expectedInstallCommand?: string;
+  }): Promise<DependencyInstallStatus> {
+    const workingDir = normalizeSandboxWorkingDir(params?.workingDir);
+    const currentState = this.getDependencyInstallStatus(workingDir);
+
+    if (!["success", "not_required"].includes(currentState.status)) {
+      return currentState;
+    }
+
+    const expectedCommand = normalizeInstallCommandForComparison(params?.expectedInstallCommand);
+    const currentCommand = normalizeInstallCommandForComparison(currentState.installCommand);
+    if (expectedCommand && expectedCommand !== currentCommand) {
+      this.invalidateDependencyInstallStatus(
+        workingDir,
+        `install command changed (${currentCommand || "unknown"} -> ${expectedCommand})`,
+      );
+      return this.getDependencyInstallStatus(workingDir);
+    }
+
+    try {
+      const artifactState = await this.inspectDependencyArtifacts(workingDir);
+      const isReusable =
+        currentState.status === "success"
+          ? ["installed", "no_dependencies", "no_package_json"].includes(artifactState)
+          : ["no_dependencies", "no_package_json"].includes(artifactState);
+
+      if (!isReusable) {
+        this.invalidateDependencyInstallStatus(
+          workingDir,
+          `dependency artifacts are stale (${artifactState})`,
+        );
+        return this.getDependencyInstallStatus(workingDir);
+      }
+    } catch (error) {
+      logger.warn(
+        `[Sandbox] 校验依赖状态失败，将保留现有状态 workingDir=${workingDir}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    return currentState;
+  }
+
   async ensureDependenciesInstalled(params?: {
     workingDir?: string;
     abortSignal?: AbortSignal;
@@ -470,7 +603,7 @@ export class Sandbox {
       return existingPromise;
     }
 
-    const existingState = this.getDependencyInstallStatus(workingDir);
+    const existingState = await this.resolveDependencyInstallStatus({ workingDir });
     if (!params?.force) {
       if (existingState.status === "success" || existingState.status === "not_required") {
         return existingState;
@@ -509,7 +642,10 @@ export class Sandbox {
       return existingPromise;
     }
 
-    const existingState = this.getDependencyInstallStatus(workingDir);
+    const existingState = await this.resolveDependencyInstallStatus({
+      workingDir,
+      expectedInstallCommand: installCommand,
+    });
     if (!params.force) {
       if (existingState.status === "success" || existingState.status === "not_required") {
         return existingState;
@@ -640,6 +776,55 @@ export class Sandbox {
         abortSignal,
       )) || "";
     return output.trim();
+  }
+
+  private invalidateDependencyInstallStatus(workingDir: string, reason: string): void {
+    const key = normalizeSandboxWorkingDir(workingDir);
+    this.dependencyInstallStates.delete(key);
+    logger.info(`[Sandbox] 清理失效依赖状态 workingDir=${key}: ${reason}`);
+  }
+
+  private async inspectDependencyArtifacts(workingDir: string): Promise<DependencyArtifactState> {
+    const workingDirPath =
+      `/sandbox/${workingDir === "." ? "" : workingDir}`.replace(/\/$/, "") || "/sandbox";
+    const script = Buffer.from(
+      [
+        "const fs = require('fs');",
+        "const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));",
+        "const dependencyKeys = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];",
+        "const dependencyCount = dependencyKeys.reduce((count, key) => count + Object.keys(pkg[key] || {}).length, 0);",
+        "if (dependencyCount === 0) {",
+        "  console.log('__AMIGO_DEP_STATE__:no_dependencies');",
+        "} else if (fs.existsSync('node_modules')) {",
+        "  console.log('__AMIGO_DEP_STATE__:installed');",
+        "} else {",
+        "  console.log('__AMIGO_DEP_STATE__:missing');",
+        "}",
+      ].join("\n"),
+      "utf8",
+    ).toString("base64");
+    const output =
+      (await this.runCommand(
+        [
+          `cd ${shellQuote(workingDirPath)}`,
+          "if [ ! -f package.json ]; then",
+          "  echo '__AMIGO_DEP_STATE__:no_package_json';",
+          "else",
+          `  node -e "$(printf '%s' ${shellQuote(script)} | base64 -d)"`,
+          "fi",
+        ].join("\n"),
+      )) || "";
+    const state = output
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line.startsWith("__AMIGO_DEP_STATE__:"))
+      ?.replace("__AMIGO_DEP_STATE__:", "") as DependencyArtifactState | undefined;
+
+    if (!state) {
+      throw new Error(`未能识别依赖产物状态: ${output.trim() || "<empty>"}`);
+    }
+
+    return state;
   }
 
   private async hydrateBootstrapRepository(

@@ -38,6 +38,16 @@ export const getSessionHistories = async () => {
           if (taskStatusData.fatherTaskId) {
             continue;
           }
+
+          // 跳过 automation 触发的主会话，避免混入用户历史记录
+          if (
+            taskStatusData.context &&
+            typeof taskStatusData.context === "object" &&
+            "trigger" in taskStatusData.context &&
+            taskStatusData.context.trigger === "automation"
+          ) {
+            continue;
+          }
         } catch (_error) {
           // 如果 taskStatus.json 不存在，可能是旧任务，继续处理
           logger.warn(`taskStatus.json not found for taskId ${taskId}, skipping subTask check.`);

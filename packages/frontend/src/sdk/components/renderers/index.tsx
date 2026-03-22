@@ -72,4 +72,6 @@ export {
   DefaultReadFileRenderer,
   ReadFileResultBody,
 } from "./tools/DefaultReadFileRenderer";
+export { DefaultReadSkillBundleRenderer } from "./tools/DefaultReadSkillBundleRenderer";
+export { DefaultUpsertAutomationRenderer } from "./tools/DefaultUpsertAutomationRenderer";
 export { ToolAccordion } from "./tools/ToolAccordion";

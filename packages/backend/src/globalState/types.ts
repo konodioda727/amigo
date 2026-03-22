@@ -1,6 +1,7 @@
-import type { MessageDefinition, ToolInterface } from "@amigo-llm/types";
+import type { ChatMessage, MessageDefinition, ToolInterface } from "@amigo-llm/types";
 import type { ModelConfig, ModelContextConfig } from "@/core/model/contextConfig";
 import type { SandboxManager } from "@/core/sandbox/types";
+import type { CreateTaskConfigResolver } from "@/core/server";
 
 export type ConversationTypeKey = "main" | "sub";
 
@@ -33,7 +34,15 @@ export interface GlobalStateType {
   /** 兼容旧命名，后续建议使用 modelConfigs */
   modelContextConfigs?: Record<string, ModelContextConfig | number>;
   /** 会话创建完成后的 app 层 hook */
-  onConversationCreate?: (payload: { taskId: string; context?: any }) => void | Promise<void>;
+  onConversationCreate?: (payload: { taskId: string; context?: unknown }) => void | Promise<void>;
+  /** 会话消息产生后的 app 层 hook */
+  onConversationMessage?: (payload: {
+    taskId: string;
+    message: ChatMessage;
+    context?: unknown;
+  }) => void | Promise<void>;
+  /** 在 createTask 真正创建会话前解析任务配置 */
+  createTaskConfigResolver?: CreateTaskConfigResolver;
 }
 
 /**

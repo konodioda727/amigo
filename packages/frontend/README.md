@@ -13,8 +13,10 @@
 ## 安装
 
 ```bash
-bun add @amigo-llm/frontend react react-dom
+bun add @amigo-llm/frontend react react-dom react-router-dom
 ```
+
+`react-router-dom` 现在按 peer dependency 提供，SDK 内置的设计稿跳转按钮会直接使用它。
 
 ## 引入样式
 

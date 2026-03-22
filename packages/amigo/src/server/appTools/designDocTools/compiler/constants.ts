@@ -19,6 +19,8 @@ export const SUPPORTED_TAGS = new Set<MarkupTag>([
   "use",
   "input",
   "textarea",
+  "select",
+  "option",
 ]);
 
 export const PRESENTATIONAL_STYLE_KEYS = [
@@ -52,6 +54,7 @@ export const PRESENTATIONAL_STYLE_KEYS = [
   "flex-direction",
   "justify-content",
   "align-items",
+  "vertical-align",
   "border",
   "outline",
   "border-top",
@@ -78,7 +81,9 @@ export const PRESENTATIONAL_STYLE_KEYS = [
   "transform",
   "transition",
   "animation",
+  "box-sizing",
   "overflow",
+  "overflow-y",
   "backdrop-filter",
   "background-clip",
   "-webkit-background-clip",
@@ -129,4 +134,6 @@ export const TAG_ALLOWED_ATTRIBUTES: Record<MarkupTag, Set<string>> = {
   use: new Set(["component"]),
   input: new Set(["placeholder", "value", "type", "disabled"]),
   textarea: new Set(["placeholder", "value", "rows", "disabled"]),
+  select: new Set(["placeholder", "value", "disabled"]),
+  option: new Set(["value", "selected"]),
 };

@@ -1,15 +1,18 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { logger } from "@/utils/logger";
 import type { ToolService } from "../tools";
+
+const promptBaseDir = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Load a prompt file from the systemPrompt directory
  * @throws Error if file does not exist
  */
 const loadPrompt = (fileName: string): string => {
-  const filePath = path.join(__dirname, fileName);
+  const filePath = path.join(promptBaseDir, fileName);
   if (!fs.existsSync(filePath)) {
     throw new Error(`System prompt file not found: ${filePath}`);
   }

@@ -1,6 +1,6 @@
 import { MessageInput, useTasks, useWebSocketContext } from "@amigo-llm/frontend";
 import type { ContextUsageStatus } from "@amigo-llm/types";
-import { Github, Loader2, X } from "lucide-react";
+import { Bot, Github, Loader2, X } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { cancelGithubBootstrap, type GithubBootstrapSummary } from "@/utils/githubBootstrap";
@@ -9,6 +9,7 @@ import {
   getPendingBootstrap,
   subscribePendingBootstrap,
 } from "@/utils/pendingBootstrap";
+import { listSkills, type SkillSummary } from "@/utils/serverAdmin";
 import { toast } from "@/utils/toast";
 import { GithubBootstrapModal } from "./GithubBootstrapModal";
 
@@ -24,11 +25,14 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
     () => (typeof window === "undefined" ? null : getPendingBootstrap()),
   );
   const [isCancelling, setIsCancelling] = useState(false);
+  const [availableSkills, setAvailableSkills] = useState<SkillSummary[]>([]);
   const effectiveTaskId = taskId || mainTaskId;
-  const activeTaskContext = resolveTaskContext(
+  const rawTaskContext =
     (effectiveTaskId && taskContextMaps[effectiveTaskId]) ||
-      (mainTaskId ? taskContextMaps[mainTaskId] : undefined),
-  );
+    (mainTaskId ? taskContextMaps[mainTaskId] : undefined);
+  const activeTaskContext = resolveTaskContext(rawTaskContext);
+  const activeSkillIds = extractSkillIds(rawTaskContext);
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
   const currentTaskContextUsage =
     (effectiveTaskId && taskContextUsageMaps[effectiveTaskId]) ||
     (mainTaskId ? taskContextUsageMaps[mainTaskId] : undefined);
@@ -42,6 +46,28 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
       setPendingBootstrapState(getPendingBootstrap());
     });
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSkills = async () => {
+      try {
+        const skills = await listSkills(config.url);
+        if (!cancelled) {
+          setAvailableSkills(skills);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.warn("[AppMessageComposer] 加载 skills 失败", error);
+        }
+      }
+    };
+
+    void loadSkills();
+    return () => {
+      cancelled = true;
+    };
+  }, [config.url]);
 
   const handleCancelBootstrap = async () => {
     if (!pendingBootstrap) {
@@ -63,19 +89,30 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
     }
   };
 
+  const createTaskContext =
+    !effectiveTaskId && (pendingBootstrap || selectedSkillIds.length > 0)
+      ? {
+          ...(pendingBootstrap || {}),
+          ...(selectedSkillIds.length > 0 ? { skillIds: selectedSkillIds } : {}),
+        }
+      : undefined;
+
   return (
     <div className="w-full">
       <MessageInput
         taskId={taskId}
-        createTaskContext={!effectiveTaskId && pendingBootstrap ? pendingBootstrap : undefined}
+        createTaskContext={createTaskContext}
         onSend={() => {
           if (!effectiveTaskId && pendingBootstrap) {
             clearPendingBootstrap();
           }
+          if (!effectiveTaskId) {
+            setSelectedSkillIds([]);
+          }
         }}
         bottomAccessory={
-          <div className="flex w-full items-center justify-between gap-3">
-            <div className="min-w-0">
+          <div className="flex w-full flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div className="min-w-0 space-y-2">
               {effectiveTaskId ? (
                 <button
                   type="button"
@@ -124,6 +161,60 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
                   <span>添加 GitHub 仓库</span>
                 </button>
               )}
+
+              {!effectiveTaskId && availableSkills.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1 text-[12px] text-gray-400">
+                    <Bot className="h-3.5 w-3.5" />
+                    Skills
+                  </span>
+                  {availableSkills.map((skill) => {
+                    const isSelected = selectedSkillIds.includes(skill.id);
+                    return (
+                      <button
+                        key={skill.id}
+                        type="button"
+                        onClick={() =>
+                          setSelectedSkillIds((prev) =>
+                            isSelected
+                              ? prev.filter((item) => item !== skill.id)
+                              : [...prev, skill.id],
+                          )
+                        }
+                        className={`rounded-full border px-2.5 py-1 text-[12px] transition-colors ${
+                          isSelected
+                            ? "border-blue-200 bg-blue-50 text-blue-700"
+                            : "border-gray-200 bg-white text-gray-500 hover:bg-gray-50"
+                        }`}
+                        title={skill.description || skill.name}
+                      >
+                        {skill.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {effectiveTaskId && activeSkillIds.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1 text-[12px] text-gray-400">
+                    <Bot className="h-3.5 w-3.5" />
+                    当前 Skills
+                  </span>
+                  {activeSkillIds.map((skillId) => {
+                    const skillName =
+                      availableSkills.find((skill) => skill.id === skillId)?.name || skillId;
+                    return (
+                      <span
+                        key={skillId}
+                        className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[12px] text-blue-700"
+                      >
+                        {skillName}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
             </div>
             {currentTaskContextUsage && <ContextUsageRing contextUsage={currentTaskContextUsage} />}
           </div>
@@ -145,18 +236,19 @@ interface TaskGithubContext {
   repoLabel: string;
 }
 
-const resolveTaskContext = (context: any): TaskGithubContext | null => {
+const resolveTaskContext = (context: unknown): TaskGithubContext | null => {
   if (!context || typeof context !== "object" || Array.isArray(context)) {
     return null;
   }
 
-  const repoUrl = typeof context.repoUrl === "string" ? context.repoUrl.trim() : "";
+  const taskContext = context as Record<string, unknown>;
+  const repoUrl = typeof taskContext.repoUrl === "string" ? taskContext.repoUrl.trim() : "";
   if (!repoUrl) {
     return null;
   }
 
-  const repoName = typeof context.repoName === "string" ? context.repoName.trim() : "";
-  const branch = typeof context.branch === "string" ? context.branch.trim() : "";
+  const repoName = typeof taskContext.repoName === "string" ? taskContext.repoName.trim() : "";
+  const branch = typeof taskContext.branch === "string" ? taskContext.branch.trim() : "";
   const repoPath = repoUrl.replace("https://github.com/", "").replace(".git", "");
 
   return {
@@ -164,15 +256,39 @@ const resolveTaskContext = (context: any): TaskGithubContext | null => {
     repoName: repoName || undefined,
     branch: branch || undefined,
     defaultBranch:
-      typeof context.defaultBranch === "string"
-        ? context.defaultBranch.trim() || undefined
+      typeof taskContext.defaultBranch === "string"
+        ? taskContext.defaultBranch.trim() || undefined
         : undefined,
     commitSha:
-      typeof context.commitSha === "string" ? context.commitSha.trim() || undefined : undefined,
+      typeof taskContext.commitSha === "string"
+        ? taskContext.commitSha.trim() || undefined
+        : undefined,
     updatedAt:
-      typeof context.updatedAt === "string" ? context.updatedAt.trim() || undefined : undefined,
+      typeof taskContext.updatedAt === "string"
+        ? taskContext.updatedAt.trim() || undefined
+        : undefined,
     repoLabel: branch ? `${repoName || repoPath} · ${branch}` : repoName || repoPath,
   };
+};
+
+const extractSkillIds = (context: unknown): string[] => {
+  if (!context || typeof context !== "object" || Array.isArray(context)) {
+    return [];
+  }
+
+  const rawSkillIds = (context as { skillIds?: unknown; skillId?: unknown }).skillIds;
+  if (Array.isArray(rawSkillIds)) {
+    return Array.from(
+      new Set(rawSkillIds.map((value) => String(value || "").trim()).filter(Boolean)),
+    );
+  }
+
+  const rawSkillId = (context as { skillId?: unknown }).skillId;
+  if (typeof rawSkillId === "string" && rawSkillId.trim()) {
+    return [rawSkillId.trim()];
+  }
+
+  return [];
 };
 
 const ContextUsageRing: React.FC<{ contextUsage: ContextUsageStatus }> = ({ contextUsage }) => {

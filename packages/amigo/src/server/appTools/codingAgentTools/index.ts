@@ -1,4 +1,6 @@
 import { repoSearchTool, runChecksTool } from "@amigo-llm/backend";
+import type { AutomationStore } from "../../automations/automationStore";
+import { createUpsertAutomationTool } from "../automationTools/upsertAutomationTool";
 import { listDesignAssetsTool, readDesignAssetTool } from "../designDocTools/designAssets";
 import {
   createDesignDocFromMarkupTool,
@@ -7,7 +9,7 @@ import {
   replaceDesignSectionFromMarkupTool,
 } from "../designDocTools/designDocs";
 
-export const USER_CODING_AGENT_TOOLS = [
+export const getUserCodingAgentTools = (automationStore: AutomationStore) => [
   repoSearchTool,
   runChecksTool,
   listDesignAssetsTool,
@@ -16,6 +18,7 @@ export const USER_CODING_AGENT_TOOLS = [
   readDesignDocTool,
   createDesignDocFromMarkupTool,
   replaceDesignSectionFromMarkupTool,
+  createUpsertAutomationTool(automationStore),
 ];
 
 export const USER_CODING_AGENT_AUTO_APPROVE_TOOLS = [
@@ -27,4 +30,5 @@ export const USER_CODING_AGENT_AUTO_APPROVE_TOOLS = [
   "readDesignDoc",
   "createDesignDocFromMarkup",
   "replaceDesignSectionFromMarkup",
+  "upsertAutomation",
 ] as const;

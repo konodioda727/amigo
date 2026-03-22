@@ -49,7 +49,10 @@ export const InstallDependencies = createTool({
       `[installDependencies] 同步执行 sandbox=${sandboxTaskId} workingDir=${workingDir} command=${installCommand}`,
     );
 
-    const currentStatus = sandbox.getDependencyInstallStatus(workingDir);
+    const currentStatus = await sandbox.resolveDependencyInstallStatus({
+      workingDir,
+      expectedInstallCommand: installCommand,
+    });
     if (currentStatus.status === "success" || currentStatus.status === "not_required") {
       const dependencyStatus = getDependencyStatusForToolResult(currentStatus.status);
       const message =

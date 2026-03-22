@@ -1,18 +1,40 @@
 import { WebSocketProvider } from "@amigo-llm/frontend";
 import type React from "react";
 import { Toaster } from "react-hot-toast";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import ErrorBoundary from "./components/ErrorBoundary";
 import Layout from "./components/Layout";
 import { SandboxToolRenderer } from "./components/SandboxToolRenderer";
+import AdminPage from "./pages/AdminPage";
 import ChatPage from "./pages/ChatPage";
 import DesignPage from "./pages/DesignPage";
 import HomePage from "./pages/HomePage";
+import SkillsPage from "./pages/SkillsPage";
 import { isLocalhost } from "./utils/isLocalhost";
 
+type RuntimeConfigWindow = Window &
+  typeof globalThis & {
+    __AMIGO_CONFIG__?: {
+      wsUrl?: string;
+    };
+  };
+
+const resolveWebSocketUrl = (): string => {
+  const configuredUrl = ((window as RuntimeConfigWindow).__AMIGO_CONFIG__?.wsUrl || "").trim();
+  if (configuredUrl) {
+    return configuredUrl;
+  }
+
+  if (isLocalhost()) {
+    return `ws://${window.location.hostname}:10013/ws`;
+  }
+
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  return `${protocol}://${window.location.host}/ws`;
+};
+
 const App: React.FC = () => {
-  // Determine WebSocket URL based on environment
-  const wsUrl = `${isLocalhost() ? "ws" : "wss"}://${window.location.hostname}:10013`;
+  const wsUrl = resolveWebSocketUrl();
 
   return (
     <ErrorBoundary>
@@ -40,6 +62,9 @@ const App: React.FC = () => {
           <Layout>
             <Routes>
               <Route path="/" element={<HomePage />} />
+              <Route path="/admin" element={<Navigate to="/automations" replace />} />
+              <Route path="/automations" element={<AdminPage />} />
+              <Route path="/skills" element={<SkillsPage />} />
               <Route path="/:taskId/design" element={<DesignPage />} />
               <Route path="/:taskId/design/:pageId" element={<DesignPage />} />
               <Route path="/:taskId" element={<ChatPage />} />

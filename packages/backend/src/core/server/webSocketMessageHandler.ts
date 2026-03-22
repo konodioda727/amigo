@@ -8,6 +8,7 @@ import type { ServerWebSocket } from "bun";
 import { v4 as uuidV4 } from "uuid";
 import { broadcaster, conversationRepository } from "@/core/conversation";
 import { getResolver } from "@/core/messageResolver";
+import { getGlobalState } from "@/globalState";
 import { getSessionHistories } from "@/utils/getSessions";
 import { logger } from "@/utils/logger";
 import type { MessageRegistry } from "../registry";
@@ -46,7 +47,7 @@ export class ServerWebSocketMessageHandler {
         return;
       }
 
-      const conversation = conversationRepository.getOrLoad(taskId);
+      const conversation = await this.resolveConversation(taskId, parsedMessage);
       this.attachConnectionAndAck(ws, taskId, parsedMessage, conversation.status);
 
       const resolver = getResolver(parsedMessage.type as USER_SEND_MESSAGE_NAME, conversation);
@@ -132,6 +133,45 @@ export class ServerWebSocketMessageHandler {
 
     const taskId = (parsedMessage.data as { taskId?: unknown }).taskId;
     return typeof taskId === "string" && taskId.trim() ? taskId.trim() : uuidV4();
+  }
+
+  private async resolveConversation(taskId: string, parsedMessage: UserSendWebSocketMessage) {
+    if (parsedMessage.type !== "createTask") {
+      return conversationRepository.getOrLoad(taskId);
+    }
+
+    const existingConversation = conversationRepository.get(taskId);
+    if (existingConversation) {
+      return existingConversation;
+    }
+
+    const createTaskConfigResolver = getGlobalState("createTaskConfigResolver");
+    const config = createTaskConfigResolver
+      ? await createTaskConfigResolver({
+          taskId,
+          message: parsedMessage.data.message,
+          attachments: parsedMessage.data.attachments,
+          context: parsedMessage.data.context,
+        })
+      : undefined;
+
+    const conversation = conversationRepository.create({
+      id: taskId,
+      type: "main",
+      customPrompt: config?.customPrompt,
+      toolNames: config?.toolNames,
+    });
+
+    const initialContext = config?.context ?? parsedMessage.data.context;
+    if (initialContext !== undefined) {
+      conversation.memory.setContext(initialContext);
+    }
+
+    if (config?.autoApproveToolNames && config.autoApproveToolNames.length > 0) {
+      conversation.setAutoApproveToolNames(config.autoApproveToolNames);
+    }
+
+    return conversation;
   }
 
   private async tryHandleRegisteredMessage(

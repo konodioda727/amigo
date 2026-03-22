@@ -1,4 +1,4 @@
-import type { ToolInterface } from "@amigo-llm/types";
+import type { ChatMessage, ToolInterface, UserMessageAttachment } from "@amigo-llm/types";
 import Bun, { type ServerWebSocket } from "bun";
 import { setGlobalState } from "@/globalState";
 import { configureLogger, type LoggerConfig } from "@/utils/logger";
@@ -14,6 +14,26 @@ export interface ConversationWebSocketData {
 }
 
 type AmigoWebSocketData = ConversationWebSocketData | undefined;
+
+export interface CreateTaskConfig {
+  customPrompt?: string;
+  toolNames?: string[];
+  autoApproveToolNames?: string[];
+  context?: unknown;
+}
+
+export type CreateTaskConfigResolver = (payload: {
+  taskId: string;
+  message: string;
+  attachments?: UserMessageAttachment[];
+  context?: unknown;
+}) => undefined | CreateTaskConfig | Promise<undefined | CreateTaskConfig>;
+
+export interface ConversationMessageHookPayload {
+  taskId: string;
+  message: ChatMessage;
+  context?: unknown;
+}
 
 /**
  * 服务器构造选项
@@ -47,7 +67,11 @@ export interface AmigoServerOptions {
   /** 日志配置 */
   loggerConfig?: Partial<LoggerConfig>;
   /** 会话创建完成后的 app 层 hook */
-  onConversationCreate?: (payload: { taskId: string; context?: any }) => void | Promise<void>;
+  onConversationCreate?: (payload: { taskId: string; context?: unknown }) => void | Promise<void>;
+  /** 会话消息产生后的 app 层 hook */
+  onConversationMessage?: (payload: ConversationMessageHookPayload) => void | Promise<void>;
+  /** 在 createTask 真正创建会话前解析自定义 prompt / 工具白名单 / 初始上下文 */
+  createTaskConfigResolver?: CreateTaskConfigResolver;
 }
 
 /**
@@ -89,6 +113,8 @@ class AmigoServer {
     setGlobalState("modelConfigs", modelConfigs);
     setGlobalState("modelContextConfigs", modelConfigs);
     setGlobalState("onConversationCreate", options.onConversationCreate);
+    setGlobalState("onConversationMessage", options.onConversationMessage);
+    setGlobalState("createTaskConfigResolver", options.createTaskConfigResolver);
   }
 
   get toolRegistry(): ToolRegistry | undefined {

@@ -1,7 +1,8 @@
 import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { StorageType, type TaskStatusMetadata, type ToolInterface } from "@amigo-llm/types";
-import { getSandboxManager, sandboxRegistry } from "@/core/sandbox";
+import { getSandboxManager } from "@/core/sandbox";
+import { getSandboxContainerName } from "@/core/sandbox/containerIdentity";
 import { getStorageRootPath } from "@/core/storage";
 import { getGlobalState } from "@/globalState";
 import { logger } from "@/utils/logger";
@@ -193,19 +194,22 @@ export class ConversationRepository {
     // 只有删除主任务时才卸载 sandbox
     if (shouldDeleteSandbox) {
       const sandboxManager = getSandboxManager();
+      const shouldRunDockerCleanup = !sandboxManager.has(sandboxKey);
+      let destroyFailed = false;
 
-      // 先尝试从 registry 中删除（如果存在）
-      if (sandboxManager.has(sandboxKey)) {
+      try {
         await sandboxManager.destroy(sandboxKey);
         logger.info(`[ConversationRepository] 已从 registry 卸载 sandbox: ${sandboxKey}`);
-      } else if (sandboxManager === sandboxRegistry) {
-        // 如果 registry 中不存在（例如服务器重启后），尝试直接通过 Docker API 清理
-        logger.info(`[ConversationRepository] Sandbox 不在 registry 中，尝试直接清理容器`);
-        await this.cleanupOrphanedContainer(sandboxKey);
-      } else {
-        logger.info(
-          `[ConversationRepository] 自定义 sandbox manager 未持有 ${sandboxKey}，跳过默认孤儿容器清理`,
+      } catch (error) {
+        destroyFailed = true;
+        logger.warn(
+          `[ConversationRepository] sandbox manager destroy 失败，继续尝试 Docker 兜底清理: ${error instanceof Error ? error.message : String(error)}`,
         );
+      }
+
+      if (shouldRunDockerCleanup || destroyFailed) {
+        // 覆盖服务重启后 registry 丢失但容器仍存在的情况。
+        await this.cleanupOrphanedContainer(sandboxKey);
       }
     } else {
       logger.info(
@@ -223,6 +227,25 @@ export class ConversationRepository {
     try {
       const Docker = (await import("dockerode")).default;
       const docker = new Docker();
+      const matchedIds = new Set<string>();
+
+      const namedContainer = docker.getContainer(getSandboxContainerName(sandboxKey));
+      try {
+        const inspectResult = await namedContainer.inspect();
+        if (inspectResult.Id) {
+          matchedIds.add(inspectResult.Id);
+        }
+      } catch (error) {
+        const statusCode =
+          error && typeof error === "object" && "statusCode" in error
+            ? error.statusCode
+            : undefined;
+        if (statusCode !== 404) {
+          logger.warn(
+            `[ConversationRepository] 通过容器名查找 sandbox 失败: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
 
       // 列出所有容器（包括已停止的），过滤带有 amigo 标签的
       const containers = await docker.listContainers({
@@ -232,17 +255,23 @@ export class ConversationRepository {
         },
       });
 
-      logger.info(`[ConversationRepository] 找到 ${containers.length} 个匹配的容器`);
+      for (const containerInfo of containers) {
+        if (containerInfo.Id) {
+          matchedIds.add(containerInfo.Id);
+        }
+      }
+
+      logger.info(`[ConversationRepository] 找到 ${matchedIds.size} 个匹配的容器`);
 
       // 删除找到的容器
-      for (const containerInfo of containers) {
+      for (const containerId of matchedIds) {
         try {
-          const container = docker.getContainer(containerInfo.Id);
+          const container = docker.getContainer(containerId);
 
           // 先尝试停止
           try {
             await container.stop();
-            logger.info(`[ConversationRepository] 已停止容器: ${containerInfo.Id}`);
+            logger.info(`[ConversationRepository] 已停止容器: ${containerId}`);
           } catch (stopError) {
             // 容器可能已经停止，忽略错误
             logger.debug(`[ConversationRepository] 停止容器时出错（可能已停止）: ${stopError}`);
@@ -250,13 +279,13 @@ export class ConversationRepository {
 
           // 删除容器
           await container.remove({ force: true });
-          logger.info(`[ConversationRepository] 已删除孤立容器: ${containerInfo.Id}`);
+          logger.info(`[ConversationRepository] 已删除孤立容器: ${containerId}`);
         } catch (error) {
-          logger.warn(`[ConversationRepository] 删除容器 ${containerInfo.Id} 时出错: ${error}`);
+          logger.warn(`[ConversationRepository] 删除容器 ${containerId} 时出错: ${error}`);
         }
       }
 
-      if (containers.length === 0) {
+      if (matchedIds.size === 0) {
         logger.info(`[ConversationRepository] 未找到需要清理的孤立容器`);
       }
     } catch (error) {
@@ -275,25 +304,30 @@ export class ConversationRepository {
    * 创建新会话
    */
   create(params?: {
+    id?: string;
     type?: ConversationType;
     parentId?: string;
     customPrompt?: string;
+    toolNames?: string[];
     // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
     tools?: ToolInterface<any>[];
     llm?: AmigoLlm;
   }): Conversation {
     const allCustomTools = getAllCustomTools();
     const type = params?.type || "main";
-
-    // 根据任务类型过滤基础工具
-    const baseTools = getBaseTools(type);
-
-    const toolService = new ToolService(
-      baseTools,
-      params?.tools || (type === "main" ? allCustomTools : []),
+    const requestedToolNames = params?.toolNames?.map((name) => name.trim()).filter(Boolean);
+    const baseTools = getBaseTools(type).filter(
+      (tool) => !requestedToolNames || requestedToolNames.includes(tool.name),
+    );
+    const customToolsSource = params?.tools || (type === "main" ? allCustomTools : []);
+    const customTools = customToolsSource.filter(
+      (tool) => !requestedToolNames || requestedToolNames.includes(tool.name),
     );
 
+    const toolService = new ToolService(baseTools, customTools);
+
     const conversation = Conversation.create({
+      id: params?.id,
       toolService,
       llm: params?.llm || getLlm(),
       type,

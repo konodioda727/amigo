@@ -39,8 +39,8 @@ jobs:
         working-directory: packages/types
         run: bun run build
 
-      - name: Build server
-        working-directory: packages/server
+      - name: Build backend
+        working-directory: packages/backend
         run: bun run build
 
       - name: Publish @amigo-llm/types
@@ -49,8 +49,8 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish @amigo-llm/server
-        working-directory: packages/server
+      - name: Publish @amigo-llm/backend
+        working-directory: packages/backend
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

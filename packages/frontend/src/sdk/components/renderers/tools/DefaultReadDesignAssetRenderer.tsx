@@ -39,7 +39,6 @@ export const DefaultReadDesignAssetRenderer: React.FC<ReadDesignAssetRendererPro
   message,
 }) => {
   const { params, toolOutput, error, hasError, partial } = message;
-  const isCompleted = toolOutput !== undefined;
   const isLoading = partial === true;
   const asset = toolOutput?.asset || null;
   const assetId = typeof params?.assetId === "string" ? params.assetId : asset?.id || "";

@@ -126,7 +126,7 @@ const jsResult = await Bun.build({
   format: "esm",
   target: "browser",
   sourcemap: "linked",
-  external: ["react", "react-dom", "react/jsx-runtime"],
+  external: ["react", "react-dom", "react/jsx-runtime", "react-router-dom"],
   define: {
     "process.env.NODE_ENV": JSON.stringify("production"),
   },

@@ -4,15 +4,22 @@
  * 用于配置 Amigo 服务器实例的流式构建器
  */
 
-import type { MessageDefinition, ToolInterface } from "@amigo-llm/types";
-import type { ZodObject } from "zod";
+import type { ChatMessage, MessageDefinition, ToolInterface } from "@amigo-llm/types";
+import type { ZodObject, ZodRawShape } from "zod";
 import type { LoggerConfig } from "@/utils/logger";
 import { type ServerConfig, ServerConfigSchema } from "../config";
 import type { LlmFactory } from "../model";
 import type { ModelConfig, ModelContextConfig } from "../model/contextConfig";
 import { MessageRegistry, ToolRegistry } from "../registry";
 import type { SandboxManager } from "../sandbox";
+import type { ConversationMessageHookPayload, CreateTaskConfigResolver } from "../server";
 import AmigoServer from "../server";
+import {
+  createReadSkillBundleTool,
+  READ_SKILL_BUNDLE_TOOL_NAME,
+  type SkillProvider,
+  SkillRuntime,
+} from "../skills";
 
 /**
  * Amigo 服务器流式构建器
@@ -46,8 +53,13 @@ export class AmigoServerBuilder {
   private _loggerConfig?: Partial<LoggerConfig>;
   private _onConversationCreate?: (payload: {
     taskId: string;
-    context?: any;
+    context?: unknown;
   }) => void | Promise<void>;
+  private _onConversationMessage?: (
+    payload: ConversationMessageHookPayload,
+  ) => void | Promise<void>;
+  private _createTaskConfigResolver?: CreateTaskConfigResolver;
+  private _skillProvider?: SkillProvider;
 
   /**
    * 设置服务器端口
@@ -68,7 +80,7 @@ export class AmigoServerBuilder {
   /**
    * 注册工具
    */
-  registerTool<T extends ToolInterface<any>>(tool: T): this {
+  registerTool<T extends ToolInterface<string>>(tool: T): this {
     this._toolRegistry.register(tool);
     return this;
   }
@@ -80,7 +92,7 @@ export class AmigoServerBuilder {
    * 校验通过后调用 message.handler。
    * 内置消息（createTask / userSendMessage 等）仍由内置 resolver 处理。
    */
-  registerMessage<TType extends string, TData extends ZodObject<any>>(
+  registerMessage<TType extends string, TData extends ZodObject<ZodRawShape>>(
     message: MessageDefinition<TType, TData>,
   ): this {
     this._messageRegistry.register(message);
@@ -213,9 +225,33 @@ export class AmigoServerBuilder {
   }
 
   onConversationCreate(
-    hook: (payload: { taskId: string; context?: any }) => void | Promise<void>,
+    hook: (payload: { taskId: string; context?: unknown }) => void | Promise<void>,
   ): this {
     this._onConversationCreate = hook;
+    return this;
+  }
+
+  onConversationMessage(
+    hook: (payload: {
+      taskId: string;
+      message: ChatMessage;
+      context?: unknown;
+    }) => void | Promise<void>,
+  ): this {
+    this._onConversationMessage = hook;
+    return this;
+  }
+
+  resolveCreateTaskConfig(resolver: CreateTaskConfigResolver): this {
+    this._createTaskConfigResolver = resolver;
+    return this;
+  }
+
+  skills(options: { provider: SkillProvider }): this {
+    this._skillProvider = options.provider;
+    if (!this._toolRegistry.has(READ_SKILL_BUNDLE_TOOL_NAME)) {
+      this._toolRegistry.register(createReadSkillBundleTool(options.provider));
+    }
     return this;
   }
 
@@ -239,6 +275,30 @@ export class AmigoServerBuilder {
    */
   build(): AmigoServer {
     const validatedConfig = ServerConfigSchema.parse(this.config);
+    const skillRuntime = this._skillProvider ? new SkillRuntime(this._skillProvider) : undefined;
+    const createTaskConfigResolver =
+      skillRuntime || this._createTaskConfigResolver
+        ? async (payload: Parameters<CreateTaskConfigResolver>[0]) => {
+            const baseConfig = this._createTaskConfigResolver
+              ? await this._createTaskConfigResolver(payload)
+              : undefined;
+            const skillConfig = skillRuntime
+              ? await skillRuntime.resolveCreateTaskConfig(payload.context)
+              : undefined;
+            return mergeCreateTaskConfigs(baseConfig, skillConfig);
+          }
+        : undefined;
+    const onConversationCreate =
+      skillRuntime || this._onConversationCreate
+        ? async (payload: { taskId: string; context?: unknown }) => {
+            if (this._onConversationCreate) {
+              await this._onConversationCreate(payload);
+            }
+            if (skillRuntime) {
+              await skillRuntime.onConversationCreate(payload);
+            }
+          }
+        : undefined;
     return new AmigoServer({
       config: validatedConfig,
       toolRegistry: this._toolRegistry,
@@ -252,7 +312,55 @@ export class AmigoServerBuilder {
       sandboxManager: this._sandboxManager,
       modelConfigs: this._modelConfigs,
       loggerConfig: this._loggerConfig,
-      onConversationCreate: this._onConversationCreate,
+      onConversationCreate,
+      onConversationMessage: this._onConversationMessage,
+      createTaskConfigResolver,
     });
   }
 }
+
+const mergeStringLists = (
+  left: string[] | undefined,
+  right: string[] | undefined,
+): string[] | undefined => {
+  if (!left && !right) {
+    return undefined;
+  }
+  return Array.from(new Set([...(left || []), ...(right || [])]));
+};
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+
+const mergeCreateTaskConfigs = (
+  baseConfig: Awaited<ReturnType<CreateTaskConfigResolver>> | undefined,
+  skillConfig: Awaited<ReturnType<CreateTaskConfigResolver>> | undefined,
+) => {
+  if (!baseConfig) {
+    return skillConfig;
+  }
+  if (!skillConfig) {
+    return baseConfig;
+  }
+
+  const mergedCustomPrompt = [baseConfig.customPrompt, skillConfig.customPrompt]
+    .map((value) => value?.trim())
+    .filter(Boolean)
+    .join("\n\n");
+  const mergedToolNames = mergeStringLists(baseConfig.toolNames, skillConfig.toolNames);
+  const mergedAutoApproveToolNames = mergeStringLists(
+    baseConfig.autoApproveToolNames,
+    skillConfig.autoApproveToolNames,
+  );
+  const mergedContext =
+    isPlainObject(baseConfig.context) && isPlainObject(skillConfig.context)
+      ? { ...baseConfig.context, ...skillConfig.context }
+      : (skillConfig.context ?? baseConfig.context);
+
+  return {
+    ...(mergedCustomPrompt ? { customPrompt: mergedCustomPrompt } : {}),
+    ...(mergedToolNames ? { toolNames: mergedToolNames } : {}),
+    ...(mergedAutoApproveToolNames ? { autoApproveToolNames: mergedAutoApproveToolNames } : {}),
+    ...(mergedContext !== undefined ? { context: mergedContext } : {}),
+  };
+};

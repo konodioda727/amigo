@@ -1,6 +1,7 @@
 import type { ChatMessage, SERVER_SEND_MESSAGE_NAME, WebSocketMessage } from "@amigo-llm/types";
 import type { ToolExecutionContext } from "@amigo-llm/types/src/tool";
 import type { Sandbox } from "@/core/sandbox";
+import { getGlobalState } from "@/globalState";
 import { logger } from "@/utils/logger";
 import { getSandboxManager } from "../sandbox";
 import { buildEditFilePreview } from "../tools/editFile";
@@ -65,6 +66,31 @@ export class ToolExecutor {
 
     broadcaster.broadcast(conversation.id, wsMessage);
     conversation.memory.addWebsocketMessage(wsMessage);
+
+    if (!partial) {
+      const onConversationMessage = getGlobalState("onConversationMessage");
+      if (onConversationMessage) {
+        void Promise.resolve(
+          onConversationMessage({
+            taskId: conversation.id,
+            message: {
+              role: "assistant",
+              content: payload,
+              type,
+              partial,
+              updateTime: wsMessage.data.updateTime,
+            },
+            context: conversation.memory.context,
+          }),
+        ).catch((error) => {
+          logger.error(
+            `[ToolExecutor] onConversationMessage hook 失败 taskId=${conversation.id}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        });
+      }
+    }
   }
 
   private getToolCallKey(conversationId: string, toolName: string, toolCallId?: string): string {

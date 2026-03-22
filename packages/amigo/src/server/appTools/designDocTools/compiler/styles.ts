@@ -68,7 +68,7 @@ const parseGridTracks = (value: string): GridTrack[] | undefined => {
     .replace(/minmax\(\s*0(?:px|rem|em|vh|vw|%)?\s*,\s*([^)]+)\)/gi, "$1");
   const repeatMatch = normalized.match(/^repeat\(\s*(\d+)\s*,\s*([^)]+)\)$/i);
   const repeated =
-    repeatMatch && repeatMatch[1] && repeatMatch[2]
+    repeatMatch?.[1] && repeatMatch[2]
       ? Array.from({ length: Number.parseInt(repeatMatch[1], 10) || 0 }, () => repeatMatch[2] || "")
       : splitGridTemplateTokens(normalized);
 
@@ -111,7 +111,15 @@ export const validateStyleDeclarations = (declarationText: string): string[] => 
           !isStateStyleProperty(property) &&
           !isVendorStyleProperty(property)
         ) {
-          errors.push(`不支持的样式属性: ${property}`);
+          errors.push(`style 不支持的属性: ${property}`);
+          return;
+        }
+
+        if (property === "position") {
+          const rawValue = generateValue(node.value).trim().toLowerCase();
+          if (rawValue !== "relative" && rawValue !== "absolute") {
+            errors.push(`style.position 仅支持 absolute 或 relative，当前为: ${rawValue}`);
+          }
         }
       },
     });
@@ -152,9 +160,16 @@ export const buildDeclarationText = (attributes: Record<string, string>) => {
   return declarations.join(";");
 };
 
-export const validateAttributes = (element: MarkupElement): string[] => {
+export const validateAttributes = (
+  element: MarkupElement,
+  parentTag?: MarkupElement["tagName"],
+): string[] => {
   const errors: string[] = [];
   const allowed = TAG_ALLOWED_ATTRIBUTES[element.tagName];
+
+  if (element.tagName === "section" && parentTag && parentTag !== "page") {
+    errors.push("<section> 只能作为 <page> 的直接子节点");
+  }
 
   for (const key of Object.keys(element.attributes)) {
     const isStateAttribute = isStateStyleProperty(key);
@@ -174,7 +189,7 @@ export const validateAttributes = (element: MarkupElement): string[] => {
 
   errors.push(...validateStyleDeclarations(buildDeclarationText(element.attributes)));
   for (const child of element.children) {
-    errors.push(...validateAttributes(child));
+    errors.push(...validateAttributes(child, element.tagName));
   }
   return errors;
 };
@@ -296,6 +311,9 @@ export const computeStyle = (attributes: Record<string, string>): ComputedStyle 
           break;
         case "align-items":
           style.alignItems = rawValue.toLowerCase();
+          break;
+        case "vertical-align":
+          style.verticalAlign = rawValue;
           break;
         case "margin":
           style.margin = parseMargins(rawValue);
@@ -424,8 +442,14 @@ export const computeStyle = (attributes: Record<string, string>): ComputedStyle 
         case "animation":
           style.animation = rawValue;
           break;
+        case "box-sizing":
+          style.boxSizing = rawValue;
+          break;
         case "overflow":
           style.overflow = rawValue;
+          break;
+        case "overflow-y":
+          style.overflowY = rawValue;
           break;
         case "backdrop-filter":
           style.backdropFilter = rawValue;
@@ -521,4 +545,36 @@ export const extractVendorStyleDeclarations = (declarationText: string) => {
   }
 
   return vendorProps;
+};
+
+export const extractPassthroughStyleDeclarations = (declarationText: string) => {
+  const passthroughProps: Record<string, string> = {};
+  if (!declarationText.trim()) {
+    return passthroughProps;
+  }
+
+  try {
+    const ast = csstree.parse(declarationText, { context: "declarationList" });
+    csstree.walk(ast, {
+      visit: "Declaration",
+      enter(node) {
+        if (node.type !== "Declaration") {
+          return;
+        }
+        const property = node.property.trim().toLowerCase();
+        if (
+          SUPPORTED_STYLE_PROPERTIES.has(property) ||
+          isStateStyleProperty(property) ||
+          isVendorStyleProperty(property)
+        ) {
+          return;
+        }
+        passthroughProps[property] = generateValue(node.value);
+      },
+    });
+  } catch {
+    return passthroughProps;
+  }
+
+  return passthroughProps;
 };

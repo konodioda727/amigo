@@ -1,5 +1,6 @@
 import Docker from "dockerode";
 import { logger } from "@/utils/logger";
+import { getSandboxContainerName } from "./containerIdentity";
 import { Sandbox } from "./index";
 import { type ResolvedSandboxOptions, resolveSandboxOptions } from "./options";
 import type { SandboxOptions } from "./types";
@@ -35,10 +36,31 @@ export class SandboxRegistry {
     this.sandboxOptions = resolveSandboxOptions(options);
   }
 
-  private async recoverExistingSandbox(
-    parentId: string,
-    imageName?: string,
-  ): Promise<Sandbox | null> {
+  private isContainerMissingError(error: unknown): boolean {
+    if (!error || typeof error !== "object") {
+      return false;
+    }
+
+    const maybeStatusCode = "statusCode" in error ? error.statusCode : undefined;
+    return maybeStatusCode === 404;
+  }
+
+  private async findExistingContainer(parentId: string): Promise<{
+    container: Docker.Container;
+    inspectResult: Awaited<ReturnType<Docker.Container["inspect"]>>;
+  } | null> {
+    const namedContainer = this.docker.getContainer(getSandboxContainerName(parentId));
+    try {
+      const inspectResult = await namedContainer.inspect();
+      return { container: namedContainer, inspectResult };
+    } catch (error) {
+      if (!this.isContainerMissingError(error)) {
+        logger.warn(
+          `[SandboxRegistry] 通过容器名查询 sandbox 失败 parentId=${parentId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
     const containers = await this.docker.listContainers({
       all: true,
       filters: {
@@ -57,6 +79,18 @@ export class SandboxRegistry {
 
     const container = this.docker.getContainer(selected.Id);
     const inspectResult = await container.inspect();
+    return { container, inspectResult };
+  }
+
+  private async recoverExistingSandbox(
+    parentId: string,
+    imageName?: string,
+  ): Promise<Sandbox | null> {
+    const existing = await this.findExistingContainer(parentId);
+    if (!existing) {
+      return null;
+    }
+    const { container, inspectResult } = existing;
 
     if (!inspectResult.State?.Running) {
       logger.info(`[SandboxRegistry] 恢复已停止的 sandbox 容器: ${parentId}`);
@@ -149,7 +183,32 @@ export class SandboxRegistry {
       this.sandboxes.delete(parentId);
       this.refCounts.delete(parentId);
       logger.info(`[SandboxRegistry] 销毁 sandbox: ${parentId}`);
+      return;
     }
+
+    const existing = await this.findExistingContainer(parentId);
+    if (existing) {
+      const { container, inspectResult } = existing;
+
+      if (inspectResult.State?.Running) {
+        try {
+          await container.stop();
+        } catch (error) {
+          logger.debug("[SandboxRegistry] 停止恢复的容器时出错（可能已停止）:", error);
+        }
+      }
+
+      try {
+        await container.remove({ force: true });
+      } catch (error) {
+        logger.debug("[SandboxRegistry] 删除恢复的容器时出错（可能已删除）:", error);
+      }
+
+      logger.info(`[SandboxRegistry] 直接销毁已存在容器 sandbox: ${parentId}`);
+    }
+
+    this.sandboxes.delete(parentId);
+    this.refCounts.delete(parentId);
   }
 
   /**

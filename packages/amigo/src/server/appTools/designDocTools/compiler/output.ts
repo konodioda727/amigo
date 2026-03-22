@@ -2,6 +2,7 @@ import type { DesignDocSection, DesignNode } from "../designDocSchema";
 import { buildLayoutTree, calculateTreeLayout, freeLayoutTree } from "./layout";
 import {
   buildDeclarationText,
+  extractPassthroughStyleDeclarations,
   extractStateStyleDeclarations,
   extractVendorStyleDeclarations,
 } from "./styles";
@@ -48,6 +49,7 @@ const buildNodeProps = (
   const value = element.attributes["data-value"] || "";
   const inputType = normalizeWhitespace(element.attributes["data-input-type"] || "");
   const rows = element.attributes["data-rows"];
+  const selectedValue = element.attributes["data-selected-value"];
   const href = element.attributes["data-href"];
   const alt = element.attributes.alt;
 
@@ -59,6 +61,7 @@ const buildNodeProps = (
   if (value) props.value = value;
   if (inputType) props.inputType = inputType;
   if (rows) props.rows = Number.parseInt(rows, 10);
+  if (selectedValue) props.selectedValue = selectedValue;
   if (element.attributes["data-disabled"] === "true") props.disabled = true;
   if (href) props.href = href;
   if (alt) props.alt = alt;
@@ -100,6 +103,7 @@ const buildNodeProps = (
   if (style.fontFamily) props.fontFamily = style.fontFamily;
   if (style.fontStyle) props.fontStyle = style.fontStyle;
   if (style.textDecoration) props.textDecoration = style.textDecoration;
+  if (style.verticalAlign) props.verticalAlign = style.verticalAlign;
   if (style.outline) props.outline = style.outline;
   if (style.backgroundSize) props.backgroundSize = style.backgroundSize;
   if (style.backgroundPosition) props.backgroundPosition = style.backgroundPosition;
@@ -111,8 +115,10 @@ const buildNodeProps = (
   if (style.transform) props.transform = style.transform;
   if (style.transition) props.transition = style.transition;
   if (style.animation) props.animation = style.animation;
+  if (style.boxSizing) props.boxSizing = style.boxSizing;
   if (style.backdropFilter) props.backdropFilter = style.backdropFilter;
   if (style.overflow) props.overflow = style.overflow;
+  if (style.overflowY) props.overflowY = style.overflowY;
   if (style.backgroundClip) props.backgroundClip = style.backgroundClip;
   if (style.webkitTextFillColor) props.webkitTextFillColor = style.webkitTextFillColor;
   for (const [key, value] of Object.entries(element.attributes)) {
@@ -136,6 +142,13 @@ const buildNodeProps = (
   )) {
     if (typeof value === "string" && value.trim()) {
       props[key] = value;
+    }
+  }
+  for (const [key, value] of Object.entries(
+    extractPassthroughStyleDeclarations(buildDeclarationText(element.attributes)),
+  )) {
+    if (typeof value === "string" && value.trim()) {
+      props[`css:${key}`] = value;
     }
   }
 
@@ -290,7 +303,9 @@ const buildTextOnlyProps = (
   if (style.fontFamily) textProps.fontFamily = style.fontFamily;
   if (style.fontStyle) textProps.fontStyle = style.fontStyle;
   if (style.textDecoration) textProps.textDecoration = style.textDecoration;
+  if (style.verticalAlign) textProps.verticalAlign = style.verticalAlign;
   if (style.textOverflow) textProps.textOverflow = style.textOverflow;
+  if (style.boxSizing) textProps.boxSizing = style.boxSizing;
   if (style.webkitTextFillColor) textProps.webkitTextFillColor = style.webkitTextFillColor;
   if (style.backgroundClip) textProps.backgroundClip = style.backgroundClip;
   for (const [key, value] of Object.entries(
@@ -298,6 +313,13 @@ const buildTextOnlyProps = (
   )) {
     if (typeof value === "string" && value.trim()) {
       textProps[key] = value;
+    }
+  }
+  for (const [key, value] of Object.entries(
+    extractPassthroughStyleDeclarations(buildDeclarationText(element.attributes)),
+  )) {
+    if (typeof value === "string" && value.trim()) {
+      textProps[`css:${key}`] = value;
     }
   }
   return Object.keys(textProps).length > 0 ? textProps : undefined;
@@ -351,8 +373,10 @@ const buildBoxOnlyProps = (
   if (style.transform) props.transform = style.transform;
   if (style.transition) props.transition = style.transition;
   if (style.animation) props.animation = style.animation;
+  if (style.boxSizing) props.boxSizing = style.boxSizing;
   if (style.backdropFilter) props.backdropFilter = style.backdropFilter;
   if (style.overflow) props.overflow = style.overflow;
+  if (style.overflowY) props.overflowY = style.overflowY;
   for (const [key, value] of Object.entries(element.attributes)) {
     if (
       (key.startsWith("hover-") || key.startsWith("focus-") || key.startsWith("active-")) &&
@@ -367,6 +391,13 @@ const buildBoxOnlyProps = (
   )) {
     if (typeof value === "string" && value.trim()) {
       props[key] = value;
+    }
+  }
+  for (const [key, value] of Object.entries(
+    extractPassthroughStyleDeclarations(buildDeclarationText(element.attributes)),
+  )) {
+    if (typeof value === "string" && value.trim()) {
+      props[`css:${key}`] = value;
     }
   }
   return Object.keys(props).length > 0 ? props : undefined;
