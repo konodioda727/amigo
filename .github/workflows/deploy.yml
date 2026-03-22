@@ -27,7 +27,8 @@ jobs:
         run: bun install
 
       - name: Build app bundle
-        run: bun run --filter @amigo-llm/amigo build
+        working-directory: packages/amigo
+        run: bun run build
 
       - name: Start SSH agent
         uses: webfactory/ssh-agent@v0.9.0
