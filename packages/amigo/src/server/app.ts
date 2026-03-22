@@ -5,6 +5,7 @@ import {
   conversationRepository,
   getGlobalState,
   type LoggerConfig,
+  logger,
   MODEL_PROVIDERS,
   type ModelConfig,
   type SandboxOptions,
@@ -155,6 +156,14 @@ export function createAmigoApp(options: AmigoAppOptions = {}): AmigoApp {
     .onConversationCreate(async ({ taskId, context }) => {
       const taskContext = conversationRepository.get(taskId)?.memory.context ?? context;
       await bindGithubContextToTask(taskId, taskContext);
+      const repoUrl =
+        taskContext && typeof taskContext === "object" && "repoUrl" in taskContext
+          ? String((taskContext as { repoUrl?: unknown }).repoUrl || "").trim()
+          : "";
+      if (repoUrl) {
+        logger.info(`[AmigoApp] 预热 task sandbox task=${taskId} repo=${repoUrl}`);
+        await sandboxManager.getOrCreate(taskId);
+      }
     })
     .onConversationMessage(async (payload) => {
       await feishuBridge.handleConversationMessage(payload);
