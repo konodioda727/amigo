@@ -150,7 +150,6 @@ export function createAmigoApp(options: AmigoAppOptions = {}): AmigoApp {
     .addAutoApproveTools([...USER_CODING_AGENT_AUTO_APPROVE_TOOLS])
     .appendSystemPrompt(AMIGO_APP_SYSTEM_PROMPT_APPENDIX)
     .modelConfigs(modelConfigs)
-    .cachePath("./.amigo")
     .sandboxManager(sandboxManager)
     .skills({ provider: skillStore })
     .onConversationCreate(async ({ taskId, context }) => {

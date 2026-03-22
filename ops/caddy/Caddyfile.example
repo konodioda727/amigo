@@ -1,7 +1,7 @@
 amigo.kbkbk.xyz {
   encode zstd gzip
 
-  @backend path /api/* /ws
+  @backend path /api/* /ws*
   reverse_proxy @backend 127.0.0.1:10013
 
   root * /var/www/amigo/frontend

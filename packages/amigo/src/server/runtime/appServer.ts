@@ -3,7 +3,8 @@ import Bun, { type ServerWebSocket } from "bun";
 import type { AmigoHttpHandler } from "../http/appHttpHandler";
 
 interface PreviewProxyWebSocketData {
-  kind: "preview-proxy";
+  kind: "hosted-proxy";
+  label: "preview" | "editor";
   upstreamUrl: string;
   protocols: string[];
   upstream?: WebSocket;
@@ -60,22 +61,22 @@ export class AmigoAppServer {
         const isWebSocketRequest = (req.headers.get("upgrade") || "").toLowerCase() === "websocket";
 
         if (isWebSocketRequest) {
-          const previewProxyTarget =
-            await this.httpHandler.resolveHostedPreviewWebSocketProxyTarget(req);
-          if (previewProxyTarget) {
+          const hostedProxyTarget = await this.httpHandler.resolveHostedWebSocketProxyTarget(req);
+          if (hostedProxyTarget) {
             logger.info(
-              `[PreviewHost][WS] 升级请求 host=${new URL(req.url).host} path=${new URL(req.url).pathname} upstream=${previewProxyTarget.upstreamUrl}`,
+              `[${hostedProxyTarget.label === "preview" ? "PreviewHost" : "EditorHost"}][WS] 升级请求 host=${new URL(req.url).host} path=${new URL(req.url).pathname} upstream=${hostedProxyTarget.upstreamUrl}`,
             );
             const upgraded = server.upgrade(req, {
               data: {
-                kind: "preview-proxy",
-                upstreamUrl: previewProxyTarget.upstreamUrl,
-                protocols: previewProxyTarget.protocols,
+                kind: "hosted-proxy",
+                label: hostedProxyTarget.label,
+                upstreamUrl: hostedProxyTarget.upstreamUrl,
+                protocols: hostedProxyTarget.protocols,
                 pendingMessages: [],
               },
             });
             if (!upgraded) {
-              return new Response("Preview websocket upgrade failed", { status: 502 });
+              return new Response("Hosted websocket upgrade failed", { status: 502 });
             }
             return;
           }
@@ -93,7 +94,7 @@ export class AmigoAppServer {
       websocket: {
         data: {} as AppWebSocketData,
         message: (ws: ServerWebSocket<AppWebSocketData>, message: string | Buffer) => {
-          if (ws.data?.kind === "preview-proxy") {
+          if (ws.data?.kind === "hosted-proxy") {
             if (!ws.data.upstream || ws.data.upstream.readyState !== WebSocket.OPEN) {
               ws.data.pendingMessages.push(message);
               return;
@@ -105,9 +106,10 @@ export class AmigoAppServer {
           return this.runtimeServer.handleWebSocketMessage(ws as ServerWebSocket, message);
         },
         open: (ws: ServerWebSocket<AppWebSocketData>) => {
-          if (ws.data?.kind === "preview-proxy") {
+          if (ws.data?.kind === "hosted-proxy") {
+            const label = ws.data.label === "preview" ? "PreviewHost" : "EditorHost";
             logger.info(
-              `[PreviewHost][WS] 建立下游连接 upstream=${ws.data.upstreamUrl} protocols=${ws.data.protocols.join(",")}`,
+              `[${label}][WS] 建立下游连接 upstream=${ws.data.upstreamUrl} protocols=${ws.data.protocols.join(",")}`,
             );
             const upstream = new WebSocket(
               ws.data.upstreamUrl,
@@ -117,11 +119,15 @@ export class AmigoAppServer {
             ws.data.upstream = upstream;
 
             upstream.onopen = () => {
+              const currentLabel =
+                ws.data?.kind === "hosted-proxy" && ws.data.label === "preview"
+                  ? "PreviewHost"
+                  : "EditorHost";
               logger.info(
-                `[PreviewHost][WS] 上游连接已打开 upstream=${(ws.data as PreviewProxyWebSocketData)?.upstreamUrl || ""}`,
+                `[${currentLabel}][WS] 上游连接已打开 upstream=${(ws.data as PreviewProxyWebSocketData)?.upstreamUrl || ""}`,
               );
               const buffered =
-                ws.data?.kind === "preview-proxy" ? ws.data.pendingMessages.splice(0) : [];
+                ws.data?.kind === "hosted-proxy" ? ws.data.pendingMessages.splice(0) : [];
               for (const pendingMessage of buffered) {
                 upstream.send(pendingMessage);
               }
@@ -145,15 +151,23 @@ export class AmigoAppServer {
               ws.sendText(String(payload));
             };
             upstream.onerror = (event) => {
+              const currentLabel =
+                ws.data?.kind === "hosted-proxy" && ws.data.label === "preview"
+                  ? "PreviewHost"
+                  : "EditorHost";
               logger.error(
-                `[PreviewHost][WS] 上游连接出错 upstream=${(ws.data as PreviewProxyWebSocketData)?.upstreamUrl || ""}`,
+                `[${currentLabel}][WS] 上游连接出错 upstream=${(ws.data as PreviewProxyWebSocketData)?.upstreamUrl || ""}`,
                 event,
               );
-              ws.close(1011, "Preview upstream websocket error");
+              ws.close(1011, `${currentLabel} upstream websocket error`);
             };
             upstream.onclose = (event) => {
+              const currentLabel =
+                ws.data?.kind === "hosted-proxy" && ws.data.label === "preview"
+                  ? "PreviewHost"
+                  : "EditorHost";
               logger.warn(
-                `[PreviewHost][WS] 上游连接关闭 upstream=${(ws.data as PreviewProxyWebSocketData)?.upstreamUrl || ""} code=${event.code} reason=${event.reason}`,
+                `[${currentLabel}][WS] 上游连接关闭 upstream=${(ws.data as PreviewProxyWebSocketData)?.upstreamUrl || ""} code=${event.code} reason=${event.reason}`,
               );
               ws.close(event.code || 1000, event.reason || "");
             };
@@ -163,9 +177,10 @@ export class AmigoAppServer {
           return this.runtimeServer.handleWebSocketOpen(ws as ServerWebSocket);
         },
         close: (ws: ServerWebSocket<AppWebSocketData>, code: number, reason: string) => {
-          if (ws.data?.kind === "preview-proxy") {
+          if (ws.data?.kind === "hosted-proxy") {
+            const label = ws.data.label === "preview" ? "PreviewHost" : "EditorHost";
             logger.info(
-              `[PreviewHost][WS] 下游连接关闭 upstream=${ws.data.upstreamUrl} code=${code} reason=${reason}`,
+              `[${label}][WS] 下游连接关闭 upstream=${ws.data.upstreamUrl} code=${code} reason=${reason}`,
             );
             ws.data.upstream?.close(code, reason);
             return;

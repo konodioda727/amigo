@@ -81,6 +81,14 @@ export const getSessionHistories = async () => {
             });
           }
         } catch (error) {
+          const code =
+            error && typeof error === "object" && "code" in error ? String(error.code) : "";
+          if (code === "ENOENT") {
+            logger.debug(
+              `frontend message history not found for taskId ${taskId}, skipping session title load.`,
+            );
+            continue;
+          }
           logger.error(`Error reading or parsing messages for taskId ${taskId}:`, error);
         }
       }

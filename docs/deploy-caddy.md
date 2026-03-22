@@ -100,18 +100,19 @@ AMIGO_SANDBOX_RUNTIME=runsc
 
 核心思路是：
 
-- `/api/*` 和 `/ws` 反代到 Bun 服务 `127.0.0.1:10013`
+- `/api/*`、`/ws*` 反代到 Bun 服务 `127.0.0.1:10013`
 - 其余请求由 Caddy 直接从 `/var/www/amigo/frontend` 提供静态文件
+- editor 现在也走同域 `/api/tasks/:taskId/editor/session/...` 代理，不再暴露宿主机随机端口
 
 当前样板已经按你的域名写成：
 
-- 主站：`amig.kbkbk.xyz`
-- preview 通配：`*.preview.amig.kbkbk.xyz`
+- 主站：`amigo.kbkbk.xyz`
+- preview 通配：`*.preview.amigo.kbkbk.xyz`
 
 如果你要启用 hosted preview，再额外准备：
 
-- `preview.amig.kbkbk.xyz`
-- `*.preview.amig.kbkbk.xyz`
+- `preview.amigo.kbkbk.xyz`
+- `*.preview.amigo.kbkbk.xyz`
 
 这两个 DNS 记录都指向同一台机器，并保留 `*.preview.amig.kbkbk.xyz` 这段 Caddy 配置。
 
@@ -154,10 +155,11 @@ sudo systemctl enable amigo
 
 行为是：
 
-1. GitHub Actions 安装依赖并执行 `bun run build`
+1. GitHub Actions 安装依赖并执行 `cd packages/amigo && bun run build`
 2. 上传 `packages/amigo/dist/web` 到 `/var/www/amigo/frontend`
 3. 上传 `packages/amigo/dist/server` 到 `/var/www/amigo/backend/dist/server`
 4. 上传 `packages/amigo/dist/data` 到 `/var/www/amigo/backend/dist/data`
+5. 上传 `packages/amigo/package.json` 到 `/var/www/amigo/backend/dist/package.json`
 5. 上传 `packages/amigo/assets` 到 `/var/www/amigo/backend/assets`
 6. 登录服务器执行 `/var/www/amigo/backend/deploy-amigo.sh`
 7. 服务器端重建 sandbox 镜像并重启 `systemd`
@@ -180,10 +182,29 @@ bash ./ops/deploy/upload-amigo-artifacts.sh
 
 它会：
 
-1. 本地执行 `bun install --frozen-lockfile`
+1. 本地执行 `bun install`
 2. 本地执行 `bun run --filter @amigo-llm/amigo build`
-3. 上传前端 dist、后端 dist、运行时 data、sandbox assets、deploy 脚本
+3. 上传前端 dist、后端 dist、运行时 data、运行时 `package.json`、sandbox assets、deploy 脚本
 4. 顺带上传 `amigo.service` 和 `Caddyfile`
+
+## Editor 与 Repo 预热
+
+`editor` 不需要你额外再集成一套服务。现在这套部署会在 sandbox 容器里启动 `code-server`，应用层再把它代理到同域 `/api/tasks/:taskId/editor/session/...`。前提只有两个：
+
+- sandbox 镜像是用当前仓库的 `packages/amigo/assets/Dockerfile` 构建出来的
+- Caddy 仍然把 `/api/*` 反代到 Amigo 后端
+
+`repo 预热` 走的是两段式：
+
+1. 宿主机调用 `git clone --mirror` / `git fetch`，把仓库缓存到 `${AMIGO_CACHE_PATH}/github-bootstrap`
+2. 首次创建对应 task 的 sandbox 时，再把 mirror 导入到容器内的 `/sandbox`
+
+所以线上要满足：
+
+- 宿主机装了 `git`
+- `AMIGO_CACHE_PATH` 可写
+- 服务器能出网访问 GitHub
+- 私有仓库场景下，`amigo.env` 里补 `GITHUB_TOKEN` 或 `GH_TOKEN`
 
 如果你只想上传产物，不想顺手上传 Caddy/systemd 样板：
 

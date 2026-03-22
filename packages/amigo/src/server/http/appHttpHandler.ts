@@ -57,9 +57,9 @@ interface AppHttpRoute {
 
 export interface AmigoHttpHandler {
   handle(req: Request): Promise<Response | null>;
-  resolveHostedPreviewWebSocketProxyTarget(
+  resolveHostedWebSocketProxyTarget(
     req: Request,
-  ): Promise<{ upstreamUrl: string; protocols: string[] } | null>;
+  ): Promise<{ upstreamUrl: string; protocols: string[]; label: "preview" | "editor" } | null>;
 }
 
 interface CreateAmigoHttpHandlerOptions {
@@ -73,8 +73,9 @@ interface CreateAmigoHttpHandlerOptions {
 
 const TASK_EDITOR_OPEN_FILE_PATH_PATTERN = /^\/api\/tasks\/([^/]+)\/editor\/open-file\/?$/;
 const TASK_EDITOR_PATH_PATTERN = /^\/api\/tasks\/([^/]+)\/editor\/?$/;
+const TASK_EDITOR_SESSION_PATH_PATTERN = /^\/api\/tasks\/([^/]+)\/editor\/session(\/.*)?$/;
 const TASK_PREVIEW_PATH_PATTERN = /^\/api\/tasks\/([^/]+)\/preview\/?$/;
-const PREVIEW_PROXY_HOP_BY_HOP_HEADERS = new Set([
+const PROXY_HOP_BY_HOP_HEADERS = new Set([
   "connection",
   "keep-alive",
   "proxy-authenticate",
@@ -351,6 +352,7 @@ export const createAmigoHttpHandler = (
     appRoutes.some((route) => route.pattern.test(pathname)) ||
     TASK_EDITOR_OPEN_FILE_PATH_PATTERN.test(pathname) ||
     TASK_EDITOR_PATH_PATTERN.test(pathname) ||
+    TASK_EDITOR_SESSION_PATH_PATTERN.test(pathname) ||
     TASK_PREVIEW_PATH_PATTERN.test(pathname);
 
   const resolveSandboxKey = (taskId: string): string | null => {
@@ -391,11 +393,8 @@ export const createAmigoHttpHandler = (
       }
     }
 
-    const editorPort = await sandbox.ensureEditorRunning();
-    redirectUrl.protocol = requestUrl.protocol === "https:" ? "http:" : requestUrl.protocol;
-    redirectUrl.hostname = requestUrl.hostname;
-    redirectUrl.port = String(editorPort);
-    redirectUrl.pathname = "/";
+    await sandbox.ensureEditorRunning();
+    redirectUrl.pathname = `/api/tasks/${encodeURIComponent(sandboxId)}/editor/session/`;
     redirectUrl.search = "";
     redirectUrl.hash = "";
     redirectUrl.searchParams.set("folder", "/sandbox");
@@ -450,12 +449,12 @@ export const createAmigoHttpHandler = (
     };
   };
 
-  const buildHostedPreviewProxyRequestHeaders = (req: Request): Headers => {
+  const buildProxyRequestHeaders = (req: Request, forwardedPrefix?: string): Headers => {
     const requestUrl = new URL(req.url);
     const headers = new Headers();
 
     for (const [name, value] of req.headers.entries()) {
-      if (PREVIEW_PROXY_HOP_BY_HOP_HEADERS.has(name.toLowerCase())) {
+      if (PROXY_HOP_BY_HOP_HEADERS.has(name.toLowerCase())) {
         continue;
       }
       headers.append(name, value);
@@ -463,13 +462,17 @@ export const createAmigoHttpHandler = (
 
     headers.set("x-forwarded-host", requestUrl.host);
     headers.set("x-forwarded-proto", requestUrl.protocol.replace(":", ""));
+    if (forwardedPrefix) {
+      headers.set("x-forwarded-prefix", forwardedPrefix);
+    }
     return headers;
   };
 
-  const rewriteHostedPreviewLocationHeader = (
+  const rewriteProxyLocationHeader = (
     location: string,
     requestUrl: URL,
     upstreamUrl: URL,
+    pathPrefix = "",
   ): string => {
     if (!location.trim()) {
       return location;
@@ -478,7 +481,7 @@ export const createAmigoHttpHandler = (
     try {
       const resolved = new URL(location, upstreamUrl);
       if (resolved.origin === upstreamUrl.origin) {
-        return `${requestUrl.protocol}//${requestUrl.host}${resolved.pathname}${resolved.search}${resolved.hash}`;
+        return `${requestUrl.protocol}//${requestUrl.host}${pathPrefix}${resolved.pathname}${resolved.search}${resolved.hash}`;
       }
       return location;
     } catch {
@@ -506,7 +509,7 @@ export const createAmigoHttpHandler = (
     try {
       upstreamResponse = await fetch(config.upstreamUrl, {
         method: req.method,
-        headers: buildHostedPreviewProxyRequestHeaders(req),
+        headers: buildProxyRequestHeaders(req),
         body: hasRequestBody(req.method) ? await req.arrayBuffer() : undefined,
         redirect: "manual",
       });
@@ -522,9 +525,82 @@ export const createAmigoHttpHandler = (
     const headers = new Headers(upstreamResponse.headers);
     const location = headers.get("location");
     if (location) {
+      headers.set("location", rewriteProxyLocationHeader(location, requestUrl, config.upstreamUrl));
+    }
+
+    return new Response(upstreamResponse.body, {
+      status: upstreamResponse.status,
+      statusText: upstreamResponse.statusText,
+      headers,
+    });
+  };
+
+  const getHostedEditorProxyConfig = async (
+    req: Request,
+  ): Promise<{
+    sandboxId: string;
+    upstreamUrl: URL;
+  } | null> => {
+    const requestUrl = new URL(req.url);
+    const match = requestUrl.pathname.match(TASK_EDITOR_SESSION_PATH_PATTERN);
+    if (!match) {
+      return null;
+    }
+
+    const sandboxId = decodeURIComponent(match[1] || "").trim();
+    if (!sandboxId) {
+      return null;
+    }
+
+    const conversation =
+      conversationRepository.get(sandboxId) || conversationRepository.load(sandboxId);
+    if (!conversation) {
+      return null;
+    }
+
+    const sandbox = await options.sandboxManager.getOrCreate(sandboxId);
+    const editorPort = await sandbox.ensureEditorRunning();
+    const upstreamBaseUrl = new URL(`http://127.0.0.1:${editorPort}`);
+    const upstreamPath = match[2] || "/";
+    const upstreamUrl = new URL(`${upstreamPath}${requestUrl.search}`, upstreamBaseUrl);
+
+    return {
+      sandboxId,
+      upstreamUrl,
+    };
+  };
+
+  const proxyHostedEditorRequest = async (req: Request): Promise<Response> => {
+    const config = await getHostedEditorProxyConfig(req);
+    if (!config) {
+      return jsonResponse(
+        {
+          error: "编辑器会话不存在",
+          code: "TASK_NOT_FOUND",
+        },
+        { status: 404 },
+      );
+    }
+
+    const sessionBasePath = `/api/tasks/${encodeURIComponent(config.sandboxId)}/editor/session`;
+    logger.info(
+      `[EditorHost][HTTP] ${req.method} sandbox=${config.sandboxId} path=${new URL(req.url).pathname} upstream=${config.upstreamUrl.toString()}`,
+    );
+
+    const upstreamResponse = await fetch(config.upstreamUrl, {
+      method: req.method,
+      headers: buildProxyRequestHeaders(req, sessionBasePath),
+      body: hasRequestBody(req.method) ? await req.arrayBuffer() : undefined,
+      redirect: "manual",
+    });
+
+    const requestUrl = new URL(req.url);
+    const headers = new Headers(upstreamResponse.headers);
+    const location = headers.get("location");
+    if (location) {
       headers.set(
         "location",
-        rewriteHostedPreviewLocationHeader(location, requestUrl, config.upstreamUrl),
+        rewriteProxyLocationHeader(location, requestUrl, config.upstreamUrl, sessionBasePath),
       );
     }
 
@@ -541,6 +617,10 @@ export const createAmigoHttpHandler = (
       const hostedPreviewSandboxId = resolveHostedPreviewSandboxId(url);
       if (hostedPreviewSandboxId) {
         return proxyHostedPreviewRequest(req, hostedPreviewSandboxId);
+      }
+
+      if (TASK_EDITOR_SESSION_PATH_PATTERN.test(url.pathname)) {
+        return proxyHostedEditorRequest(req);
       }
 
       if (req.method === "OPTIONS") {
@@ -694,25 +774,37 @@ export const createAmigoHttpHandler = (
       return null;
     },
 
-    async resolveHostedPreviewWebSocketProxyTarget(
+    async resolveHostedWebSocketProxyTarget(
       req: Request,
-    ): Promise<{ upstreamUrl: string; protocols: string[] } | null> {
-      const config = await getHostedPreviewProxyConfig(req);
-      if (!config) {
-        return null;
-      }
-
-      const upstreamUrl = new URL(config.upstreamUrl.toString());
-      upstreamUrl.protocol = upstreamUrl.protocol === "https:" ? "wss:" : "ws:";
+    ): Promise<{ upstreamUrl: string; protocols: string[]; label: "preview" | "editor" } | null> {
       const protocols = (req.headers.get("sec-websocket-protocol") || "")
         .split(",")
         .map((entry) => entry.trim())
         .filter(Boolean);
 
-      return {
-        upstreamUrl: upstreamUrl.toString(),
-        protocols,
-      };
+      const previewConfig = await getHostedPreviewProxyConfig(req);
+      if (previewConfig) {
+        const upstreamUrl = new URL(previewConfig.upstreamUrl.toString());
+        upstreamUrl.protocol = upstreamUrl.protocol === "https:" ? "wss:" : "ws:";
+        return {
+          upstreamUrl: upstreamUrl.toString(),
+          protocols,
+          label: "preview",
+        };
+      }
+
+      const editorConfig = await getHostedEditorProxyConfig(req);
+      if (editorConfig) {
+        const upstreamUrl = new URL(editorConfig.upstreamUrl.toString());
+        upstreamUrl.protocol = upstreamUrl.protocol === "https:" ? "wss:" : "ws:";
+        return {
+          upstreamUrl: upstreamUrl.toString(),
+          protocols,
+          label: "editor",
+        };
+      }
+
+      return null;
     },
   };
 };

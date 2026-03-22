@@ -36,7 +36,7 @@ trap cleanup EXIT
 
 if [[ "${BUILD_FIRST}" == "1" ]]; then
   cd "${ROOT_DIR}"
-  bun install --frozen-lockfile
+  bun install
   bun run --filter @amigo-llm/amigo build
 fi
 
