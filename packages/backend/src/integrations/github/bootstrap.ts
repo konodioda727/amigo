@@ -28,6 +28,11 @@ interface GithubTaskBinding extends GithubBootstrapSummary {
   mirrorPath: string;
 }
 
+export type GithubSandboxBinding = Pick<
+  GithubTaskBinding,
+  "mirrorPath" | "branch" | "commitSha" | "repoUrl"
+>;
+
 function getStorageRoot(): string {
   return getStorageRootPath();
 }
@@ -210,10 +215,13 @@ export async function cancelGithubBootstrapByRepo(_input: GithubBootstrapInput):
   return true;
 }
 
-export async function bindGithubContextToTask(taskId: string, context: unknown): Promise<void> {
+export async function bindGithubContextToTask(
+  taskId: string,
+  context: unknown,
+): Promise<GithubSandboxBinding | null> {
   const githubInput = extractGithubInput(context);
   if (!githubInput) {
-    return;
+    return null;
   }
 
   const binding = await resolveBinding(githubInput);
@@ -233,11 +241,17 @@ export async function bindGithubContextToTask(taskId: string, context: unknown):
   }
   conversation.memory.setContext(boundContext);
   logger.info(`[githubBootstrap] 已绑定仓库到 task=${taskId}`);
+  return {
+    mirrorPath: binding.mirrorPath,
+    branch: binding.branch,
+    commitSha: binding.commitSha,
+    repoUrl: binding.repoUrl,
+  };
 }
 
 export async function getGithubSandboxBindingForTask(
   taskId: string,
-): Promise<Pick<GithubTaskBinding, "mirrorPath" | "branch" | "commitSha" | "repoUrl"> | null> {
+): Promise<GithubSandboxBinding | null> {
   const taskStatusPath = getTaskStatusPath(taskId);
   if (!(await pathExists(taskStatusPath))) {
     return null;

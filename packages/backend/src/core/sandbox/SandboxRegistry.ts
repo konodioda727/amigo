@@ -1,4 +1,5 @@
 import Docker from "dockerode";
+import type { GithubSandboxBinding } from "@/integrations/github";
 import { logger } from "@/utils/logger";
 import { getSandboxContainerName } from "./containerIdentity";
 import { Sandbox } from "./index";
@@ -117,7 +118,11 @@ export class SandboxRegistry {
    * @param parentId 父任务 ID（主任务传自己的 ID）
    * @param imageName Docker 镜像名称
    */
-  async getOrCreate(parentId: string, imageName?: string): Promise<Sandbox> {
+  async getOrCreate(
+    parentId: string,
+    imageName?: string,
+    githubBinding?: GithubSandboxBinding | null,
+  ): Promise<Sandbox> {
     const resolvedImageName = imageName || this.sandboxOptions.imageName;
     logger.info(
       `[SandboxRegistry] getOrCreate called, parentId: ${parentId}, imageName: ${resolvedImageName}`,
@@ -132,7 +137,7 @@ export class SandboxRegistry {
     if (!sandbox) {
       logger.info(`[SandboxRegistry] No existing sandbox, creating new one for: ${parentId}`);
       sandbox = new Sandbox({ ...this.sandboxOptions, imageName: resolvedImageName });
-      await sandbox.init(parentId); // 传递 taskId 用于标签
+      await sandbox.init(parentId, githubBinding); // 传递 taskId 用于标签
       this.sandboxes.set(parentId, sandbox);
       this.refCounts.set(parentId, 0);
       logger.info(`[SandboxRegistry] 创建 sandbox: ${parentId}`);

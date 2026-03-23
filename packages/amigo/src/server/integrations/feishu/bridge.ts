@@ -6,9 +6,11 @@ import {
 } from "@amigo-llm/backend";
 import type { ConversationMessageHookPayload, CreateTaskConfig } from "@amigo-llm/backend/sdk";
 import * as Lark from "@larksuiteoapi/node-sdk";
+import { FeishuDeliveryStore } from "./deliveryStore";
 import { FeishuSessionStore } from "./sessionStore";
 
 const DEFAULT_HISTORY_LIMIT = 20;
+const DELIVERY_RECORD_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const READY_STATUSES = new Set([
   "completed",
   "aborted",
@@ -171,6 +173,7 @@ export class FeishuBridge {
     (process.env.FEISHU_ACK_REACTION_TYPE || "OK").trim().toUpperCase() || "OK";
   private readonly requireGroupMention =
     (process.env.FEISHU_GROUP_MODE || "").trim().toLowerCase() !== "all";
+  private readonly deliveryStore: FeishuDeliveryStore;
   private readonly sessionStore: FeishuSessionStore;
   private readonly wsClient?: Lark.WSClient;
   private readonly processedInbound = new Map<string, number>();
@@ -178,6 +181,7 @@ export class FeishuBridge {
   private authState: FeishuAuthState | null = null;
 
   constructor(private readonly options: FeishuBridgeOptions) {
+    this.deliveryStore = new FeishuDeliveryStore(options.cachePath);
     this.sessionStore = new FeishuSessionStore(options.cachePath);
     if (this.isEnabled()) {
       this.wsClient = new Lark.WSClient({
@@ -237,6 +241,10 @@ export class FeishuBridge {
     }
 
     const outboundKey = `${payload.taskId}:${payload.message.type}:${payload.message.updateTime || 0}`;
+    this.deliveryStore.cleanup(DELIVERY_RECORD_TTL_MS);
+    if (this.deliveryStore.has(outboundKey)) {
+      return;
+    }
     this.cleanupProcessed(this.processedOutbound, 60 * 60 * 1000);
     if (this.processedOutbound.has(outboundKey)) {
       return;
@@ -249,6 +257,7 @@ export class FeishuBridge {
       } else {
         await this.replyOrSendText(feishuContext, outboundText);
       }
+      this.deliveryStore.set(outboundKey);
     } catch (error) {
       logger.error(
         `[FeishuBridge] 推送 assistant 消息到飞书失败 taskId=${payload.taskId}: ${

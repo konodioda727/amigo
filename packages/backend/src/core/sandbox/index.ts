@@ -5,7 +5,7 @@ import { PassThrough } from "node:stream";
 import Docker from "dockerode";
 import { getCacheRootPath } from "@/core/storage";
 import { getGlobalState } from "@/globalState";
-import { getGithubSandboxBindingForTask } from "@/integrations/github";
+import { type GithubSandboxBinding, getGithubSandboxBindingForTask } from "@/integrations/github";
 import { logger } from "@/utils/logger";
 import { getSandboxContainerName } from "./containerIdentity";
 import { normalizeEditorOpenFilePath } from "./editorFilePath";
@@ -382,7 +382,7 @@ export class Sandbox {
   /**
    * 容器初始化
    */
-  async init(taskId?: string): Promise<void> {
+  async init(taskId?: string, githubBindingOverride?: GithubSandboxBinding | null): Promise<void> {
     if (!docker) {
       throw new Error("Docker 未初始化，请确保 Docker daemon 正在运行");
     }
@@ -391,7 +391,8 @@ export class Sandbox {
       logger.info(`[Sandbox] Creating container with image: ${this.options.imageName}`);
       this.editorHostPort = await findAvailableHostPort();
       this.previewHostPort = await findAvailableHostPort();
-      const githubBinding = taskId ? await getGithubSandboxBindingForTask(taskId) : null;
+      const githubBinding =
+        githubBindingOverride ?? (taskId ? await getGithubSandboxBindingForTask(taskId) : null);
       const forwardedEnv = getForwardedSandboxEnvVars();
       const binds = githubBinding
         ? [`${githubBinding.mirrorPath}:${BOOTSTRAP_REPO_MOUNT_PATH}:ro`]

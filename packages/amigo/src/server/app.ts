@@ -155,14 +155,14 @@ export function createAmigoApp(options: AmigoAppOptions = {}): AmigoApp {
     .skills({ provider: skillStore })
     .onConversationCreate(async ({ taskId, context }) => {
       const taskContext = conversationRepository.get(taskId)?.memory.context ?? context;
-      await bindGithubContextToTask(taskId, taskContext);
+      const githubBinding = await bindGithubContextToTask(taskId, taskContext);
       const repoUrl =
         taskContext && typeof taskContext === "object" && "repoUrl" in taskContext
           ? String((taskContext as { repoUrl?: unknown }).repoUrl || "").trim()
           : "";
       if (repoUrl) {
         logger.info(`[AmigoApp] 预热 task sandbox task=${taskId} repo=${repoUrl}`);
-        await sandboxManager.getOrCreate(taskId);
+        await sandboxManager.getOrCreate(taskId, undefined, githubBinding);
       }
     })
     .onConversationMessage(async (payload) => {
