@@ -63,17 +63,16 @@ const AuthPage: React.FC<AuthPageProps> = ({ mode }) => {
             <div className="space-y-4">
               <p className="text-xs uppercase tracking-[0.35em] text-white/70">Amigo</p>
               <h1 className="max-w-sm text-4xl font-semibold leading-tight">
-                {mode === "register" ? "创建你的工作台账号" : "登录后继续当前工作流"}
+                {mode === "register" ? "创建账号，开始使用 Amigo" : "欢迎回来，继续你的工作"}
               </h1>
               <p className="max-w-sm text-sm leading-6 text-white/75">
-                登录后，聊天记录、skills、automations 都会直接归属到你的账号，不再混用默认本地用户。
+                登录后，你的对话记录、常用技能和自动化都会保存在自己的账号下，换设备也能接着用。
               </p>
             </div>
             <div className="rounded-2xl border border-white/15 bg-white/10 p-5 text-sm text-white/80">
-              <div className="font-medium text-white">这次切换后的行为</div>
+              <div className="font-medium text-white">登录后你可以</div>
               <div className="mt-2 leading-6">
-                只有已登录用户才能建立 websocket、查看自己的会话历史，以及管理自己的 skills 和
-                automations。
+                查看历史对话，管理自己的技能和自动化，并在不同设备上继续之前的工作。
               </div>
             </div>
           </div>
@@ -81,11 +80,13 @@ const AuthPage: React.FC<AuthPageProps> = ({ mode }) => {
           <div className="p-8 sm:p-10">
             <div className="mx-auto max-w-sm">
               <div className="mb-8 space-y-2">
-                <h2 className="text-2xl font-semibold">{mode === "register" ? "注册" : "登录"}</h2>
+                <h2 className="text-2xl font-semibold">
+                  {mode === "register" ? "创建账号" : "登录账号"}
+                </h2>
                 <p className="text-sm text-gray-500">
                   {mode === "register"
-                    ? "用邮箱和密码创建一个新的 Amigo 账号。"
-                    : "使用你的邮箱和密码继续。"}
+                    ? "用邮箱和密码创建账号，马上开始使用。"
+                    : "输入邮箱和密码，继续你上次的工作。"}
                 </p>
               </div>
 
@@ -138,7 +139,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ mode }) => {
                   disabled={submitting || isPending}
                   className="w-full rounded-2xl bg-gray-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {submitting ? "提交中..." : mode === "register" ? "创建账号" : "登录"}
+                  {submitting ? "处理中..." : mode === "register" ? "创建并进入" : "进入 Amigo"}
                 </button>
               </form>
 
@@ -148,7 +149,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ mode }) => {
                   className="font-medium text-blue-600 transition hover:text-blue-700"
                   to={mode === "register" ? "/login" : "/register"}
                 >
-                  {mode === "register" ? "去登录" : "去注册"}
+                  {mode === "register" ? "去登录" : "创建一个"}
                 </Link>
               </div>
             </div>

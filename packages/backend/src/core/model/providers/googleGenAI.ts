@@ -1,3 +1,4 @@
+import type { ModelThinkType } from "../contextConfig";
 import { streamSseData } from "../sse";
 import type {
   AmigoLlm,
@@ -9,7 +10,10 @@ import type {
 } from "../types";
 
 type GoogleGenAIProviderOptions = {
+  configId?: string;
   model: string;
+  contextWindow?: number;
+  thinkType?: ModelThinkType;
   apiKey: string;
   temperature: number;
 };
@@ -159,9 +163,15 @@ const getThoughtText = (delta: InteractionDelta): string | undefined => {
 export class GoogleGenAIProvider implements AmigoLlm {
   readonly provider = "google-genai" as const;
   readonly model: string;
+  readonly configId?: string;
+  readonly contextWindow?: number;
+  readonly thinkType?: ModelThinkType;
 
   constructor(private readonly options: GoogleGenAIProviderOptions) {
     this.model = options.model;
+    this.configId = options.configId;
+    this.contextWindow = options.contextWindow;
+    this.thinkType = options.thinkType;
   }
 
   async stream(

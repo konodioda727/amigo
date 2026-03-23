@@ -50,7 +50,7 @@ export class AmigoServerBuilder {
   private _systemPrompts: Partial<Record<"main" | "sub", string>> = {};
   private _sandboxManager?: SandboxManager;
   private _conversationPersistenceProvider?: ConversationPersistenceProvider;
-  private _modelConfigs?: Record<string, ModelConfig | number>;
+  private _modelConfigs?: Record<string, ModelConfig>;
   private _loggerConfig?: Partial<LoggerConfig>;
   private _onConversationCreate?: (payload: {
     taskId: string;
@@ -212,12 +212,12 @@ export class AmigoServerBuilder {
     return this;
   }
 
-  modelConfigs(configs: Record<string, ModelConfig | number>): this {
+  modelConfigs(configs: Record<string, ModelConfig>): this {
     this._modelConfigs = { ...configs };
     return this;
   }
 
-  modelContextConfigs(configs: Record<string, ModelContextConfig | number>): this {
+  modelContextConfigs(configs: Record<string, ModelContextConfig>): this {
     this._modelConfigs = { ...configs };
     return this;
   }
@@ -278,6 +278,11 @@ export class AmigoServerBuilder {
    */
   build(): AmigoServer {
     const validatedConfig = ServerConfigSchema.parse(this.config);
+    if (!this._conversationPersistenceProvider) {
+      throw new Error(
+        "AmigoServerBuilder requires a conversationPersistenceProvider. The backend SDK no longer falls back to file storage.",
+      );
+    }
     const skillRuntime = this._skillProvider ? new SkillRuntime(this._skillProvider) : undefined;
     const createTaskConfigResolver =
       skillRuntime || this._createTaskConfigResolver

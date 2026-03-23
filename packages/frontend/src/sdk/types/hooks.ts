@@ -5,6 +5,7 @@ import type {
   SubTaskStatus,
   USER_SEND_MESSAGE_NAME,
   UserMessageAttachment,
+  UserSendMessageData,
   WebSocketMessage,
 } from "@amigo-llm/types";
 import type { DisplayMessageType } from "../messages/types";
@@ -102,11 +103,17 @@ export interface UseMentionsReturn {
  * useSendMessage hook return type
  */
 export interface UseSendMessageReturn {
-  sendMessage: (message: string, taskId?: string, attachments?: UserMessageAttachment[]) => void;
+  sendMessage: (
+    message: string,
+    taskId?: string,
+    attachments?: UserMessageAttachment[],
+    modelConfigSnapshot?: UserSendMessageData<"userSendMessage">["modelConfigSnapshot"],
+  ) => void;
   sendCreateTask: (
     message: string,
     attachments?: UserMessageAttachment[],
     context?: unknown,
+    modelConfigSnapshot?: UserSendMessageData<"createTask">["modelConfigSnapshot"],
   ) => void;
   sendInterrupt: (taskId?: string) => void;
   sendResume: (taskId?: string) => void;

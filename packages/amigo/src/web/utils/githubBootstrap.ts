@@ -16,6 +16,7 @@ export const bootstrapGithubRepo = async (
 ): Promise<GithubBootstrapSummary> => {
   const response = await fetch(`${getHttpBaseUrlFromWebSocketUrl(wsUrl)}/api/bootstrap/github`, {
     method: "POST",
+    credentials: "include",
     headers: {
       "content-type": "application/json",
     },
@@ -38,6 +39,7 @@ export const cancelGithubBootstrap = async (
 ): Promise<void> => {
   const response = await fetch(`${getHttpBaseUrlFromWebSocketUrl(wsUrl)}/api/bootstrap/github`, {
     method: "DELETE",
+    credentials: "include",
     headers: {
       "content-type": "application/json",
     },

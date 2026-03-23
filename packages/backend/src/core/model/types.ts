@@ -1,3 +1,5 @@
+import type { ModelThinkType } from "./contextConfig";
+
 export type AmigoMessageRole = "system" | "user" | "assistant";
 
 export type AmigoMessageContentPart =
@@ -60,11 +62,26 @@ export type AmigoLlmStreamEvent =
 
 export interface AmigoLlm {
   model: string;
+  configId?: string;
   provider?: ModelProvider;
+  contextWindow?: number;
+  thinkType?: ModelThinkType;
   stream(
     messages: AmigoModelMessage[],
     options?: AmigoLlmStreamOptions,
   ): Promise<AsyncIterable<AmigoLlmStreamEvent>>;
 }
 
-export type LlmFactory = () => AmigoLlm;
+export type LlmFactory = (options?: {
+  model?: string;
+  configId?: string;
+  resolvedConfig?: {
+    configId: string;
+    model: string;
+    provider: ModelProvider;
+    apiKey: string;
+    baseURL?: string;
+    contextWindow?: number;
+    thinkType?: ModelThinkType;
+  };
+}) => AmigoLlm;

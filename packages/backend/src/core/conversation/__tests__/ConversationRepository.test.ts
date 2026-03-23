@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import os from "node:os";
 import path from "node:path";
 import { StorageType } from "@amigo-llm/types";
+import { fileConversationPersistenceProvider } from "@/core/persistence";
 import { setGlobalState } from "@/globalState";
 
 const destroySandbox = mock(async () => {});
@@ -45,6 +46,7 @@ describe("ConversationRepository.deleteWithChildren", () => {
   beforeEach(() => {
     tempStorageRoot = mkdtempSync(path.join(os.tmpdir(), "amigo-delete-"));
     setGlobalState("globalStoragePath", tempStorageRoot);
+    setGlobalState("conversationPersistenceProvider", fileConversationPersistenceProvider);
     destroySandbox.mockClear();
   });
 

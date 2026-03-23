@@ -8,6 +8,7 @@ import type { ServerWebSocket } from "bun";
 import { v4 as uuidV4 } from "uuid";
 import { broadcaster, conversationRepository } from "@/core/conversation";
 import { getResolver } from "@/core/messageResolver";
+import { getLlm } from "@/core/model";
 import { getGlobalState } from "@/globalState";
 import { getSessionHistories } from "@/utils/getSessions";
 import { logger } from "@/utils/logger";
@@ -67,6 +68,7 @@ export class ServerWebSocketMessageHandler {
         this.sendSocketError(ws, "没有权限访问该会话", "UNAUTHORIZED");
         return;
       }
+      this.applyModelConfigSnapshotIfNeeded(conversation, parsedMessage);
       this.attachConnectionAndAck(ws, taskId, parsedMessage, conversation.status);
 
       const resolver = getResolver(parsedMessage.type as USER_SEND_MESSAGE_NAME, conversation);
@@ -185,19 +187,26 @@ export class ServerWebSocketMessageHandler {
         })
       : undefined;
 
+    const initialContext = this.mergeAuthenticatedUserContext(
+      ws.data?.userId,
+      config?.context ?? parsedMessage.data.context,
+    );
     const conversation = conversationRepository.create({
       id: taskId,
       type: "main",
       customPrompt: config?.customPrompt,
       toolNames: config?.toolNames,
+      llm: getLlm(
+        parsedMessage.data.modelConfigSnapshot
+          ? { resolvedConfig: parsedMessage.data.modelConfigSnapshot }
+          : undefined,
+      ),
     });
-
-    const initialContext = this.mergeAuthenticatedUserContext(
-      ws.data?.userId,
-      config?.context ?? parsedMessage.data.context,
-    );
     if (initialContext !== undefined) {
       conversation.memory.setContext(initialContext);
+    }
+    if (parsedMessage.data.modelConfigSnapshot) {
+      conversation.memory.setModelConfigSnapshot(parsedMessage.data.modelConfigSnapshot);
     }
 
     if (config?.autoApproveToolNames && config.autoApproveToolNames.length > 0) {
@@ -303,6 +312,36 @@ export class ServerWebSocketMessageHandler {
       ...(isPlainObject(context) ? context : {}),
       userId,
     };
+  }
+
+  private applyModelConfigSnapshotIfNeeded(
+    conversation: Awaited<ReturnType<ServerWebSocketMessageHandler["resolveConversation"]>>,
+    parsedMessage: UserSendWebSocketMessage,
+  ): void {
+    const snapshot = parsedMessage.data.modelConfigSnapshot;
+    if (!snapshot) {
+      return;
+    }
+
+    if (
+      parsedMessage.type === "userSendMessage" &&
+      !["idle", "completed", "aborted"].includes(conversation.status)
+    ) {
+      return;
+    }
+
+    conversation.setLlm(
+      getLlm({
+        resolvedConfig: snapshot,
+      }),
+    );
+    conversation.memory.setModelConfigSnapshot(snapshot);
+    conversation.memory.setContext({
+      ...(isPlainObject(conversation.memory.context) ? conversation.memory.context : {}),
+      model: snapshot.model,
+      modelConfigId: snapshot.configId,
+    });
+    conversation.broadcastTaskStatusMapUpdated();
   }
 
   private canAccessConversation(

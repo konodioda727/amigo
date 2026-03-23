@@ -17,6 +17,50 @@ export interface SkillDefinition {
   updatedAt: string;
 }
 
+export type ModelThinkType = "auto" | "enabled" | "disabled" | string;
+
+export interface ProviderModelConfig {
+  name: string;
+  contextWindow?: number;
+  thinkType?: ModelThinkType;
+}
+
+export interface ModelConfig {
+  provider: string;
+  apiKey: string;
+  baseURL?: string;
+  models: ProviderModelConfig[];
+  compressionThreshold?: number;
+  targetRatio?: number;
+  preserveRecentMessages?: number;
+  minMessagesToCompress?: number;
+}
+
+export interface ModelSelection {
+  configId?: string;
+  model: string;
+}
+
+export interface UserModelConfigSettings {
+  hasUserConfig: boolean;
+  modelConfigs: Record<string, ModelConfig>;
+  defaultModel?: ModelSelection | null;
+}
+
+export interface ResolvedModelOption {
+  configId: string;
+  model: string;
+  provider: string;
+  apiKey: string;
+  baseURL?: string;
+  contextWindow?: number;
+  thinkType?: ModelThinkType;
+  compressionThreshold?: number;
+  targetRatio?: number;
+  preserveRecentMessages?: number;
+  minMessagesToCompress?: number;
+}
+
 export type SkillSummary = Omit<SkillDefinition, "skillMarkdown">;
 
 export interface SkillUpsertInput {
@@ -113,6 +157,57 @@ const withCredentials: RequestInit = {
 export const listSkills = async (wsUrl: string): Promise<SkillSummary[]> => {
   const response = await fetch(`${getAdminBaseUrl(wsUrl)}/api/skills`, withCredentials);
   return readJson<SkillSummary[]>(response);
+};
+
+export const flattenModelConfigs = (
+  modelConfigs: Record<string, ModelConfig>,
+): ResolvedModelOption[] => {
+  return Object.entries(modelConfigs)
+    .flatMap(([configId, config]) =>
+      (config.models || []).map((modelConfig) => ({
+        configId,
+        model: modelConfig.name,
+        provider: config.provider,
+        apiKey: config.apiKey,
+        ...(config.baseURL ? { baseURL: config.baseURL } : {}),
+        ...(modelConfig.contextWindow ? { contextWindow: modelConfig.contextWindow } : {}),
+        ...(modelConfig.thinkType ? { thinkType: modelConfig.thinkType } : {}),
+        ...(config.compressionThreshold
+          ? { compressionThreshold: config.compressionThreshold }
+          : {}),
+        ...(config.targetRatio ? { targetRatio: config.targetRatio } : {}),
+        ...(config.preserveRecentMessages
+          ? { preserveRecentMessages: config.preserveRecentMessages }
+          : {}),
+        ...(config.minMessagesToCompress
+          ? { minMessagesToCompress: config.minMessagesToCompress }
+          : {}),
+      })),
+    )
+    .sort((left, right) => {
+      const configCompare = left.configId.localeCompare(right.configId, "zh-CN");
+      return configCompare !== 0 ? configCompare : left.model.localeCompare(right.model, "zh-CN");
+    });
+};
+
+export const getUserModelConfigs = async (wsUrl: string): Promise<UserModelConfigSettings> => {
+  const response = await fetch(`${getAdminBaseUrl(wsUrl)}/api/model-configs`, withCredentials);
+  return readJson<UserModelConfigSettings>(response);
+};
+
+export const upsertUserModelConfigs = async (
+  wsUrl: string,
+  payload: Omit<UserModelConfigSettings, "hasUserConfig">,
+): Promise<UserModelConfigSettings> => {
+  const response = await fetch(`${getAdminBaseUrl(wsUrl)}/api/model-configs`, {
+    ...withCredentials,
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  return readJson<UserModelConfigSettings>(response);
 };
 
 export const getSkill = async (wsUrl: string, skillId: string): Promise<SkillDefinition> => {

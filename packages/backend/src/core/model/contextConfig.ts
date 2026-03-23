@@ -1,10 +1,24 @@
 import { getGlobalState } from "@/globalState";
 import type { ModelProvider } from "./types";
 
-export interface ModelConfig {
-  provider?: ModelProvider;
-  baseURL?: string;
+export type ModelThinkType = "auto" | "enabled" | "disabled" | (string & {});
+
+export interface ProviderModelConfig {
+  name: string;
   contextWindow?: number;
+  thinkType?: ModelThinkType;
+}
+
+export interface ModelSelection {
+  configId?: string;
+  model: string;
+}
+
+export interface ModelConfig {
+  provider: ModelProvider;
+  apiKey: string;
+  baseURL?: string;
+  models: ProviderModelConfig[];
   compressionThreshold?: number;
   targetRatio?: number;
   preserveRecentMessages?: number;
@@ -12,10 +26,13 @@ export interface ModelConfig {
 }
 
 export interface ResolvedModelConfig {
+  configId: string;
   model: string;
-  provider?: ModelProvider;
+  provider: ModelProvider;
+  apiKey: string;
   baseURL?: string;
   contextWindow?: number;
+  thinkType?: ModelThinkType;
   compressionThreshold?: number;
   targetRatio?: number;
   preserveRecentMessages?: number;
@@ -25,14 +42,13 @@ export interface ResolvedModelConfig {
 export type ModelContextConfig = ModelConfig & { contextWindow: number };
 export type ResolvedModelContextConfig = ResolvedModelConfig & { contextWindow: number };
 
-type RawModelConfig = ModelConfig | number;
-
 const DEFAULT_COMPRESSION_THRESHOLD = 0.8;
 const DEFAULT_TARGET_RATIO = 0.5;
 const DEFAULT_PRESERVE_RECENT_MESSAGES = 8;
 const DEFAULT_MIN_MESSAGES_TO_COMPRESS = 4;
 
 const normalizeModelName = (model: string): string => model.trim().toLowerCase();
+const normalizeConfigId = (configId: string): string => configId.trim().toLowerCase();
 
 const clampRatio = (value: number, fallback: number): number => {
   if (!Number.isFinite(value)) {
@@ -54,51 +70,28 @@ const toPositiveInt = (value: number | undefined, fallback: number): number => {
   return Math.max(1, Math.floor(value));
 };
 
-const normalizeConfig = (
-  model: string,
-  rawConfig: RawModelConfig | undefined,
+const buildResolvedModelConfig = (
+  configId: string,
+  config: ModelConfig,
+  modelConfig: ProviderModelConfig,
 ): ResolvedModelConfig | null => {
-  if (typeof rawConfig === "number") {
-    if (!Number.isFinite(rawConfig) || rawConfig <= 0) {
-      return null;
-    }
-    return {
-      model,
-      contextWindow: Math.floor(rawConfig),
-      compressionThreshold: DEFAULT_COMPRESSION_THRESHOLD,
-      targetRatio: DEFAULT_TARGET_RATIO,
-      preserveRecentMessages: DEFAULT_PRESERVE_RECENT_MESSAGES,
-      minMessagesToCompress: DEFAULT_MIN_MESSAGES_TO_COMPRESS,
-    };
-  }
-
-  if (!rawConfig) {
-    return null;
-  }
-
-  const provider = rawConfig.provider?.trim() || undefined;
-  const baseURL = rawConfig.baseURL?.trim() || undefined;
+  const provider = config.provider?.trim();
+  const apiKey = config.apiKey?.trim();
+  const baseURL = config.baseURL?.trim() || undefined;
+  const model = modelConfig.name?.trim();
   const hasContextWindow =
-    Number.isFinite(rawConfig.contextWindow) && (rawConfig.contextWindow || 0) > 0;
+    Number.isFinite(modelConfig.contextWindow) && (modelConfig.contextWindow || 0) > 0;
 
-  if (!hasContextWindow && !provider && !baseURL) {
+  if (!configId.trim() || !provider || !apiKey || !model) {
     return null;
-  }
-
-  if (!hasContextWindow) {
-    return {
-      model,
-      provider,
-      baseURL,
-    };
   }
 
   const compressionThreshold = clampRatio(
-    rawConfig.compressionThreshold ?? DEFAULT_COMPRESSION_THRESHOLD,
+    config.compressionThreshold ?? DEFAULT_COMPRESSION_THRESHOLD,
     DEFAULT_COMPRESSION_THRESHOLD,
   );
   const computedTargetRatio = clampRatio(
-    rawConfig.targetRatio ?? DEFAULT_TARGET_RATIO,
+    config.targetRatio ?? DEFAULT_TARGET_RATIO,
     DEFAULT_TARGET_RATIO,
   );
   const targetRatio =
@@ -107,40 +100,79 @@ const normalizeConfig = (
       : computedTargetRatio;
 
   return {
+    configId,
     model,
     provider,
+    apiKey,
     baseURL,
-    contextWindow: Math.floor(rawConfig.contextWindow as number),
+    ...(hasContextWindow ? { contextWindow: Math.floor(modelConfig.contextWindow as number) } : {}),
+    ...(modelConfig.thinkType ? { thinkType: modelConfig.thinkType } : {}),
     compressionThreshold,
     targetRatio,
     preserveRecentMessages: toPositiveInt(
-      rawConfig.preserveRecentMessages,
+      config.preserveRecentMessages,
       DEFAULT_PRESERVE_RECENT_MESSAGES,
     ),
     minMessagesToCompress: toPositiveInt(
-      rawConfig.minMessagesToCompress,
+      config.minMessagesToCompress,
       DEFAULT_MIN_MESSAGES_TO_COMPRESS,
     ),
   };
 };
 
-export const resolveModelConfig = (model: string): ResolvedModelConfig | null => {
-  const normalizedModel = normalizeModelName(model);
-  const configured = getGlobalState("modelConfigs") ?? getGlobalState("modelContextConfigs");
-  const normalizedConfigured = configured
-    ? Object.fromEntries(
-        Object.entries(configured).map(([configuredModel, value]) => [
-          normalizeModelName(configuredModel),
-          value,
-        ]),
-      )
-    : null;
-  const rawConfig = normalizedConfigured?.[normalizedModel];
-  return normalizeConfig(model, rawConfig);
+const normalizeSelection = (selection: string | ModelSelection): ModelSelection => {
+  if (typeof selection === "string") {
+    return { model: selection };
+  }
+  return selection;
 };
 
-export const resolveModelContextConfig = (model: string): ResolvedModelContextConfig | null => {
-  const config = resolveModelConfig(model);
+export const listAvailableModels = (
+  configs = getGlobalState("modelConfigs") ?? getGlobalState("modelContextConfigs"),
+): ResolvedModelConfig[] => {
+  if (!configs) {
+    return [];
+  }
+
+  const models: ResolvedModelConfig[] = [];
+  for (const [configId, config] of Object.entries(configs)) {
+    for (const modelConfig of config.models || []) {
+      const resolved = buildResolvedModelConfig(configId, config, modelConfig);
+      if (resolved) {
+        models.push(resolved);
+      }
+    }
+  }
+
+  return models;
+};
+
+export const resolveModelConfig = (
+  selection: string | ModelSelection,
+): ResolvedModelConfig | null => {
+  const normalizedSelection = normalizeSelection(selection);
+  const normalizedModel = normalizeModelName(normalizedSelection.model);
+  const normalizedConfigId = normalizedSelection.configId
+    ? normalizeConfigId(normalizedSelection.configId)
+    : null;
+
+  for (const config of listAvailableModels()) {
+    if (normalizeModelName(config.model) !== normalizedModel) {
+      continue;
+    }
+    if (normalizedConfigId && normalizeConfigId(config.configId) !== normalizedConfigId) {
+      continue;
+    }
+    return config;
+  }
+
+  return null;
+};
+
+export const resolveModelContextConfig = (
+  selection: string | ModelSelection,
+): ResolvedModelContextConfig | null => {
+  const config = resolveModelConfig(selection);
   if (!config?.contextWindow) {
     return null;
   }

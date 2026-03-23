@@ -107,7 +107,7 @@ export class TaskOrchestrator {
         parentId,
         customPrompt: subPrompt,
         tools,
-        llm: getLlm(),
+        llm: parentConversation.llm,
       });
       isNewConversation = true;
     } else {

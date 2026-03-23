@@ -30,10 +30,10 @@ export interface GlobalStateType {
   sandboxManager?: SandboxManager;
   /** 可注入的会话 persistence provider */
   conversationPersistenceProvider?: ConversationPersistenceProvider;
-  /** 按模型配置 provider、baseURL、上下文窗口与压缩参数 */
-  modelConfigs?: Record<string, ModelConfig | number>;
+  /** 按 provider config 配置 provider、apiKey、baseURL 与 models */
+  modelConfigs?: Record<string, ModelConfig>;
   /** 兼容旧命名，后续建议使用 modelConfigs */
-  modelContextConfigs?: Record<string, ModelContextConfig | number>;
+  modelContextConfigs?: Record<string, ModelContextConfig>;
   /** 会话创建完成后的 app 层 hook */
   onConversationCreate?: (payload: { taskId: string; context?: unknown }) => void | Promise<void>;
   /** 会话消息产生后的 app 层 hook */

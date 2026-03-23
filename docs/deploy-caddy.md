@@ -1,35 +1,33 @@
-# Amigo 生产部署（Caddy）
+# Amigo 生产部署（Caddy + systemd + MySQL）
 
-这套方案按一台 Linux 服务器部署，默认假设：
+这套部署文档对应当前架构：
 
-- 系统：Ubuntu 22.04 / 24.04 或兼容 Debian 的发行版
-- 反向代理：Caddy
-- 进程托管：systemd
-- sandbox：Docker + `runsc`（gVisor）
-- 部署触发：GitHub Actions push 到 `main`
+- 反向代理: Caddy
+- 进程托管: systemd
+- 运行时: Bun
+- 数据库: MySQL 8+
+- sandbox: Docker + `runsc`
 
 ## 目录约定
 
-你的这台机器建议直接固定成：
+推荐目录：
 
 ```text
 /var/www/amigo/
   frontend/   # 前端静态产物
   backend/    # 后端 bundle 与 sandbox assets
-  shared/     # 不随发布覆盖的 env
-  cache/      # 运行时持久化
+  shared/     # 不随发布覆盖的环境变量文件
+  cache/      # 运行时缓存与 sandbox 资产
 ```
 
 其中：
 
-- 前端目录：`/var/www/amigo/frontend`
-- 后端目录：`/var/www/amigo/backend`
-- 环境变量文件：`/var/www/amigo/shared/amigo.env`
-- 持久化缓存目录：`/var/www/amigo/cache`
+- 前端目录: `/var/www/amigo/frontend`
+- 后端目录: `/var/www/amigo/backend`
+- 环境变量文件: `/var/www/amigo/shared/amigo.env`
+- 运行时目录: `/var/www/amigo/cache`
 
-## 服务器前置准备
-
-### 1. 基础软件
+## 部署前置要求
 
 至少准备：
 
@@ -39,34 +37,27 @@
 - `bun`
 - `docker`
 - `caddy`
+- `mysql-server`
 
-如果你要启用 sandbox，Linux 生产建议再装：
+如果要启用 sandbox，再准备：
 
 - `runsc`
 - Docker 已注册 `runsc` runtime
 
-验证方式：
+## 数据库准备
 
-```bash
-runsc --version
-docker info | grep -A5 Runtimes
-docker run --rm --runtime=runsc hello-world
+应用启动时会自动跑 migration，但数据库本身需要先存在。
+
+示例：
+
+```sql
+CREATE DATABASE amigo CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'amigo'@'localhost' IDENTIFIED BY 'replace_me';
+GRANT ALL PRIVILEGES ON amigo.* TO 'amigo'@'localhost';
+FLUSH PRIVILEGES;
 ```
 
-### 2. deploy 用户权限
-
-你现在的服务器登录用户是 `ubuntu@101.36.117.121`，所以先按 `ubuntu` 用户落地最省事。它至少要具备：
-
-- 对 `/var/www/amigo` 的读写权限
-- 执行 `systemctl restart amigo` 的权限
-- Docker 使用权限
-
-最常见做法：
-
-- 把 `ubuntu` 用户加入 `docker` 组
-- 给 `ubuntu` 用户配置 `sudo systemctl restart amigo` 免密
-
-### 3. 环境变量文件
+## 环境变量文件
 
 服务器上创建：
 
@@ -78,43 +69,32 @@ sudo chown -R ubuntu:ubuntu /var/www/amigo
 
 然后编辑 `/var/www/amigo/shared/amigo.env`。
 
-至少需要：
+至少需要这些项：
 
 ```env
 MODEL_API_KEY=your_api_key
 MODEL_NAME=qwen3-coder
 MODEL_BASE_URL=https://openrouter.ai/api/v1
+
 AMIGO_PORT=10013
 AMIGO_CACHE_PATH=/var/www/amigo/cache
 AMIGO_SANDBOX_IMAGE=ai_sandbox
 AMIGO_SANDBOX_RUNTIME=runsc
+
+MYSQL_HOST=127.0.0.1
+MYSQL_PORT=3306
+MYSQL_USER=amigo
+MYSQL_PASSWORD=replace_me
+MYSQL_DATABASE=amigo
+
+BETTER_AUTH_SECRET=replace_with_a_long_random_secret
+BETTER_AUTH_BASE_URL=https://amigo.example.com
+BETTER_AUTH_TRUSTED_ORIGINS=https://amigo.example.com
 ```
 
-如果不启用 Penpot，就不要填 `PENPOT_*`。
+参考：
 
-## Caddy 配置
-
-基础站点可以直接参考：
-
-- [ops/caddy/Caddyfile.example](/Users/lawkaiqing/code/amigo/ops/caddy/Caddyfile.example)
-
-核心思路是：
-
-- `/api/*`、`/ws*` 反代到 Bun 服务 `127.0.0.1:10013`
-- 其余请求由 Caddy 直接从 `/var/www/amigo/frontend` 提供静态文件
-- editor 现在也走同域 `/api/tasks/:taskId/editor/session/...` 代理，不再暴露宿主机随机端口
-
-当前样板已经按你的域名写成：
-
-- 主站：`amigo.kbkbk.xyz`
-- preview 通配：`*.preview.amigo.kbkbk.xyz`
-
-如果你要启用 hosted preview，再额外准备：
-
-- `preview.amigo.kbkbk.xyz`
-- `*.preview.amigo.kbkbk.xyz`
-
-这两个 DNS 记录都指向同一台机器，并保留 `*.preview.amig.kbkbk.xyz` 这段 Caddy 配置。
+- [ops/deploy/amigo.env.example](/Users/lawkaiqing/code/amigo/ops/deploy/amigo.env.example)
 
 ## systemd 配置
 
@@ -130,183 +110,73 @@ sudo systemctl daemon-reload
 sudo systemctl enable amigo
 ```
 
-注意把服务文件里的 `User`、`Group`、`WorkingDirectory` 改成你自己的真实路径。
+当前样板默认：
 
-当前样板已经按 `ubuntu` 用户写好。
+- `User=ubuntu`
+- `Group=ubuntu`
+- `WorkingDirectory=/var/www/amigo/backend`
+- `EnvironmentFile=/var/www/amigo/shared/amigo.env`
+
+如果这些路径和用户不一致，先改 service 文件。
+
+安装后启动：
+
+```bash
+sudo systemctl restart amigo
+sudo systemctl status amigo
+journalctl -u amigo -n 200 --no-pager
+```
+
+## Caddy 配置
+
+基础站点参考：
+
+- [ops/caddy/Caddyfile.example](/Users/lawkaiqing/code/amigo/ops/caddy/Caddyfile.example)
+
+核心思路：
+
+- `/api/*`、`/ws*` 反代到 `127.0.0.1:10013`
+- 其余请求由 Caddy 从 `/var/www/amigo/frontend` 提供静态文件
+- preview/editor 都走同域或 preview 子域代理
 
 ## GitHub Actions secrets
 
-在 GitHub 仓库里配置：
+GitHub 仓库里至少配置：
 
-- `DEPLOY_HOST`: `101.36.117.121`
-- `DEPLOY_PORT`: SSH 端口，默认 `22`
-- `DEPLOY_USER`: `ubuntu`
-- `DEPLOY_PATH`: 固定填 `/var/www/amigo`
-- `DEPLOY_SSH_PRIVATE_KEY`: 部署私钥
+- `DEPLOY_HOST`
+- `DEPLOY_PORT`
+- `DEPLOY_USER`
+- `DEPLOY_PATH`
+- `DEPLOY_SSH_PRIVATE_KEY`
 
-注意：
-
-- 你现在手上是密码登录，适合首次手工初始化
-- GitHub Actions 不建议走密码，应该单独生成一把部署用 SSH key，把公钥加到服务器 `~/.ssh/authorized_keys`
-
-流水线文件在：
+部署流水线：
 
 - [deploy.yml](/Users/lawkaiqing/code/amigo/.github/workflows/deploy.yml)
 
-行为是：
+## 部署产物
 
-1. GitHub Actions 安装依赖并执行 `cd packages/amigo && bun run build`
-2. 上传 `packages/amigo/dist/web` 到 `/var/www/amigo/frontend`
-3. 上传 `packages/amigo/dist/server` 到 `/var/www/amigo/backend/dist/server`
-4. 上传 `packages/amigo/dist/data` 到 `/var/www/amigo/backend/dist/data`
-5. 上传 `packages/amigo/package.json` 到 `/var/www/amigo/backend/dist/package.json`
-5. 上传 `packages/amigo/assets` 到 `/var/www/amigo/backend/assets`
-6. 登录服务器执行 `/var/www/amigo/backend/deploy-amigo.sh`
-7. 服务器端重建 sandbox 镜像并重启 `systemd`
+默认部署脚本会上传：
 
-如果你想先手工上传一次，不走 GitHub Actions，可以直接用：
-
-- [upload-amigo-artifacts.sh](/Users/lawkaiqing/code/amigo/ops/deploy/upload-amigo-artifacts.sh)
-
-默认已经写死成你现在这台机器：
-
-- `REMOTE_HOST=101.36.117.121`
-- `REMOTE_USER=ubuntu`
-- `REMOTE_PATH=/var/www/amigo`
-
-本地执行：
-
-```bash
-bash ./ops/deploy/upload-amigo-artifacts.sh
-```
-
-它会：
-
-1. 本地执行 `bun install`
-2. 本地执行 `bun run --filter @amigo-llm/amigo build`
-3. 上传前端 dist、后端 dist、运行时 data、运行时 `package.json`、sandbox assets、deploy 脚本
-4. 顺带上传 `amigo.service` 和 `Caddyfile`
-
-## Editor 与 Repo 预热
-
-`editor` 不需要你额外再集成一套服务。现在这套部署会在 sandbox 容器里启动 `code-server`，应用层再把它代理到同域 `/api/tasks/:taskId/editor/session/...`。前提只有两个：
-
-- sandbox 镜像是用当前仓库的 `packages/amigo/assets/Dockerfile` 构建出来的
-- Caddy 仍然把 `/api/*` 反代到 Amigo 后端
-
-`repo 预热` 走的是两段式：
-
-1. 宿主机调用 `git clone --mirror` / `git fetch`，把仓库缓存到 `${AMIGO_CACHE_PATH}/github-bootstrap`
-2. 首次创建对应 task 的 sandbox 时，再把 mirror 导入到容器内的 `/sandbox`
-
-所以线上要满足：
-
-- 宿主机装了 `git`
-- `AMIGO_CACHE_PATH` 可写
-- 服务器能出网访问 GitHub
-- 私有仓库场景下，`amigo.env` 里补 `GITHUB_TOKEN` 或 `GH_TOKEN`
-
-如果你只想上传产物，不想顺手上传 Caddy/systemd 样板：
-
-```bash
-UPLOAD_CONFIGS=0 bash ./ops/deploy/upload-amigo-artifacts.sh
-```
+- `packages/amigo/dist/web` -> `/var/www/amigo/frontend`
+- `packages/amigo/dist/server` -> `/var/www/amigo/backend/dist/server`
+- `packages/amigo/dist/data` -> `/var/www/amigo/backend/dist/data`
+- `packages/amigo/assets` -> `/var/www/amigo/backend/assets`
 
 ## 首次上线步骤
 
-1. 先在服务器手动装好 Bun、Docker、Caddy、runsc。
-2. 创建 `/var/www/amigo/frontend`、`/var/www/amigo/backend`、`/var/www/amigo/shared`、`/var/www/amigo/cache`。
-3. 准备 `/var/www/amigo/shared/amigo.env`。
-4. 安装 systemd 服务。
-5. 安装 Caddy 配置并 reload。
-6. 手动执行一次部署脚本确认环境无误：
+1. 安装 Bun、Docker、Caddy、MySQL、runsc
+2. 创建 `/var/www/amigo/...` 目录
+3. 创建 MySQL 数据库与账号
+4. 准备 `/var/www/amigo/shared/amigo.env`
+5. 安装 systemd 服务
+6. 安装 Caddy 配置
+7. 上传构建产物
+8. 执行 `systemctl restart amigo`
+9. 用 `journalctl -u amigo` 检查 migration 和启动日志
 
-```bash
-AMIGO_DEPLOY_ROOT=/var/www/amigo bash /var/www/amigo/backend/deploy-amigo.sh
-```
+## 关键点
 
-7. 确认服务正常后，再依赖 GitHub Actions 自动部署。
-
-你这台机器第一次建议先手工执行这些命令：
-
-```bash
-ssh ubuntu@101.36.117.121
-sudo mkdir -p /var/www/amigo/frontend /var/www/amigo/backend /var/www/amigo/shared /var/www/amigo/cache
-sudo chown -R ubuntu:ubuntu /var/www/amigo
-sudo cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.bak.$(date +%F-%H%M%S)
-```
-
-然后把下面两个文件分别放上去：
-
-- `ops/systemd/amigo.service` -> `/etc/systemd/system/amigo.service`
-- `ops/caddy/Caddyfile.example` -> `/etc/caddy/Caddyfile`
-
-再执行：
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable amigo
-sudo systemctl restart caddy
-```
-
-## Sandbox 准备项
-
-Amigo 在 Linux 下默认使用 `runsc`。因此你至少要保证：
-
-- Docker 正常运行
-- `runsc` 已安装
-- Docker 已注册 `runsc`
-- 服务器能执行 `docker build`
-- `/var/www/amigo/backend/assets/Dockerfile` 存在
-
-部署脚本会在每次部署时自动执行：
-
-```bash
-docker build -t ai_sandbox /var/www/amigo/backend/assets
-```
-
-所以你不用手动维护 `ai_sandbox`，但要保证构建依赖和网络可用。
-
-如果你暂时不想启用 gVisor，可以在 `/var/www/amigo/shared/amigo.env` 里改成：
-
-```env
-AMIGO_SANDBOX_RUNTIME=runc
-```
-
-## Penpot 准备项
-
-如果你要启用 Penpot，同步链路依赖：
-
-- 一个可访问的 Penpot 实例
-- Penpot 个人 access token
-- 目标 team id
-- 目标 project id
-
-Amigo 侧需要配置：
-
-```env
-PENPOT_BASE_URL=https://penpot.example.com
-PENPOT_ACCESS_TOKEN=your_penpot_token
-PENPOT_TEAM_ID=team_id
-PENPOT_PROJECT_ID=project_id
-```
-
-Penpot 本身建议独立部署，不要和 Amigo 强耦合到同一个进程里。最稳妥的方式是：
-
-1. 单独给 Penpot 一个二级域名，例如 `penpot.example.com`
-2. 按官方 Docker Compose 方案部署
-3. 由 Caddy 给 Penpot 单独签 HTTPS
-4. 在 Penpot 后台生成 access token，再回填到 `amigo.env`
-
-如果你只是想先把 Amigo 上线，Penpot 完全可以后补。
-
-## 官方参考
-
-- Penpot Docker 自托管文档：
-  https://help.penpot.app/technical-guide/getting-started/docker/
-- Penpot access token 文档：
-  https://help.penpot.app/technical-guide/integration/
-- gVisor `runsc` 安装文档：
-  https://gvisor.dev/docs/user_guide/install/
-- gVisor Docker quick start：
-  https://gvisor.dev/docs/user_guide/quick_start/docker/
+- MySQL 是完整应用必需项
+- 应用启动时会自动跑 migration
+- 如果 `MYSQL_*` 缺失，服务会直接启动失败
+- `cachePath` 只用于运行时缓存和 sandbox 资产，不承载业务真相

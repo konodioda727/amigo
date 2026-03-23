@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ResolvedModelConfigSnapshotSchema } from "./modelConfigSnapshot";
 
 export const UserMessageAttachmentKindSchema = z.enum(["image", "video", "audio", "file"]);
 
@@ -20,5 +21,6 @@ export const UserSendMessageSchema = z.object({
     message: z.string(),
     taskId: z.string(),
     attachments: z.array(UserMessageAttachmentSchema).optional(),
+    modelConfigSnapshot: ResolvedModelConfigSnapshotSchema.optional(),
   }),
 });

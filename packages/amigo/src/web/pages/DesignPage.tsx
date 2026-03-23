@@ -35,6 +35,9 @@ interface PenpotBindingResponse {
 const fetchPenpotBindingDetail = async (httpBaseUrl: string, taskId: string, pageId: string) => {
   const response = await fetch(
     `${httpBaseUrl}/api/tasks/${encodeURIComponent(taskId)}/penpot/${encodeURIComponent(pageId)}`,
+    {
+      credentials: "include",
+    },
   );
   return (await response.json()) as PenpotBindingResponse;
 };
@@ -42,7 +45,10 @@ const fetchPenpotBindingDetail = async (httpBaseUrl: string, taskId: string, pag
 const postPenpotImport = async (httpBaseUrl: string, taskId: string, pageId: string) => {
   const response = await fetch(
     `${httpBaseUrl}/api/tasks/${encodeURIComponent(taskId)}/penpot/${encodeURIComponent(pageId)}/import`,
-    { method: "POST" },
+    {
+      method: "POST",
+      credentials: "include",
+    },
   );
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -80,6 +86,9 @@ const DesignPage: React.FC = () => {
       try {
         const response = await fetch(
           `${httpBaseUrl}/api/tasks/${encodeURIComponent(taskId)}/design-docs`,
+          {
+            credentials: "include",
+          },
         );
         const data = await response.json();
         const items = Array.isArray(data.items) ? (data.items as DesignDocListItem[]) : [];

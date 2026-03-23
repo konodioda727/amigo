@@ -145,6 +145,13 @@ export const notificationChannelsTable = mysqlTable(
   }),
 );
 
+export const userModelConfigsTable = mysqlTable("user_model_configs", {
+  userId: char("user_id", { length: 36 }).notNull().primaryKey(),
+  settingsJson: json("settings_json").$type<Record<string, unknown>>().notNull(),
+  createdAt: datetime("created_at", { mode: "string", fsp: 3 }).notNull(),
+  updatedAt: datetime("updated_at", { mode: "string", fsp: 3 }).notNull(),
+});
+
 export const conversationsTable = mysqlTable("conversations", {
   id: char("id", { length: 36 }).notNull().primaryKey(),
   userId: char("user_id", { length: 36 }).notNull(),
@@ -183,6 +190,7 @@ export const conversationStateTable = mysqlTable("conversation_state", {
   conversationId: char("conversation_id", { length: 36 }).notNull().primaryKey(),
   initialSystemPrompt: longtext("initial_system_prompt"),
   toolNamesJson: json("tool_names_json").$type<string[]>().notNull(),
+  modelConfigJson: json("model_config_json").$type<Record<string, unknown> | null>().notNull(),
   autoApproveToolNamesJson: json("auto_approve_tool_names_json").$type<string[]>().notNull(),
   pendingToolCallJson: json("pending_tool_call_json").$type<unknown | null>(),
   subtasksJson: json("subtasks_json").$type<Record<string, unknown>>().notNull(),

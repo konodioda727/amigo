@@ -25,7 +25,7 @@ export const GithubBootstrapModal: React.FC<GithubBootstrapModalProps> = ({ open
 
   const handleSubmit = async () => {
     if (!repoUrl.trim()) {
-      toast.error("请输入 GitHub 仓库地址");
+      toast.error("请先输入 GitHub 仓库链接");
       return;
     }
 
@@ -36,7 +36,9 @@ export const GithubBootstrapModal: React.FC<GithubBootstrapModalProps> = ({ open
         branch: branch.trim() || undefined,
       });
       setPendingBootstrap(result);
-      toast.success(`仓库已预热：${result.repoName}@${result.branch}`);
+      toast.success(
+        `仓库已准备好：${result.repoName}${result.branch ? ` · ${result.branch}` : ""}`,
+      );
       onClose();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));
@@ -50,7 +52,7 @@ export const GithubBootstrapModal: React.FC<GithubBootstrapModalProps> = ({ open
       className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="从 GitHub 预热仓库"
+      aria-label="添加 GitHub 仓库"
       onClick={onClose}
     >
       <div
@@ -61,10 +63,10 @@ export const GithubBootstrapModal: React.FC<GithubBootstrapModalProps> = ({ open
           <div>
             <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
               <Github className="h-4 w-4" />
-              <span>从 GitHub 预热仓库</span>
+              <span>添加 GitHub 仓库</span>
             </div>
             <div className="mt-1 text-xs leading-5 text-gray-500">
-              这里只缓存仓库，不会立即创建容器。进入会话后，仓库会在首次创建 sandbox 时自动导入。
+              先把仓库准备好。开始新对话时，Amigo 会自动把代码带进来，你可以直接继续提问或修改。
             </div>
           </div>
           <button
@@ -78,22 +80,28 @@ export const GithubBootstrapModal: React.FC<GithubBootstrapModalProps> = ({ open
         </div>
 
         <div className="space-y-3">
-          <input
-            type="text"
-            value={repoUrl}
-            onChange={(event) => setRepoUrl(event.target.value)}
-            placeholder="https://github.com/owner/repo"
-            className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-400"
-            disabled={isSubmitting}
-          />
-          <input
-            type="text"
-            value={branch}
-            onChange={(event) => setBranch(event.target.value)}
-            placeholder="分支（可选）"
-            className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-400"
-            disabled={isSubmitting}
-          />
+          <label className="block space-y-2">
+            <span className="text-sm font-medium text-gray-700">仓库链接</span>
+            <input
+              type="text"
+              value={repoUrl}
+              onChange={(event) => setRepoUrl(event.target.value)}
+              placeholder="https://github.com/owner/repo"
+              className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-400"
+              disabled={isSubmitting}
+            />
+          </label>
+          <label className="block space-y-2">
+            <span className="text-sm font-medium text-gray-700">分支</span>
+            <input
+              type="text"
+              value={branch}
+              onChange={(event) => setBranch(event.target.value)}
+              placeholder="不填则使用默认分支"
+              className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-400"
+              disabled={isSubmitting}
+            />
+          </label>
         </div>
 
         <div className="mt-5 flex items-center justify-end gap-2">
@@ -112,7 +120,7 @@ export const GithubBootstrapModal: React.FC<GithubBootstrapModalProps> = ({ open
             disabled={isSubmitting}
           >
             {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            <span>{isSubmitting ? "预热中..." : "开始预热"}</span>
+            <span>{isSubmitting ? "准备中..." : "添加仓库"}</span>
           </button>
         </div>
       </div>

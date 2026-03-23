@@ -13,6 +13,7 @@ import {
 import { getConversationPersistenceProvider } from "@/core/persistence";
 import type { ConversationPersistenceRecord } from "@/core/persistence/types";
 import { getTaskStoragePath } from "@/core/storage";
+import type { ResolvedModelConfig } from "../model/contextConfig";
 
 /**
  * 文件持久化内存管理类
@@ -28,6 +29,7 @@ export class FilePersistedMemory {
   private _initialSystemPrompt?: string;
   private _toolNames: string[] = [];
   private _context: unknown;
+  private _modelConfigSnapshot?: ResolvedModelConfig;
   private _autoApproveToolNames: string[] = [];
   private _pendingToolCall: PendingToolCall | null = null;
   private _subTasks: Record<string, SubTaskStatus> = {};
@@ -179,6 +181,7 @@ export class FilePersistedMemory {
     this._conversationStatus = record.conversationStatus;
     this._toolNames = [...record.toolNames];
     this._context = record.context;
+    this._modelConfigSnapshot = record.modelConfigSnapshot;
     this._autoApproveToolNames = [...record.autoApproveToolNames];
     this._pendingToolCall = record.pendingToolCall;
     this._subTasks = { ...record.subTasks };
@@ -208,6 +211,7 @@ export class FilePersistedMemory {
       initialSystemPrompt: this._initialSystemPrompt,
       toolNames: [...this._toolNames],
       context: this._context,
+      modelConfigSnapshot: this._modelConfigSnapshot,
       autoApproveToolNames: [...this._autoApproveToolNames],
       pendingToolCall: this._pendingToolCall,
       subTasks: { ...this._subTasks },
@@ -312,6 +316,15 @@ export class FilePersistedMemory {
 
   public setContext(context: unknown): void {
     this._context = context;
+    this.saveTaskStatus();
+  }
+
+  public get modelConfigSnapshot(): ResolvedModelConfig | undefined {
+    return this._modelConfigSnapshot;
+  }
+
+  public setModelConfigSnapshot(modelConfigSnapshot: ResolvedModelConfig | undefined): void {
+    this._modelConfigSnapshot = modelConfigSnapshot;
     this.saveTaskStatus();
   }
 

@@ -45,6 +45,7 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
       placeholder = "Type a message...",
       onSend,
       createTaskContext,
+      modelConfigSnapshot,
       disabled = false,
       showMentions = true,
       bottomAccessory,
@@ -224,9 +225,14 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
       const currentTaskTargetId = taskId || mainTaskId;
 
       if (!currentTaskTargetId || currentTaskTargetId.trim() === "") {
-        sendCreateTask(content, attachments, createTaskContext);
+        sendCreateTask(content, attachments, createTaskContext, modelConfigSnapshot);
       } else {
-        sendMessage(content, effectiveSessionId || currentTaskTargetId, attachments);
+        sendMessage(
+          content,
+          effectiveSessionId || currentTaskTargetId,
+          attachments,
+          modelConfigSnapshot,
+        );
       }
 
       onSend?.(content);
@@ -237,6 +243,7 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
       disabled,
       editor,
       mainTaskId,
+      modelConfigSnapshot,
       onSend,
       pendingAttachments,
       sendCreateTask,

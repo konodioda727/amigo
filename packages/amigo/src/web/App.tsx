@@ -76,7 +76,7 @@ const ProtectedRoutes: React.FC<{ wsUrl: string }> = ({ wsUrl }) => {
   if (isPending) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50 text-sm text-gray-500">
-        正在验证登录状态...
+        正在检查登录状态...
       </div>
     );
   }

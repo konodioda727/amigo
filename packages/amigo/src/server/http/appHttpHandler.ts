@@ -27,6 +27,10 @@ import {
   cancelGithubBootstrapController,
 } from "./controllers/githubBootstrapController";
 import {
+  getUserModelConfigsController,
+  upsertUserModelConfigsController,
+} from "./controllers/modelConfigController";
+import {
   createOssPolicyController,
   deleteOssObjectController,
 } from "./controllers/ossUploadController";
@@ -330,6 +334,16 @@ export const createAmigoHttpHandler = (
       method: "GET",
       pattern: /^\/api\/skills\/?$/,
       controller: (_req, _match, userId) => listSkillsController(options.skillStore, userId || ""),
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/model-configs\/?$/,
+      controller: (_req, _match, userId) => getUserModelConfigsController(userId || ""),
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/model-configs\/?$/,
+      controller: (req, _match, userId) => upsertUserModelConfigsController(req, userId || ""),
     },
     {
       method: "GET",

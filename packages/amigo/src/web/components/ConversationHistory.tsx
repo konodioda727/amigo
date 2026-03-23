@@ -1,5 +1,5 @@
 import { useSendMessage, useWebSocketContext } from "@amigo-llm/frontend";
-import { Loader2, MessageCircle, Trash2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useSidebar } from "./Layout/index";
@@ -15,6 +15,7 @@ const ConversationHistory = () => {
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
 
   const currentTaskId = activeTaskId ?? mainTaskId;
+  const histories = taskHistories || [];
 
   const handleSelectConversation = (taskId: string) => {
     store.getState().setMainTaskId(taskId);
@@ -24,74 +25,70 @@ const ConversationHistory = () => {
     }
   };
 
-  const handleDelete = (taskId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDelete = (taskId: string, event: React.MouseEvent) => {
+    event.stopPropagation();
 
-    if (window.confirm("确定要删除这个对话吗？")) {
-      setDeletingTaskId(taskId);
-
-      if (currentTaskId === taskId) {
-        navigate("/");
-      }
-
-      sendDeleteTask(taskId);
+    if (!window.confirm("确定要删除这个对话吗？")) {
+      return;
     }
+
+    setDeletingTaskId(taskId);
+    if (currentTaskId === taskId) {
+      navigate("/");
+    }
+    sendDeleteTask(taskId);
   };
 
-  if (!taskHistories || taskHistories.length === 0) {
-    return null;
-  }
-
   return (
-    <div className="space-y-0.5">
-      {taskHistories.map((history) => {
-        const isActive = history.taskId === currentTaskId;
-        const isDeleting = deletingTaskId === history.taskId;
-        return (
-          <div
-            key={history.taskId}
-            className={`relative group flex items-center gap-2.5 px-2 py-2 rounded-xl transition-colors ${
-              isActive
-                ? "bg-white shadow-sm border border-gray-100 text-gray-900"
-                : "text-gray-600 hover:bg-gray-200/40 hover:text-gray-900 border border-transparent"
-            } ${isDeleting ? "opacity-50" : ""}`}
-          >
-            <button
-              type="button"
-              onClick={() => handleSelectConversation(history.taskId)}
-              className="flex items-center gap-2.5 flex-1 text-left min-w-0"
-              disabled={isDeleting}
-            >
-              <div
-                className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
-                  isActive
-                    ? "bg-gray-50 border border-gray-100/50"
-                    : "bg-transparent group-hover:bg-white"
-                }`}
-              >
-                <MessageCircle size={14} className={isActive ? "text-gray-700" : "text-gray-400"} />
-              </div>
-              <span className="text-[13px] font-medium truncate flex-1 pr-2">
-                {history.title || "新对话"}
-              </span>
-            </button>
+    <div className="space-y-1.5">
+      <div className="px-2.5 pb-0.5 text-[13px] font-medium text-slate-400">你的聊天</div>
 
-            {/* Delete button - shows on hover */}
-            <button
-              type="button"
-              onClick={(e) => handleDelete(history.taskId, e)}
-              className={`p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors transition-opacity shrink-0 ${
-                isDeleting ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-              }`}
-              aria-label={`删除对话: ${history.title}`}
-              title="删除对话"
-              disabled={isDeleting}
+      <div className="space-y-1">
+        {histories.map((history) => {
+          const isActive = history.taskId === currentTaskId;
+          const isDeleting = deletingTaskId === history.taskId;
+
+          return (
+            <div
+              key={history.taskId}
+              className={`group flex min-h-8 items-center px-2.5 py-1 transition ${
+                isActive
+                  ? "rounded-sm bg-white text-slate-900"
+                  : "rounded-sm text-slate-600 hover:bg-white hover:text-slate-900"
+              } ${isDeleting ? "opacity-50" : ""}`}
             >
-              {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-            </button>
-          </div>
-        );
-      })}
+              <button
+                type="button"
+                onClick={() => handleSelectConversation(history.taskId)}
+                className="min-w-0 flex-1 pr-1 text-left"
+                disabled={isDeleting}
+              >
+                <span className="block truncate text-sm">{history.title || "新对话"}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={(event) => handleDelete(history.taskId, event)}
+                className={`ml-1 shrink-0 rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-rose-600 ${
+                  isDeleting ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                }`}
+                disabled={isDeleting}
+                title="删除对话"
+              >
+                {isDeleting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {histories.length === 0 ? (
+        <div className="px-2.5 py-3 text-sm text-slate-400">还没有聊天记录</div>
+      ) : null}
     </div>
   );
 };

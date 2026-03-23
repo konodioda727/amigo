@@ -644,6 +644,134 @@ CREATE TABLE IF NOT EXISTS auth_verifications (
       `,
     ]),
   },
+  {
+    version: 4,
+    name: "conversation_model_config_snapshot",
+    statements: [
+      `
+SET @amigo_has_model_config_json = (
+  SELECT COUNT(*)
+  FROM information_schema.columns
+  WHERE table_schema = DATABASE()
+    AND table_name = 'conversation_state'
+    AND column_name = 'model_config_json'
+)
+      `,
+      `
+SET @amigo_add_model_config_json_sql = IF(
+  @amigo_has_model_config_json = 0,
+  'ALTER TABLE conversation_state ADD COLUMN model_config_json JSON NULL AFTER tool_names_json',
+  'SELECT 1'
+)
+      `,
+      `
+PREPARE amigo_add_model_config_json_stmt FROM @amigo_add_model_config_json_sql
+      `,
+      `
+EXECUTE amigo_add_model_config_json_stmt
+      `,
+      `
+DEALLOCATE PREPARE amigo_add_model_config_json_stmt
+      `,
+      `
+UPDATE conversation_state
+SET model_config_json = JSON_OBJECT()
+WHERE model_config_json IS NULL
+      `,
+      `
+SET @amigo_model_config_json_not_null_sql = IF(
+  @amigo_has_model_config_json = 0,
+  'ALTER TABLE conversation_state MODIFY COLUMN model_config_json JSON NOT NULL',
+  'SELECT 1'
+)
+      `,
+      `
+PREPARE amigo_model_config_json_not_null_stmt FROM @amigo_model_config_json_not_null_sql
+      `,
+      `
+EXECUTE amigo_model_config_json_not_null_stmt
+      `,
+      `
+DEALLOCATE PREPARE amigo_model_config_json_not_null_stmt
+      `,
+    ],
+    checksum: migrationChecksum(4, "conversation_model_config_snapshot", [
+      `
+SET @amigo_has_model_config_json = (
+  SELECT COUNT(*)
+  FROM information_schema.columns
+  WHERE table_schema = DATABASE()
+    AND table_name = 'conversation_state'
+    AND column_name = 'model_config_json'
+)
+      `,
+      `
+SET @amigo_add_model_config_json_sql = IF(
+  @amigo_has_model_config_json = 0,
+  'ALTER TABLE conversation_state ADD COLUMN model_config_json JSON NULL AFTER tool_names_json',
+  'SELECT 1'
+)
+      `,
+      `
+PREPARE amigo_add_model_config_json_stmt FROM @amigo_add_model_config_json_sql
+      `,
+      `
+EXECUTE amigo_add_model_config_json_stmt
+      `,
+      `
+DEALLOCATE PREPARE amigo_add_model_config_json_stmt
+      `,
+      `
+UPDATE conversation_state
+SET model_config_json = JSON_OBJECT()
+WHERE model_config_json IS NULL
+      `,
+      `
+SET @amigo_model_config_json_not_null_sql = IF(
+  @amigo_has_model_config_json = 0,
+  'ALTER TABLE conversation_state MODIFY COLUMN model_config_json JSON NOT NULL',
+  'SELECT 1'
+)
+      `,
+      `
+PREPARE amigo_model_config_json_not_null_stmt FROM @amigo_model_config_json_not_null_sql
+      `,
+      `
+EXECUTE amigo_model_config_json_not_null_stmt
+      `,
+      `
+DEALLOCATE PREPARE amigo_model_config_json_not_null_stmt
+      `,
+    ]),
+  },
+  {
+    version: 5,
+    name: "user_model_configs",
+    statements: [
+      `
+CREATE TABLE IF NOT EXISTS user_model_configs (
+  user_id CHAR(36) NOT NULL,
+  settings_json JSON NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (user_id),
+  CONSTRAINT fk_user_model_configs_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `,
+    ],
+    checksum: migrationChecksum(5, "user_model_configs", [
+      `
+CREATE TABLE IF NOT EXISTS user_model_configs (
+  user_id CHAR(36) NOT NULL,
+  settings_json JSON NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (user_id),
+  CONSTRAINT fk_user_model_configs_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `,
+    ]),
+  },
 ];
 
 const ensureSchemaMigrationsTable = async (pool: Pool): Promise<void> => {

@@ -8,7 +8,7 @@ import Sidebar from "../Sidebar";
 
 const TOUCH_EDGE_THRESHOLD = 30;
 const SWIPE_THRESHOLD = 50;
-const SIDEBAR_WIDTH = 260; // px
+const SIDEBAR_WIDTH = 208; // px
 const DESKTOP_BREAKPOINT = 768; // md breakpoint in Tailwind
 
 interface SidebarContextType {
@@ -66,11 +66,10 @@ const Layout: FC<LayoutProps> = ({ children }) => {
 
   return (
     <SidebarContext.Provider value={{ isOpen, toggle, close }}>
-      <div className="h-screen flex flex-col overflow-hidden">
+      <div className="flex h-screen flex-col overflow-hidden">
         <Header />
 
-        <div className="flex-1 flex overflow-hidden relative">
-          {/* 移动端侧边栏遮罩 */}
+        <div className="relative flex flex-1 overflow-hidden">
           {!isDesktop && (
             <div
               className={`fixed inset-0 z-40 bg-black/40 transition-opacity duration-300 ${
@@ -81,15 +80,12 @@ const Layout: FC<LayoutProps> = ({ children }) => {
             />
           )}
 
-          {/* 侧边栏 - 桌面端固定宽度，移动端底部弹出 Drawer */}
           <aside
             className={`
               ${
                 isDesktop
-                  ? `${
-                      isOpen ? "w-auto" : "w-0"
-                    } relative h-full bg-neutral-50/80 border-r border-gray-200 transition-[width] duration-300 ease-in-out overflow-hidden shrink-0`
-                  : `fixed inset-x-0 bottom-0 z-50 flex flex-col h-[85dvh] bg-neutral-50/85 backdrop-blur-xl border-t border-white/40 rounded-t-3xl shadow-[0_-8px_30px_-5px_rgba(0,0,0,0.1)] transition-transform duration-300 ease-in-out ${
+                  ? `${isOpen ? "w-auto" : "w-0"} relative h-full shrink-0 overflow-hidden border-r border-slate-200 bg-[#f7f7f7] transition-[width] duration-300 ease-in-out`
+                  : `fixed inset-x-0 bottom-0 z-50 flex h-[85dvh] flex-col overflow-hidden border-t border-slate-200 bg-[#f7f7f7] transition-transform duration-300 ease-in-out ${
                       isOpen ? "translate-y-0" : "translate-y-full"
                     }`
               }
@@ -97,26 +93,25 @@ const Layout: FC<LayoutProps> = ({ children }) => {
             style={isDesktop && isOpen ? { width: `${SIDEBAR_WIDTH}px` } : undefined}
             aria-hidden={!isOpen}
           >
-            {/* 移动端拖拽把手 */}
             {!isDesktop && (
               <button
                 type="button"
-                className="w-full flex justify-center py-3 shrink-0 cursor-pointer touch-none bg-transparent border-none"
+                className="flex w-full shrink-0 cursor-pointer justify-center border-none bg-transparent py-3 touch-none"
                 onClick={close}
                 aria-label="关闭侧边栏"
               >
-                <div className="w-12 h-1.5 bg-gray-300 rounded-full" />
+                <div className="h-1.5 w-12 rounded-full bg-gray-300" />
               </button>
             )}
             <div
-              className="w-full flex-1 overflow-hidden flex flex-col"
+              className="flex h-full w-full flex-1 flex-col overflow-hidden"
               style={isDesktop ? { maxWidth: `${SIDEBAR_WIDTH}px` } : undefined}
             >
               <Sidebar />
             </div>
           </aside>
 
-          <main className="flex-1 flex flex-col items-center overflow-hidden min-w-0">
+          <main className="flex min-w-0 flex-1 flex-col items-center overflow-hidden">
             {children}
           </main>
 

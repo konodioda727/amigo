@@ -1,24 +1,25 @@
 # @amigo-llm/backend
 
-`@amigo-llm/backend` 是 Amigo 的后端 SDK，提供会话运行时、任务编排、工具系统、sandbox 能力和 conversation WebSocket runtime。
+`@amigo-llm/backend` 是 Amigo 的后端 SDK。
 
-它适合用来构建：
+它负责：
 
-- headless agent 服务
-- benchmark / batch runner
-- 带自定义工具和消息协议的 coding agent
-- 由应用自己托管 HTTP 路由和页面壳层的完整产品
+- 会话模型
+- 任务编排
+- 工具系统
+- sandbox 调用抽象
+- conversation WebSocket runtime
+- 持久化接口与调用流程
 
-如果你是在外部项目里扩展 Amigo，优先使用：
+它不负责：
 
-```ts
-import {
-  AmigoServerBuilder,
-  defineMessage,
-  defineTool,
-  type SandboxManager,
-} from "@amigo-llm/backend/sdk";
-```
+- MySQL / PostgreSQL / SQLite 的连接参数
+- migration
+- HTTP 路由
+- 认证
+- 产品级页面与集成
+
+这些都属于应用层。
 
 ## 安装
 
@@ -28,46 +29,58 @@ bun add @amigo-llm/backend @amigo-llm/types zod
 
 运行时基于 Bun，建议直接在 Bun 环境下使用。
 
-## 快速开始
+## 核心原则
 
-```ts
-import { AmigoServerBuilder } from "@amigo-llm/backend/sdk";
+backend 只认持久化抽象，不认具体数据库。
 
-const server = new AmigoServerBuilder()
-  .port(10013)
-  .cachePath("./.amigo")
-  .loggerConfig({ enableTimestamp: true })
-  .build();
+当前核心接口见：
 
-server.start();
-```
+- [src/core/persistence/types.ts](/Users/lawkaiqing/code/amigo/packages/backend/src/core/persistence/types.ts)
 
-同时提供 `server.init()`，推荐统一使用 `server.start()`。
+应用必须注入一个 `ConversationPersistenceProvider`。  
+backend 不再默认回退文件存储。
 
-这会启动一个 headless conversation WebSocket runtime。应用可以在自己的 `Bun.serve(...)` 里接入这个 runtime，再补充自己的 HTTP 路由、鉴权和页面壳层。
+## 最小示例
 
-`editor` 跳转、`preview` 路由、preview HTTP / WebSocket 反代都属于应用层能力，不属于 backend SDK 本身。
-
-例如：
+下面是一个最小的 headless runtime 例子。重点是：应用自己提供 provider。
 
 ```ts
 import Bun from "bun";
-import { AmigoServerBuilder } from "@amigo-llm/backend/sdk";
+import {
+  AmigoServerBuilder,
+  type ConversationPersistenceProvider,
+} from "@amigo-llm/backend/sdk";
+
+const persistenceProvider: ConversationPersistenceProvider = {
+  exists(taskId) {
+    throw new Error("implement exists");
+  },
+  load(taskId) {
+    throw new Error("implement load");
+  },
+  save(record) {
+    throw new Error("implement save");
+  },
+  delete(taskId) {
+    throw new Error("implement delete");
+  },
+  listConversationRelations() {
+    return [];
+  },
+  listSessionHistories() {
+    return [];
+  },
+};
 
 const runtime = new AmigoServerBuilder()
   .port(10013)
   .cachePath("./.amigo")
+  .conversationPersistenceProvider(persistenceProvider)
   .build();
 
 Bun.serve({
   port: 10013,
   fetch(req, server) {
-    const url = new URL(req.url);
-
-    if (url.pathname === "/healthz") {
-      return new Response("ok");
-    }
-
     if (
       (req.headers.get("upgrade") || "").toLowerCase() === "websocket" &&
       runtime.tryUpgradeConversationWebSocket(req, server)
@@ -88,19 +101,18 @@ Bun.serve({
 
 ## Builder API
 
-`AmigoServerBuilder` 是 SDK 的主入口。
+`AmigoServerBuilder` 是 SDK 主入口。
 
 ### 基础配置
 
 ```ts
-new AmigoServerBuilder().port(10013).cachePath("./.amigo");
+new AmigoServerBuilder()
+  .port(10013)
+  .cachePath("./.amigo")
+  .conversationPersistenceProvider(provider);
 ```
 
-也可以显式配置日志：
-
-```ts
-new AmigoServerBuilder().loggerConfig({ enableTimestamp: false });
-```
+`conversationPersistenceProvider(...)` 是必填项。
 
 ### 注册工具
 
@@ -111,30 +123,21 @@ const echoTool = defineTool({
   name: "echoText",
   description: "回显输入文本",
   params: [{ name: "text", optional: false, description: "输入内容" }],
-  async invoke({ params, context }) {
-    context.postMessage?.({ type: "tool-progress", data: { stage: "running" } });
-
+  async invoke({ params }) {
     return {
-      message: `echo 完成：${String(params.text)}`,
-      toolResult: {
-        ok: true,
-        text: params.text,
-      },
+      message: `echo 完成: ${String(params.text)}`,
+      toolResult: { text: params.text },
     };
   },
 });
 
-const server = new AmigoServerBuilder().registerTool(echoTool).build();
+const server = new AmigoServerBuilder()
+  .port(10013)
+  .cachePath("./.amigo")
+  .conversationPersistenceProvider(provider)
+  .registerTool(echoTool)
+  .build();
 ```
-
-工具执行上下文里最常用的字段是：
-
-- `context.taskId`
-- `context.parentId`
-- `context.signal`
-- `context.postMessage()`
-- `context.getSandbox()`
-- `context.getToolByName()`
 
 ### 注册自定义消息
 
@@ -142,166 +145,78 @@ const server = new AmigoServerBuilder().registerTool(echoTool).build();
 import { z } from "zod";
 import { AmigoServerBuilder, defineMessage } from "@amigo-llm/backend/sdk";
 
-const pingCustom = defineMessage({
+const pingMessage = defineMessage({
   type: "pingCustom",
   dataSchema: z.object({
     traceId: z.string(),
-    payload: z.string().optional(),
   }),
   async handler(data) {
-    console.log("收到自定义消息", data.traceId, data.payload);
+    console.log("received", data.traceId);
   },
 });
 
-const server = new AmigoServerBuilder().registerMessage(pingCustom).build();
-```
-
-行为边界：
-
-- 内置消息优先走内置 resolver
-- 只有未命中内置消息时，才会尝试匹配你注册的消息
-- 消息会先经过 schema 校验，再执行 `handler`
-
-### 模型工厂注入
-
-默认情况下，服务端会从环境变量里创建模型实例。你也可以接管这一步：
-
-```ts
-import { AmigoServerBuilder } from "@amigo-llm/backend/sdk";
-
-const server = new AmigoServerBuilder()
-  .modelProvider(() => {
-    return {
-      async completion() {
-        throw new Error("demo");
-      },
-    } as any;
-  })
+new AmigoServerBuilder()
+  .port(10013)
+  .cachePath("./.amigo")
+  .conversationPersistenceProvider(provider)
+  .registerMessage(pingMessage)
   .build();
 ```
 
-适合：
+### 模型工厂与模型配置
 
-- 多模型路由
-- mock / test
-- 对接自定义 provider
-
-### 模型配置与自动压缩
-
-如果你希望按模型统一配置 provider、baseURL、上下文窗口，并在接近阈值时自动压缩历史上下文：
+可以直接注入模型工厂：
 
 ```ts
-new AmigoServerBuilder().modelConfigs({
-  "qwen3-coder": {
-    provider: "openai-compatible",
-    baseURL: "https://openrouter.ai/api/v1",
-    contextWindow: 262144,
-    compressionThreshold: 0.8,
-    targetRatio: 0.5,
-  },
-});
+new AmigoServerBuilder()
+  .conversationPersistenceProvider(provider)
+  .modelProvider(() => {
+    return {
+      async completion() {
+        throw new Error("implement model");
+      },
+    } as any;
+  });
 ```
 
-如果你希望在配置时拿到更好的类型提示，可以从 SDK 导入 `MODEL_PROVIDERS`、`KnownModelProvider` 和 `ModelConfig`。
+也可以配置模型元信息：
 
-`modelConfigs()` 是推荐入口。旧的 `modelContextConfigs()` 仍兼容，但后续建议统一迁移到 `modelConfigs`。
-
-行为说明：
-
-- 当前任务的上下文占比会同步到 `taskStatusMapUpdated.data.contextUsage`
-- 当占比达到 `compressionThreshold` 时，服务端会先总结较早的会话，再只携带“压缩摘要锚点及其之后”的上下文继续调用模型
-- 压缩开始 / 完成 / 失败会通过 `alert` 消息同步到前端
-- provider 解析优先读取 `modelConfigs[model].provider`；未配置时，仍会回退到 SDK 内置的默认 provider 规则
+```ts
+new AmigoServerBuilder()
+  .conversationPersistenceProvider(provider)
+  .modelConfigs({
+    "qwen3-coder": {
+      provider: "openai-compatible",
+      baseURL: "https://openrouter.ai/api/v1",
+      contextWindow: 262144,
+      compressionThreshold: 0.8,
+      targetRatio: 0.5,
+    },
+  });
+```
 
 ### 自动批准工具
 
 ```ts
 new AmigoServerBuilder()
-  .autoApproveTools(["readFile", "browserSearch"])
-  .addAutoApproveTools(["bash"]);
+  .conversationPersistenceProvider(provider)
+  .autoApproveTools(["readFile", "browserSearch"]);
 ```
 
-如果你要完全覆盖 core 默认自动批准列表，也可以：
+### 系统提示词
 
 ```ts
 new AmigoServerBuilder()
-  .defaultAutoApproveTools([])
-  .autoApproveTools(["readFile", "editFile", "bash"]);
+  .conversationPersistenceProvider(provider)
+  .appendSystemPrompt("你是一个 coding agent。");
 ```
 
-### 追加系统提示词
+### sandbox manager
+
+如果应用希望替换 sandbox 生命周期和容器实现，可以注入自己的 manager：
 
 ```ts
-new AmigoServerBuilder()
-  .appendSystemPrompt("你是一个 coding agent，先搜索定位，再修改并验证。");
-```
-
-### 覆盖默认 system prompt
-
-如果你不希望在默认 prompt 后追加，而是希望按 `main` / `sub` 完整替换：
-
-```ts
-new AmigoServerBuilder()
-  .mainSystemPrompt("你是一个 benchmark agent，只做仓库修复。")
-  .subSystemPrompt("你是一个子任务修复代理，只返回执行结果。");
-```
-
-也可以一次性传入：
-
-```ts
-new AmigoServerBuilder().systemPrompts({
-  main: "main prompt",
-  sub: "sub prompt",
-});
-```
-
-说明：
-
-- `mainSystemPrompt()` / `subSystemPrompt()` / `systemPrompts()` 用于覆盖默认 prompt
-- `appendSystemPrompt()` 也可用于在覆盖后的 prompt 末尾继续追加内容
-
-### 覆盖基础工具集合
-
-如果你要做 benchmark app、batch app，通常不希望沿用默认基础工具集合。此时可以直接覆盖：
-
-```ts
-import { AmigoServerBuilder, defineTool } from "@amigo-llm/backend/sdk";
-
-const projectLookup = defineTool({
-  name: "projectLookup",
-  description: "在仓库内搜索文本",
-  params: [{ name: "query", optional: false, description: "搜索关键词" }],
-  async invoke() {
-    return {
-      message: "not implemented",
-      toolResult: {},
-    };
-  },
-});
-
-new AmigoServerBuilder().baseTools({
-  main: [projectLookup],
-  sub: [projectLookup],
-});
-```
-
-也可以分别设置：
-
-```ts
-new AmigoServerBuilder().mainBaseTools([projectLookup]).subBaseTools([projectLookup]);
-```
-
-说明：
-
-- `baseTools()` 会覆盖默认 `main` / `sub` 基础工具集合
-- 不配置时，仍然使用 core 默认基础工具
-
-### 注入 sandbox manager
-
-如果你希望沿用 `context.getSandbox()` 这套调用方式，但把 sandbox 生命周期、镜像、容器后端或仓库挂载逻辑换掉，可以注入自定义 manager：
-
-```ts
-import { AmigoServerBuilder, type SandboxManager } from "@amigo-llm/backend/sdk";
+import { type SandboxManager } from "@amigo-llm/backend/sdk";
 
 const sandboxManager: SandboxManager = {
   get(taskId) {
@@ -316,76 +231,28 @@ const sandboxManager: SandboxManager = {
   async destroy(taskId) {},
 };
 
-new AmigoServerBuilder().sandboxManager(sandboxManager);
+new AmigoServerBuilder()
+  .conversationPersistenceProvider(provider)
+  .sandboxManager(sandboxManager);
 ```
 
-### 配置默认 sandbox 镜像
+## 责任边界
 
-SDK 本身没有 `sandboxImage()` 这类 app 配置入口。要自定义镜像，应该通过你自己的 sandbox manager 注入：
+backend 负责：
 
-```ts
-import { AmigoServerBuilder, SandboxRegistry } from "@amigo-llm/backend";
+- 会话运行时
+- WebSocket 协议
+- 消息处理与任务状态
+- 工具执行
+- 持久化抽象
 
-const sandboxManager = new SandboxRegistry({
-  imageName: "my_custom_sandbox",
-});
+应用层负责：
 
-new AmigoServerBuilder().sandboxManager(sandboxManager);
-```
+- 数据库连接参数
+- migration
+- 持久化 provider 实现
+- HTTP 路由
+- 认证
+- 多渠道集成
 
-适合：
-
-- 自定义 Docker / VM / remote sandbox
-- benchmark 专用 repo checkout / patch 导出逻辑
-- 需要与现有 CI、评测机或沙箱平台打通的场景
-
-### 会话创建钩子
-
-应用层如果需要在创建任务后做初始化，可以使用：
-
-```ts
-new AmigoServerBuilder().onConversationCreate(async ({ taskId, context }) => {
-  console.log("new task", taskId, context);
-});
-```
-
-仓库内置应用就是通过这个钩子做 GitHub 仓库绑定和 sandbox 预创建的。
-
-## 调试与检查
-
-构建前可以读取：
-
-- `builder.toolRegistry`
-- `builder.messageRegistry`
-
-构建后可以读取：
-
-- `server.isRunning`
-- `server.serverHandle`
-- `server.toolRegistry`
-- `server.messageRegistry`
-
-也支持：
-
-```ts
-server.stop();
-```
-
-## 完整应用示例
-
-仓库里的 [`packages/amigo`](../amigo) 展示了一个完整应用的组装方式，其中包括：
-
-- design doc 读写工具
-- Penpot 同步
-- GitHub 仓库预热
-- sandbox / bash / 文件编辑 / dev server 工具
-- coding agent 专用系统提示词
-
-对应入口在 [`packages/amigo/src/server/app.ts`](../amigo/src/server/app.ts)。其中 `editor` / `preview` 路由以及 preview HTTP / WebSocket 反代，都是 `packages/amigo` 这一层 app HTTP 额外补上的能力。如果你要做自己的应用，可以复用 backend runtime，并在自己的服务端入口里自行实现这些路由与暴露策略。
-
-## 运行时配置
-
-完整应用运行时的环境变量说明见：
-
-- [`../../README.md`](../../README.md)
-- [`packages/amigo/.env.example`](../amigo/.env.example)
+在这个仓库里，MySQL provider 由 `packages/amigo` 提供，而不是 `packages/backend` 直接持有数据库配置。

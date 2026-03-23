@@ -1,7 +1,6 @@
 import { type ConnectionStatus, useConnection, useTasks } from "@amigo-llm/frontend";
 import type { SubTaskStatus } from "@amigo-llm/types";
 import { Activity, ChevronLeft, Layout, Menu } from "lucide-react";
-import { authClient } from "../auth/client";
 import { AmigoLogo } from "./AmigoLogo";
 import { useSidebar } from "./Layout";
 
@@ -22,7 +21,6 @@ const Header: React.FC = () => {
   const { status: connectionStatus } = useConnection();
   const { currentTaskId, mainTaskId, switchTask, taskStatusMaps } = useTasks();
   const { isOpen, toggle } = useSidebar();
-  const { data: session } = authClient.useSession();
   const config = statusConfig[connectionStatus];
 
   const currentTaskStatusMap: Record<string, SubTaskStatus> | undefined = mainTaskId
@@ -41,13 +39,13 @@ const Header: React.FC = () => {
         })()
       : undefined;
   return (
-    <header className="h-12 border-b border-gray-100 bg-white flex items-center justify-between px-4 z-20">
-      <div className="flex items-center gap-4 flex-1">
+    <header className="z-20 flex h-14 items-center justify-between border-b border-slate-200/80 bg-white/80 px-4 backdrop-blur-xl">
+      <div className="flex flex-1 items-center gap-4">
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={toggle}
-            className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-50 hover:text-gray-900 transition-all"
+            className="rounded-xl p-2 text-slate-400 transition-all hover:bg-slate-100 hover:text-slate-900"
             aria-label={isOpen ? "收起侧边栏" : "展开侧边栏"}
           >
             {isOpen ? <ChevronLeft className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
@@ -93,31 +91,14 @@ const Header: React.FC = () => {
           </nav>
         )}
       </div>
-      <div className="flex items-center gap-3 px-2 py-0.5">
-        {session?.user ? (
-          <div className="hidden items-center gap-2 sm:flex">
-            <div className="text-[11px] font-medium text-gray-500">
-              {session.user.name || session.user.email}
-            </div>
-            <button
-              type="button"
-              className="rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-gray-600 transition hover:border-gray-300 hover:text-gray-900"
-              onClick={async () => {
-                await authClient.signOut();
-                window.location.assign("/login");
-              }}
-            >
-              退出
-            </button>
-          </div>
-        ) : null}
+      <div className="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-3 py-1.5 shadow-sm">
         <span
           className={`
             w-1.5 h-1.5 rounded-full ${config.color}
             ${config.pulse ? "animate-pulse" : ""}
           `}
         />
-        <span className="text-[11px] font-medium text-gray-500">{config.label}</span>
+        <span className="text-[11px] font-medium text-slate-500">{config.label}</span>
       </div>
     </header>
   );

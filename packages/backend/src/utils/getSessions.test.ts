@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { StorageType, type TaskStatusMetadata } from "@amigo-llm/types";
+import { fileConversationPersistenceProvider } from "@/core/persistence";
 import { setGlobalState } from "@/globalState";
 import { getSessionHistories } from "./getSessions";
 
@@ -69,10 +70,12 @@ describe("getSessionHistories", () => {
   beforeEach(() => {
     tempStorageRoot = mkdtempSync(path.join(os.tmpdir(), "amigo-sessions-"));
     setGlobalState("globalStoragePath", tempStorageRoot);
+    setGlobalState("conversationPersistenceProvider", fileConversationPersistenceProvider);
   });
 
   afterEach(() => {
     rmSync(tempStorageRoot, { recursive: true, force: true });
+    setGlobalState("conversationPersistenceProvider", undefined);
   });
 
   it("filters out sub tasks and automation-triggered conversations", async () => {

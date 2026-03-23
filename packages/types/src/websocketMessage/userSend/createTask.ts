@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { UserMessageAttachmentSchema } from "./message";
+import { ResolvedModelConfigSnapshotSchema } from "./modelConfigSnapshot";
 
 export const CreateTaskSchema = z.object({
   type: z.literal("createTask"),
@@ -7,5 +8,6 @@ export const CreateTaskSchema = z.object({
     message: z.string(),
     attachments: z.array(UserMessageAttachmentSchema).optional(),
     context: z.any().optional(),
+    modelConfigSnapshot: ResolvedModelConfigSnapshotSchema.optional(),
   }),
 });

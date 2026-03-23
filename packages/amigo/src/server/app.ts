@@ -41,7 +41,7 @@ export interface AmigoAppOptions {
   port?: number;
   cachePath?: string;
   loggerConfig?: Partial<LoggerConfig>;
-  modelConfigs?: Record<string, ModelConfig | number>;
+  modelConfigs?: Record<string, ModelConfig>;
   sandboxConfig?: SandboxOptions;
   previewHostConfig?: PreviewHostConfig;
   ossConfig?: OssUploadConfig | null;
@@ -121,16 +121,21 @@ export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<Ami
     ossUploadConfig: options.ossConfig,
     penpotConfig: options.penpotConfig,
   });
-  const doubaoConfig: ModelConfig = {
-    provider: MODEL_PROVIDERS.OPENAI_COMPATIBLE,
-    baseURL: "https://ark.cn-beijing.volces.com/api/coding/v3",
-    contextWindow: 256000,
-    compressionThreshold: 0.8,
-    targetRatio: 0.5,
-  };
-  const modelConfigs = options.modelConfigs || {
-    "doubao-seed-2.0-pro": doubaoConfig,
-  };
+  // const arkConfig: ModelConfig = {
+  //   provider: MODEL_PROVIDERS.OPENAI_COMPATIBLE,
+  //   apiKey: "",
+  //   baseURL: "https://ark.cn-beijing.volces.com/api/coding/v3",
+  //   compressionThreshold: 0.8,
+  //   targetRatio: 0.5,
+  //   models: [
+  //     {
+  //       name: "doubao-seed-2.0-pro",
+  //       contextWindow: 256000,
+  //       thinkType: "enabled",
+  //     },
+  //   ],
+  // };
+  const modelConfigs = options.modelConfigs;
 
   const resolveTaskConfigFromContext = async (context: unknown) => {
     const resolved = await skillRuntime.resolveCreateTaskConfig(context);

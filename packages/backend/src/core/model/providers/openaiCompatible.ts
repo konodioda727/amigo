@@ -1,3 +1,4 @@
+import type { ModelThinkType } from "../contextConfig";
 import { streamSseData } from "../sse";
 import type {
   AmigoLlm,
@@ -26,7 +27,10 @@ type OpenAIMessage = {
 };
 
 type OpenAIProviderOptions = {
+  configId?: string;
   model: string;
+  contextWindow?: number;
+  thinkType?: ModelThinkType;
   apiKey: string;
   baseURL: string;
   temperature: number;
@@ -440,11 +444,17 @@ const parsePartialToolArguments = (argumentsText: string): Record<string, unknow
 export class OpenAICompatibleProvider implements AmigoLlm {
   readonly provider = "openai-compatible" as const;
   readonly model: string;
+  readonly configId?: string;
+  readonly contextWindow?: number;
+  readonly thinkType?: ModelThinkType;
 
   private readonly completionsUrl: string;
 
   constructor(private readonly options: OpenAIProviderOptions) {
     this.model = options.model;
+    this.configId = options.configId;
+    this.contextWindow = options.contextWindow;
+    this.thinkType = options.thinkType;
     const normalizedBaseUrl = options.baseURL.endsWith("/")
       ? options.baseURL
       : `${options.baseURL}/`;

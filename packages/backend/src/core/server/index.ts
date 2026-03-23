@@ -64,9 +64,9 @@ export interface AmigoServerOptions {
   /** 可注入的会话 persistence provider */
   conversationPersistenceProvider?: ConversationPersistenceProvider;
   /** 按模型配置 provider、baseURL、上下文窗口与压缩参数 */
-  modelConfigs?: Record<string, ModelConfig | number>;
+  modelConfigs?: Record<string, ModelConfig>;
   /** 兼容旧命名，后续建议使用 modelConfigs */
-  modelContextConfigs?: Record<string, ModelContextConfig | number>;
+  modelContextConfigs?: Record<string, ModelContextConfig>;
   /** 日志配置 */
   loggerConfig?: Partial<LoggerConfig>;
   /** 会话创建完成后的 app 层 hook */
@@ -88,6 +88,11 @@ class AmigoServer {
   private _server?: Bun.Server<AmigoWebSocketData>;
 
   constructor(options: AmigoServerOptions) {
+    if (!options.conversationPersistenceProvider) {
+      throw new Error(
+        "AmigoServer requires a conversationPersistenceProvider. The backend SDK no longer falls back to file storage.",
+      );
+    }
     this.port = options.config.port;
     this._toolRegistry = options.toolRegistry;
     this._messageRegistry = options.messageRegistry;

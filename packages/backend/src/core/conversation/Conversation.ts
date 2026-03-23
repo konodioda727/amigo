@@ -29,7 +29,7 @@ export class Conversation {
   readonly id: string;
   readonly memory: FilePersistedMemory;
   readonly toolService: ToolService;
-  readonly llm: AmigoLlm;
+  llm: AmigoLlm;
   readonly type: ConversationType;
   readonly parentId?: string;
 
@@ -82,6 +82,10 @@ export class Conversation {
   public setContextUsage(contextUsage: ContextUsageStatus | undefined): void {
     this.memory.setContextUsage(contextUsage);
     this.broadcastTaskStatusMapUpdated();
+  }
+
+  public setLlm(llm: AmigoLlm): void {
+    this.llm = llm;
   }
 
   get status(): ConversationStatus {
@@ -224,7 +228,9 @@ export class Conversation {
     allCustomTools: ToolInterface<any>[],
   ): Conversation {
     const memory = new FilePersistedMemory(taskId);
-    const llm = getLlm();
+    const llm = getLlm(
+      memory.modelConfigSnapshot ? { resolvedConfig: memory.modelConfigSnapshot } : undefined,
+    );
     const type: ConversationType = memory.getFatherTaskId ? "sub" : "main";
 
     // 根据任务类型过滤基础工具

@@ -1,6 +1,7 @@
 import type {
   USER_SEND_MESSAGE_NAME,
   UserMessageAttachment,
+  UserSendMessageData,
   WebSocketMessage,
 } from "@amigo-llm/types";
 import { useCallback } from "react";
@@ -67,7 +68,12 @@ export function useSendMessage(): UseSendMessageReturn {
    * If no taskId is provided, uses the current main task.
    */
   const sendMessage = useCallback(
-    (message: string, taskId?: string, attachments?: UserMessageAttachment[]) => {
+    (
+      message: string,
+      taskId?: string,
+      attachments?: UserMessageAttachment[],
+      modelConfigSnapshot?: UserSendMessageData<"userSendMessage">["modelConfigSnapshot"],
+    ) => {
       let effectiveTaskId = resolveTaskId(taskId);
 
       // If no task ID exists (new conversation), let server create one
@@ -82,6 +88,7 @@ export function useSendMessage(): UseSendMessageReturn {
           message,
           taskId: effectiveTaskId,
           attachments,
+          modelConfigSnapshot,
         },
       });
     },
@@ -92,13 +99,19 @@ export function useSendMessage(): UseSendMessageReturn {
    * Send a create task command to create a new conversation.
    */
   const sendCreateTask = useCallback(
-    (message: string, attachments?: UserMessageAttachment[], context?: unknown) => {
+    (
+      message: string,
+      attachments?: UserMessageAttachment[],
+      context?: unknown,
+      modelConfigSnapshot?: UserSendMessageData<"createTask">["modelConfigSnapshot"],
+    ) => {
       sendWsMessage("", {
         type: "createTask",
         data: {
           message,
           attachments,
           context,
+          modelConfigSnapshot,
         },
       });
     },

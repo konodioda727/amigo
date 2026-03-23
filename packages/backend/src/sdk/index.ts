@@ -32,8 +32,15 @@
 // Builder API
 export { AmigoServerBuilder } from "../core/builder";
 export { ValidationError } from "../core/config";
-export { MODEL_PROVIDERS } from "../core/model";
-export type { ModelConfig, ModelContextConfig } from "../core/model/contextConfig";
+export { listAvailableModels, MODEL_PROVIDERS, resolveModelConfig } from "../core/model";
+export type {
+  ModelConfig,
+  ModelContextConfig,
+  ModelSelection,
+  ModelThinkType,
+  ProviderModelConfig,
+  ResolvedModelConfig,
+} from "../core/model/contextConfig";
 // Error types
 // Registries (advanced usage)
 export { MessageRegistry, RegistrationError, ToolRegistry } from "../core/registry";

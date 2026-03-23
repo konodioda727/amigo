@@ -7,7 +7,7 @@ import { useSidebar } from "./Layout/index";
 const NewChatButton: React.FC = () => {
   const { store } = useWebSocketContext();
   const createNewConversation = store((state) => state.createNewConversation);
-  const { isOpen, close } = useSidebar();
+  const { close } = useSidebar();
   const navigate = useNavigate();
 
   const handleClick = () => {
@@ -19,20 +19,11 @@ const NewChatButton: React.FC = () => {
   return (
     <button
       onClick={handleClick}
-      className="w-full h-[42px] flex items-center px-3.5 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 hover:border-gray-300 shadow-sm transition-all group"
+      className="flex h-9 w-full items-center gap-2 rounded-sm px-2.5 text-left text-sm font-normal text-slate-600 transition hover:bg-white hover:text-slate-900"
       type="button"
     >
-      <div className="flex items-center gap-2.5">
-        <SquarePen className="w-4 h-4 shrink-0 text-gray-500 group-hover:text-gray-700 transition-colors" />
-        <span
-          className={`text-[13px] font-medium text-gray-700 transition-opacity duration-150 ${
-            isOpen ? "opacity-100" : "opacity-0"
-          }`}
-          style={{ display: isOpen ? "inline" : "none" }}
-        >
-          新对话
-        </span>
-      </div>
+      <SquarePen className="h-4 w-4 shrink-0 text-current" />
+      <span>新聊天</span>
     </button>
   );
 };

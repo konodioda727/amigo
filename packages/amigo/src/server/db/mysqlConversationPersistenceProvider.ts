@@ -7,6 +7,7 @@ import type {
   WebSocketMessage,
 } from "@amigo-llm/types";
 import type { RowDataPacket } from "mysql2/promise";
+import type { ResolvedModelConfig } from "../../../../backend/src/core/model/contextConfig";
 import type {
   ConversationPersistenceProvider,
   ConversationPersistenceRecord,
@@ -36,6 +37,7 @@ type ConversationStateRow = RowDataPacket & {
   conversation_id: string;
   initial_system_prompt: string | null;
   tool_names_json: unknown;
+  model_config_json: unknown;
   auto_approve_tool_names_json: unknown;
   pending_tool_call_json: unknown;
   subtasks_json: unknown;
@@ -310,6 +312,10 @@ export class MysqlConversationPersistenceProvider implements ConversationPersist
           : {}),
         toolNames: parseJsonColumn(state?.tool_names_json, []),
         context: parseJsonColumn(row.context_json, {}),
+        modelConfigSnapshot: parseJsonColumn<ResolvedModelConfig | undefined>(
+          state?.model_config_json,
+          undefined,
+        ),
         autoApproveToolNames: parseJsonColumn(state?.auto_approve_tool_names_json, []),
         pendingToolCall: parseJsonColumn(state?.pending_tool_call_json, null),
         subTasks: parseJsonColumn(state?.subtasks_json, {}),
@@ -362,12 +368,13 @@ export class MysqlConversationPersistenceProvider implements ConversationPersist
       await connection.execute(
         `
           INSERT INTO conversation_state (
-            conversation_id, initial_system_prompt, tool_names_json, auto_approve_tool_names_json,
+            conversation_id, initial_system_prompt, tool_names_json, model_config_json, auto_approve_tool_names_json,
             pending_tool_call_json, subtasks_json, context_usage_json, created_at, updated_at
-          ) VALUES (?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?, ?)
+          ) VALUES (?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?, ?)
           ON DUPLICATE KEY UPDATE
             initial_system_prompt = VALUES(initial_system_prompt),
             tool_names_json = VALUES(tool_names_json),
+            model_config_json = VALUES(model_config_json),
             auto_approve_tool_names_json = VALUES(auto_approve_tool_names_json),
             pending_tool_call_json = VALUES(pending_tool_call_json),
             subtasks_json = VALUES(subtasks_json),
@@ -378,6 +385,7 @@ export class MysqlConversationPersistenceProvider implements ConversationPersist
           record.taskId,
           record.initialSystemPrompt?.trim() || null,
           JSON.stringify(record.toolNames || []),
+          JSON.stringify(record.modelConfigSnapshot || null),
           JSON.stringify(record.autoApproveToolNames || []),
           JSON.stringify(record.pendingToolCall),
           JSON.stringify(record.subTasks || {}),

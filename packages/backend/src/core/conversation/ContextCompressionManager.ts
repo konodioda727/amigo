@@ -237,7 +237,24 @@ const buildContextUsageSnapshot = (
   contextUsage: ContextUsageStatus;
   modelMessages: AmigoModelMessage[];
 } | null => {
-  const config = resolveModelContextConfig(conversation.llm.model);
+  const config =
+    conversation.llm.contextWindow && conversation.llm.contextWindow > 0
+      ? {
+          model: conversation.llm.model,
+          configId: conversation.llm.configId || "runtime",
+          provider: conversation.llm.provider || "openai-compatible",
+          apiKey: "",
+          contextWindow: conversation.llm.contextWindow,
+          thinkType: conversation.llm.thinkType,
+          compressionThreshold: 0.8,
+          targetRatio: 0.5,
+          preserveRecentMessages: 8,
+          minMessagesToCompress: 4,
+        }
+      : resolveModelContextConfig({
+          model: conversation.llm.model,
+          ...(conversation.llm.configId ? { configId: conversation.llm.configId } : {}),
+        });
   if (!config) {
     return null;
   }
@@ -294,7 +311,24 @@ export class ContextCompressionManager {
       );
     }
 
-    const config = resolveModelContextConfig(conversation.llm.model);
+    const config =
+      conversation.llm.contextWindow && conversation.llm.contextWindow > 0
+        ? {
+            model: conversation.llm.model,
+            configId: conversation.llm.configId || "runtime",
+            provider: conversation.llm.provider || "openai-compatible",
+            apiKey: "",
+            contextWindow: conversation.llm.contextWindow,
+            thinkType: conversation.llm.thinkType,
+            compressionThreshold: 0.8,
+            targetRatio: 0.5,
+            preserveRecentMessages: 8,
+            minMessagesToCompress: 4,
+          }
+        : resolveModelContextConfig({
+            model: conversation.llm.model,
+            ...(conversation.llm.configId ? { configId: conversation.llm.configId } : {}),
+          });
     if (!config) {
       return snapshot.modelMessages;
     }

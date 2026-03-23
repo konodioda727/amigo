@@ -1,3 +1,4 @@
+import type { UserSendMessageData } from "@amigo-llm/types";
 import type { ReactNode } from "react";
 
 export interface MessageInputProps {
@@ -6,6 +7,9 @@ export interface MessageInputProps {
   placeholder?: string;
   onSend?: (message: string) => void;
   createTaskContext?: unknown;
+  modelConfigSnapshot?:
+    | UserSendMessageData<"createTask">["modelConfigSnapshot"]
+    | UserSendMessageData<"userSendMessage">["modelConfigSnapshot"];
   disabled?: boolean;
   showMentions?: boolean;
   bottomAccessory?: ReactNode;
