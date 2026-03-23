@@ -6,6 +6,7 @@ import {
 } from "@amigo-llm/backend";
 import type { ConversationMessageHookPayload, CreateTaskConfig } from "@amigo-llm/backend/sdk";
 import * as Lark from "@larksuiteoapi/node-sdk";
+import type { ConversationChannelProvider } from "../channels/router";
 import { FeishuDeliveryStore } from "./deliveryStore";
 import { FeishuSessionStore } from "./sessionStore";
 
@@ -181,7 +182,8 @@ const mergeTaskContext = (current: unknown, next: FeishuTaskContext): unknown =>
   };
 };
 
-export class FeishuBridge {
+export class FeishuBridge implements ConversationChannelProvider {
+  readonly name = "feishu";
   private readonly appId = (process.env.FEISHU_APP_ID || "").trim();
   private readonly appSecret = (process.env.FEISHU_APP_SECRET || "").trim();
   private readonly ackReactionType =
@@ -237,7 +239,11 @@ export class FeishuBridge {
       });
   }
 
-  async handleConversationMessage(payload: ConversationMessageHookPayload): Promise<void> {
+  supportsContext(context: unknown): boolean {
+    return !!this.extractFeishuContext(context);
+  }
+
+  async deliverConversationMessage(payload: ConversationMessageHookPayload): Promise<void> {
     if (!this.isEnabled()) {
       return;
     }

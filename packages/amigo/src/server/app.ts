@@ -24,6 +24,7 @@ import { type AutomationDefinition, AutomationStore } from "./automations/automa
 import type { PreviewHostConfig } from "./config/previewHost";
 import { configureAppRuntimeConfig } from "./config/runtimeConfig";
 import { createAmigoHttpHandler } from "./http/appHttpHandler";
+import { ConversationChannelRouter } from "./integrations/channels/router";
 import { createFeishuBridge, type FeishuBridge } from "./integrations/feishu/bridge";
 import { AMIGO_APP_SYSTEM_PROMPT_APPENDIX } from "./prompts/amigoAppPrompt";
 import { AmigoAppServer } from "./runtime/appServer";
@@ -139,6 +140,7 @@ export function createAmigoApp(options: AmigoAppOptions = {}): AmigoApp {
     cachePath,
     resolveTaskConfig: resolveTaskConfigFromContext,
   });
+  const channelRouter = new ConversationChannelRouter([feishuBridge]);
   let builder = new AmigoServerBuilder().port(port).cachePath(cachePath);
   if (options.loggerConfig) {
     builder = builder.loggerConfig(options.loggerConfig);
@@ -166,7 +168,7 @@ export function createAmigoApp(options: AmigoAppOptions = {}): AmigoApp {
       }
     })
     .onConversationMessage(async (payload) => {
-      await feishuBridge.handleConversationMessage(payload);
+      await channelRouter.dispatchConversationMessage(payload);
     })
     .build();
 
