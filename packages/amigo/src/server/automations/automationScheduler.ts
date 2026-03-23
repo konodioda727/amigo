@@ -10,7 +10,9 @@ export class AutomationScheduler {
 
   constructor(
     private readonly automationStore: AutomationStore,
-    private readonly runAutomation: (automation: AutomationDefinition) => Promise<void>,
+    private readonly runAutomation: (
+      automation: AutomationDefinition,
+    ) => Promise<undefined | { conversationId?: string }>,
   ) {}
 
   async start(): Promise<void> {
@@ -33,15 +35,15 @@ export class AutomationScheduler {
     }
   }
 
-  async runNow(id: string): Promise<AutomationDefinition | null> {
-    const automation = await this.automationStore.get(id);
+  async runNow(id: string, userId?: string): Promise<AutomationDefinition | null> {
+    const automation = await this.automationStore.get(id, userId);
     if (!automation) {
       return null;
     }
 
     await this.executeAutomation(automation);
     await this.reschedule();
-    return this.automationStore.get(id);
+    return this.automationStore.get(id, userId);
   }
 
   private async tick(): Promise<void> {
@@ -73,15 +75,21 @@ export class AutomationScheduler {
     }
 
     this.runningAutomationIds.add(automation.id);
+    const runId = await this.automationStore.startRun(automation.id);
     try {
-      await this.runAutomation(automation);
-      await this.automationStore.markRun(automation.id, { runAt: new Date() });
+      const result = await this.runAutomation(automation);
+      await this.automationStore.markRun(automation.id, {
+        runAt: new Date(),
+        runId: runId || undefined,
+        conversationId: result && typeof result === "object" ? result.conversationId : undefined,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error(`[AutomationScheduler] automation=${automation.id} 执行失败: ${message}`);
       await this.automationStore.markRun(automation.id, {
         runAt: new Date(),
         error: message,
+        runId: runId || undefined,
       });
     } finally {
       this.runningAutomationIds.delete(automation.id);

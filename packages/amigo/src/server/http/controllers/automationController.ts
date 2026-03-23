@@ -3,9 +3,12 @@ import { type AutomationStore, AutomationUpsertSchema } from "../../automations/
 import { parseJsonBody } from "../shared/request";
 import { errorResponse, jsonResponse } from "../shared/response";
 
-export const listAutomationsController = async (automationStore: AutomationStore) => {
+export const listAutomationsController = async (
+  automationStore: AutomationStore,
+  userId: string,
+) => {
   try {
-    return jsonResponse(await automationStore.list());
+    return jsonResponse(await automationStore.list(userId));
   } catch (error) {
     return errorResponse(error, {
       status: 500,
@@ -18,9 +21,10 @@ export const listAutomationsController = async (automationStore: AutomationStore
 export const getAutomationController = async (
   automationStore: AutomationStore,
   automationId: string,
+  userId: string,
 ) => {
   try {
-    const automation = await automationStore.get(automationId);
+    const automation = await automationStore.get(automationId, userId);
     return automation
       ? jsonResponse(automation)
       : jsonResponse(
@@ -40,10 +44,11 @@ export const upsertAutomationController = async (
   req: Request,
   automationStore: AutomationStore,
   automationScheduler: AutomationScheduler,
+  userId: string,
 ) => {
   try {
     const body = await parseJsonBody(req, AutomationUpsertSchema, "INVALID_AUTOMATION_REQUEST");
-    const automation = await automationStore.upsert(body);
+    const automation = await automationStore.upsert(body, userId);
     await automationScheduler.refreshSchedule();
     return jsonResponse(automation);
   } catch (error) {
@@ -59,9 +64,10 @@ export const deleteAutomationController = async (
   automationStore: AutomationStore,
   automationScheduler: AutomationScheduler,
   automationId: string,
+  userId: string,
 ) => {
   try {
-    const removed = await automationStore.remove(automationId);
+    const removed = await automationStore.remove(automationId, userId);
     await automationScheduler.refreshSchedule();
     return removed
       ? jsonResponse({ success: true })
@@ -81,9 +87,10 @@ export const deleteAutomationController = async (
 export const runAutomationController = async (
   automationScheduler: AutomationScheduler,
   automationId: string,
+  userId: string,
 ) => {
   try {
-    const automation = await automationScheduler.runNow(automationId);
+    const automation = await automationScheduler.runNow(automationId, userId);
     return automation
       ? jsonResponse(automation)
       : jsonResponse(

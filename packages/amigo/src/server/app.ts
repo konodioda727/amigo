@@ -21,6 +21,11 @@ import { AutomationScheduler } from "./automations/automationScheduler";
 import { type AutomationDefinition, AutomationStore } from "./automations/automationStore";
 import type { PreviewHostConfig } from "./config/previewHost";
 import { configureAppRuntimeConfig } from "./config/runtimeConfig";
+import {
+  createMysqlConversationPersistenceProvider,
+  isMysqlConfigured,
+  listNotificationChannels,
+} from "./db";
 import { createAmigoHttpHandler } from "./http/appHttpHandler";
 import { ConversationChannelRouter } from "./integrations/channels/router";
 import { createFeishuBridge, type FeishuBridge } from "./integrations/feishu/bridge";
@@ -67,10 +72,16 @@ const resolvePreviewHostConfig = (config?: PreviewHostConfig): PreviewHostConfig
   publicProtocol: config?.publicProtocol ?? "https",
 });
 
-export function createAmigoApp(options: AmigoAppOptions = {}): AmigoApp {
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+
+export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<AmigoApp> {
   const port = options.port ?? 10013;
   const cachePath = options.cachePath || path.resolve(process.cwd(), ".amigo");
   const sandboxManager = new SandboxRegistry(resolveSandboxConfig(options.sandboxConfig));
+  const persistenceProvider = isMysqlConfigured()
+    ? await createMysqlConversationPersistenceProvider()
+    : undefined;
   const skillStore = new SkillStore(cachePath);
   const skillRuntime = new SkillRuntime(skillStore);
   const skillHubMarketClient = new SkillHubMarketClient();
@@ -78,6 +89,39 @@ export function createAmigoApp(options: AmigoAppOptions = {}): AmigoApp {
     const skills = await skillStore.list();
     return new Set(skills.map((skill) => skill.id));
   });
+  const resolveAutomationChannels = async (automation: AutomationDefinition) => {
+    const automationContext = automation.context;
+    if (
+      isPlainObject(automationContext) &&
+      isPlainObject(automationContext.feishu) &&
+      typeof automationContext.feishu.chatId === "string"
+    ) {
+      return { feishu: automationContext.feishu };
+    }
+
+    if (!isMysqlConfigured()) {
+      return {};
+    }
+
+    const userId =
+      isPlainObject(automationContext) && typeof automationContext.userId === "string"
+        ? automationContext.userId.trim()
+        : "";
+    if (!userId) {
+      return {};
+    }
+
+    const channels = await listNotificationChannels(userId, "feishu");
+    const defaultChannel =
+      channels.find((channel) => channel.enabled && channel.isDefault) || channels[0];
+    if (!defaultChannel) {
+      return {};
+    }
+
+    return {
+      feishu: defaultChannel.config,
+    };
+  };
   configureAppRuntimeConfig({
     ossUploadConfig: options.ossConfig,
     penpotConfig: options.penpotConfig,
@@ -101,14 +145,18 @@ export function createAmigoApp(options: AmigoAppOptions = {}): AmigoApp {
     return context !== undefined ? { context } : undefined;
   };
 
-  const runAutomationTask = async (automation: AutomationDefinition): Promise<void> => {
+  const runAutomationTask = async (
+    automation: AutomationDefinition,
+  ): Promise<{ conversationId: string }> => {
+    const automationChannels = await resolveAutomationChannels(automation);
     const automationContext = {
       ...(automation.context || {}),
+      ...(automationChannels.feishu ? { feishu: automationChannels.feishu } : {}),
       ...(automation.skillIds?.length ? { skillIds: automation.skillIds } : {}),
       automationId: automation.id,
       automationName: automation.name,
       trigger: "automation",
-    };
+    } as Record<string, unknown>;
     const sourceTaskId =
       typeof automationContext.sourceTaskId === "string"
         ? automationContext.sourceTaskId.trim()
@@ -135,7 +183,8 @@ export function createAmigoApp(options: AmigoAppOptions = {}): AmigoApp {
     }
 
     const executor = taskOrchestrator.getExecutor(conversation.id);
-    executor.execute(conversation);
+    await executor.execute(conversation);
+    return { conversationId: conversation.id };
   };
 
   const automationScheduler = new AutomationScheduler(automationStore, runAutomationTask);
@@ -154,8 +203,14 @@ export function createAmigoApp(options: AmigoAppOptions = {}): AmigoApp {
   if (options.loggerConfig) {
     builder = builder.loggerConfig(options.loggerConfig);
   }
+  if (persistenceProvider) {
+    const persistenceAwareBuilder = builder as typeof builder & {
+      conversationPersistenceProvider: (provider: unknown) => typeof builder;
+    };
+    builder = persistenceAwareBuilder.conversationPersistenceProvider(persistenceProvider);
+  }
   for (const tool of getUserCodingAgentTools(automationStore, automationScheduler)) {
-    builder = builder.registerTool(tool);
+    builder = builder.registerTool(tool as never);
   }
 
   const runtimeServer = builder
@@ -202,8 +257,9 @@ export function createAmigoApp(options: AmigoAppOptions = {}): AmigoApp {
     httpHandler,
   });
 
-  void skillStore.init();
-  void automationStore.init();
+  await skillStore.init();
+  await automationStore.init();
+  await feishuBridge.init();
   void automationScheduler.start();
   feishuBridge.start();
 

@@ -10,6 +10,7 @@ import type { LoggerConfig } from "@/utils/logger";
 import { type ServerConfig, ServerConfigSchema } from "../config";
 import type { LlmFactory } from "../model";
 import type { ModelConfig, ModelContextConfig } from "../model/contextConfig";
+import type { ConversationPersistenceProvider } from "../persistence/types";
 import { MessageRegistry, ToolRegistry } from "../registry";
 import type { SandboxManager } from "../sandbox";
 import type { ConversationMessageHookPayload, CreateTaskConfigResolver } from "../server";
@@ -45,10 +46,10 @@ export class AmigoServerBuilder {
   private _autoApproveToolNames = new Set<string>();
   private _defaultAutoApproveToolNames?: string[];
   private _extraSystemPrompt = "";
-  // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
-  private _baseTools: Partial<Record<"main" | "sub", ToolInterface<any>[]>> = {};
+  private _baseTools: Partial<Record<"main" | "sub", ToolInterface<unknown>[]>> = {};
   private _systemPrompts: Partial<Record<"main" | "sub", string>> = {};
   private _sandboxManager?: SandboxManager;
+  private _conversationPersistenceProvider?: ConversationPersistenceProvider;
   private _modelConfigs?: Record<string, ModelConfig | number>;
   private _loggerConfig?: Partial<LoggerConfig>;
   private _onConversationCreate?: (payload: {
@@ -165,8 +166,7 @@ export class AmigoServerBuilder {
     return this;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
-  baseTools(tools: Partial<Record<"main" | "sub", ToolInterface<any>[]>>): this {
+  baseTools(tools: Partial<Record<"main" | "sub", ToolInterface<unknown>[]>>): this {
     if (tools.main) {
       this._baseTools.main = [...tools.main];
     }
@@ -176,13 +176,11 @@ export class AmigoServerBuilder {
     return this;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
-  mainBaseTools(tools: ToolInterface<any>[]): this {
+  mainBaseTools(tools: ToolInterface<unknown>[]): this {
     return this.baseTools({ main: tools });
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
-  subBaseTools(tools: ToolInterface<any>[]): this {
+  subBaseTools(tools: ToolInterface<unknown>[]): this {
     return this.baseTools({ sub: tools });
   }
 
@@ -206,6 +204,11 @@ export class AmigoServerBuilder {
 
   sandboxManager(manager: SandboxManager): this {
     this._sandboxManager = manager;
+    return this;
+  }
+
+  conversationPersistenceProvider(provider: ConversationPersistenceProvider): this {
+    this._conversationPersistenceProvider = provider;
     return this;
   }
 
@@ -310,6 +313,7 @@ export class AmigoServerBuilder {
       baseTools: this._baseTools,
       systemPrompts: this._systemPrompts,
       sandboxManager: this._sandboxManager,
+      conversationPersistenceProvider: this._conversationPersistenceProvider,
       modelConfigs: this._modelConfigs,
       loggerConfig: this._loggerConfig,
       onConversationCreate,

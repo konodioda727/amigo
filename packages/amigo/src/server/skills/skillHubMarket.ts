@@ -245,6 +245,7 @@ export class SkillHubMarketClient {
   async importSkill(
     input: SkillHubMarketImportInput,
     skillStore: SkillStore,
+    userId: string,
   ): Promise<SkillDefinition> {
     const normalizedInput = SkillHubMarketImportInputSchema.parse(input);
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), "amigo-skillhub-"));
@@ -267,6 +268,7 @@ export class SkillHubMarketClient {
 
       return await skillStore.importFromDirectory(installedDir, {
         id: normalizedInput.slug || slugify(normalizedInput.name),
+        userId,
       });
     } finally {
       await rm(tempRoot, { recursive: true, force: true });

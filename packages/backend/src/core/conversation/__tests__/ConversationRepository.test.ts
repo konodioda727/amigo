@@ -50,6 +50,7 @@ describe("ConversationRepository.deleteWithChildren", () => {
 
   afterEach(() => {
     rmSync(tempStorageRoot, { recursive: true, force: true });
+    setGlobalState("conversationPersistenceProvider", undefined);
   });
 
   it("deletes disk-only child sessions when deleting parent session", async () => {
@@ -70,5 +71,30 @@ describe("ConversationRepository.deleteWithChildren", () => {
     expect(existsSync(path.join(tempStorageRoot, childTaskId))).toBe(false);
     expect(existsSync(path.join(tempStorageRoot, grandChildTaskId))).toBe(false);
     expect(destroySandbox).toHaveBeenCalledWith(parentTaskId);
+  });
+
+  it("uses an injected persistence provider instead of the filesystem", async () => {
+    const deletedIds: string[] = [];
+    setGlobalState("conversationPersistenceProvider", {
+      exists: (taskId) => taskId === "task-parent" || taskId === "task-child",
+      load: () => null,
+      save: () => true,
+      delete: (taskId) => {
+        deletedIds.push(taskId);
+        return true;
+      },
+      listConversationRelations: () => [
+        { taskId: "task-parent" },
+        { taskId: "task-child", fatherTaskId: "task-parent" },
+      ],
+      listSessionHistories: () => [],
+    });
+
+    const repository = new ConversationRepository();
+    const removed = await repository.deleteWithChildren("task-parent");
+
+    expect(removed).toEqual(["task-parent", "task-child"]);
+    expect(deletedIds).toEqual(["task-parent", "task-child"]);
+    expect(destroySandbox).toHaveBeenCalledWith("task-parent");
   });
 });

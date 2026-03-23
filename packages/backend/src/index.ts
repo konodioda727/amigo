@@ -1,4 +1,5 @@
 export { conversationRepository, taskOrchestrator } from "./core/conversation";
+export * from "./core/persistence";
 export type { SandboxOptions } from "./core/sandbox";
 export { resolveSandboxOptions, Sandbox, SandboxRegistry, sandboxRegistry } from "./core/sandbox";
 export * from "./core/skills";

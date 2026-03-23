@@ -169,12 +169,7 @@ export class Conversation {
       type,
       params.customPrompt,
     );
-
-    memory.addMessage({
-      role: "system",
-      type: "system",
-      content: systemPrompt,
-    });
+    memory.setInitialSystemPrompt(systemPrompt);
 
     const toolNames = params.toolService.getAllTools().map((tool) => tool.name);
     memory.setToolNames(toolNames);
@@ -271,11 +266,7 @@ export class Conversation {
     // 如果是新会话（文件不存在或为空），注入 systemPrompt
     if (memory.isNewSession()) {
       const systemPrompt = Conversation.buildInitialSystemPrompt(toolService, type);
-      memory.addMessage({
-        role: "system",
-        type: "system",
-        content: systemPrompt,
-      });
+      memory.setInitialSystemPrompt(systemPrompt);
 
       const initialToolNames = toolService.getAllTools().map((tool) => tool.name);
       memory.setToolNames(initialToolNames);

@@ -6,6 +6,7 @@ import {
 } from "@amigo-llm/backend";
 import type { ConversationMessageHookPayload, CreateTaskConfig } from "@amigo-llm/backend/sdk";
 import * as Lark from "@larksuiteoapi/node-sdk";
+import { findOrCreateExternalIdentityUser, upsertNotificationChannel } from "../../db";
 import type { ConversationChannelProvider } from "../channels/router";
 import { FeishuDeliveryStore } from "./deliveryStore";
 import { FeishuSessionStore } from "./sessionStore";
@@ -34,6 +35,7 @@ interface FeishuAuthState {
 
 interface FeishuTaskContext {
   trigger: "feishu";
+  userId?: string;
   feishu: {
     tenantKey?: string;
     chatId: string;
@@ -153,8 +155,9 @@ const extractSenderId = (event: FeishuReceiveEvent) =>
   event.sender.sender_id?.union_id ||
   "";
 
-const buildFeishuContext = (event: FeishuReceiveEvent): FeishuTaskContext => ({
+const buildFeishuContext = (event: FeishuReceiveEvent, userId?: string): FeishuTaskContext => ({
   trigger: "feishu",
+  ...(userId ? { userId } : {}),
   feishu: {
     tenantKey: event.sender.tenant_key,
     chatId: event.message.chat_id,
@@ -174,6 +177,7 @@ const mergeTaskContext = (current: unknown, next: FeishuTaskContext): unknown =>
   }
   return {
     ...current,
+    ...(next.userId ? { userId: next.userId } : {}),
     trigger: next.trigger,
     feishu: {
       ...(isPlainObject(current.feishu) ? current.feishu : {}),
@@ -211,6 +215,10 @@ export class FeishuBridge implements ConversationChannelProvider {
 
   isEnabled(): boolean {
     return !!this.appId && !!this.appSecret;
+  }
+
+  async init(): Promise<void> {
+    await Promise.all([this.deliveryStore.init(), this.sessionStore.init()]);
   }
 
   start(): void {
@@ -306,7 +314,18 @@ export class FeishuBridge implements ConversationChannelProvider {
     }
     this.processedInbound.set(event.message.message_id, Date.now());
 
-    const feishuContext = buildFeishuContext(event);
+    const userId = await this.resolveOrCreateUser(event);
+    const feishuContext = buildFeishuContext(event, userId || undefined);
+    if (userId) {
+      await upsertNotificationChannel({
+        userId,
+        type: "feishu",
+        name: `feishu:${event.message.chat_id}`,
+        config: feishuContext.feishu,
+        isDefault: true,
+        enabled: true,
+      });
+    }
     await this.acknowledgeInboundMessage(feishuContext.feishu);
     const shouldReuseConversation = !isGroupChat(event);
     const sessionKey = feishuContext.feishu.sessionKey;
@@ -331,7 +350,7 @@ export class FeishuBridge implements ConversationChannelProvider {
         customPrompt: resolvedTaskConfig?.customPrompt,
       });
       if (shouldReuseConversation) {
-        this.sessionStore.set(sessionKey, conversation.id);
+        this.sessionStore.set(sessionKey, conversation.id, userId || undefined);
       }
     }
 
@@ -380,17 +399,34 @@ export class FeishuBridge implements ConversationChannelProvider {
     return this.options.resolveTaskConfig(context);
   }
 
+  private async resolveOrCreateUser(event: FeishuReceiveEvent): Promise<string | null> {
+    const senderExternalId = extractSenderId(event);
+    if (!senderExternalId) {
+      return null;
+    }
+
+    try {
+      const user = await findOrCreateExternalIdentityUser({
+        provider: "feishu",
+        externalId: senderExternalId,
+      });
+      return user?.id || null;
+    } catch (error) {
+      logger.warn(
+        `[FeishuBridge] 解析飞书用户失败 sender=${senderExternalId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return null;
+    }
+  }
+
   private extractFeishuContext(context: unknown): FeishuTaskContext["feishu"] | null {
     if (!isPlainObject(context) || !isPlainObject(context.feishu)) {
       return null;
     }
-    const { chatId, chatType, lastIncomingMessageId, sessionKey } = context.feishu;
-    if (
-      typeof chatId !== "string" ||
-      typeof chatType !== "string" ||
-      typeof lastIncomingMessageId !== "string" ||
-      typeof sessionKey !== "string"
-    ) {
+    const { chatId, chatType } = context.feishu;
+    if (typeof chatId !== "string" || typeof chatType !== "string") {
       return null;
     }
 
@@ -400,8 +436,14 @@ export class FeishuBridge implements ConversationChannelProvider {
       chatId,
       threadId: typeof context.feishu.threadId === "string" ? context.feishu.threadId : undefined,
       chatType,
-      sessionKey,
-      lastIncomingMessageId,
+      sessionKey:
+        typeof context.feishu.sessionKey === "string"
+          ? context.feishu.sessionKey
+          : `feishu:${chatId}`,
+      lastIncomingMessageId:
+        typeof context.feishu.lastIncomingMessageId === "string"
+          ? context.feishu.lastIncomingMessageId
+          : "",
       lastIncomingMessageType:
         typeof context.feishu.lastIncomingMessageType === "string"
           ? context.feishu.lastIncomingMessageType

@@ -1,6 +1,7 @@
 import { type ConnectionStatus, useConnection, useTasks } from "@amigo-llm/frontend";
 import type { SubTaskStatus } from "@amigo-llm/types";
 import { Activity, ChevronLeft, Layout, Menu } from "lucide-react";
+import { authClient } from "../auth/client";
 import { AmigoLogo } from "./AmigoLogo";
 import { useSidebar } from "./Layout";
 
@@ -21,6 +22,7 @@ const Header: React.FC = () => {
   const { status: connectionStatus } = useConnection();
   const { currentTaskId, mainTaskId, switchTask, taskStatusMaps } = useTasks();
   const { isOpen, toggle } = useSidebar();
+  const { data: session } = authClient.useSession();
   const config = statusConfig[connectionStatus];
 
   const currentTaskStatusMap: Record<string, SubTaskStatus> | undefined = mainTaskId
@@ -91,7 +93,24 @@ const Header: React.FC = () => {
           </nav>
         )}
       </div>
-      <div className="flex items-center gap-2 px-2 py-0.5">
+      <div className="flex items-center gap-3 px-2 py-0.5">
+        {session?.user ? (
+          <div className="hidden items-center gap-2 sm:flex">
+            <div className="text-[11px] font-medium text-gray-500">
+              {session.user.name || session.user.email}
+            </div>
+            <button
+              type="button"
+              className="rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-gray-600 transition hover:border-gray-300 hover:text-gray-900"
+              onClick={async () => {
+                await authClient.signOut();
+                window.location.assign("/login");
+              }}
+            >
+              退出
+            </button>
+          </div>
+        ) : null}
         <span
           className={`
             w-1.5 h-1.5 rounded-full ${config.color}

@@ -1,5 +1,6 @@
 import { conversationRepository, logger, type SandboxRegistry } from "@amigo-llm/backend";
 import { z } from "zod";
+import { getAuthenticatedUserId, handleAuthRequest } from "../auth/betterAuth";
 import type { AutomationScheduler } from "../automations/automationScheduler";
 import type { AutomationStore } from "../automations/automationStore";
 import type { PreviewHostConfig } from "../config/previewHost";
@@ -52,7 +53,7 @@ import { noContentResponse } from "./shared/response";
 interface AppHttpRoute {
   method: "GET" | "POST" | "DELETE";
   pattern: RegExp;
-  controller: (req: Request, match: RegExpMatchArray) => Promise<Response>;
+  controller: (req: Request, match: RegExpMatchArray, userId?: string) => Promise<Response>;
 }
 
 export interface AmigoHttpHandler {
@@ -85,6 +86,7 @@ const PROXY_HOP_BY_HOP_HEADERS = new Set([
   "transfer-encoding",
   "upgrade",
   "host",
+  "cookie",
 ]);
 
 const normalizeEditorOpenFilePath = (filePath: string): string => {
@@ -205,6 +207,48 @@ const jsonResponse = (data: unknown, init?: ResponseInit): Response => {
   });
 };
 
+const applyCorsHeaders = (req: Request, response: Response): Response => {
+  const origin = (req.headers.get("origin") || "").trim();
+  const requestedHeaders = (req.headers.get("access-control-request-headers") || "").trim();
+  const headers = new Headers(response.headers);
+  headers.set("access-control-allow-methods", "GET,POST,DELETE,OPTIONS");
+  headers.set(
+    "access-control-allow-headers",
+    requestedHeaders || "content-type,authorization,x-requested-with",
+  );
+  if (origin) {
+    headers.set("access-control-allow-origin", origin);
+    headers.set("access-control-allow-credentials", "true");
+    headers.set("vary", "origin");
+  } else {
+    headers.set("access-control-allow-origin", "*");
+  }
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+};
+
+const unauthorizedResponse = () =>
+  jsonResponse(
+    {
+      error: "未登录或会话已失效",
+      code: "UNAUTHORIZED",
+    },
+    { status: 401 },
+  );
+
+const readContextUserId = (context: unknown): string | null =>
+  context &&
+  typeof context === "object" &&
+  "userId" in context &&
+  typeof (context as { userId?: unknown }).userId === "string" &&
+  (context as { userId: string }).userId.trim()
+    ? (context as { userId: string }).userId.trim()
+    : null;
+
 const getPreviewBaseDomain = (config?: PreviewHostConfig): string | null => {
   const domain = normalizeBaseDomain(config?.baseDomain);
   return domain || null;
@@ -274,65 +318,91 @@ export const createAmigoHttpHandler = (
     {
       method: "POST",
       pattern: /^\/api\/skills\/market\/import\/?$/,
-      controller: (req) =>
-        importSkillFromMarketController(req, options.skillHubMarketClient, options.skillStore),
+      controller: (req, _match, userId) =>
+        importSkillFromMarketController(
+          req,
+          options.skillHubMarketClient,
+          options.skillStore,
+          userId || "",
+        ),
     },
     {
       method: "GET",
       pattern: /^\/api\/skills\/?$/,
-      controller: () => listSkillsController(options.skillStore),
+      controller: (_req, _match, userId) => listSkillsController(options.skillStore, userId || ""),
     },
     {
       method: "GET",
       pattern: /^\/api\/skills\/([^/]+)\/?$/,
-      controller: (_req, match) =>
-        getSkillController(options.skillStore, decodeURIComponent(match[1] || "").trim()),
+      controller: (_req, match, userId) =>
+        getSkillController(
+          options.skillStore,
+          decodeURIComponent(match[1] || "").trim(),
+          userId || "",
+        ),
     },
     {
       method: "POST",
       pattern: /^\/api\/skills\/?$/,
-      controller: (req) => upsertSkillController(req, options.skillStore),
+      controller: (req, _match, userId) =>
+        upsertSkillController(req, options.skillStore, userId || ""),
     },
     {
       method: "DELETE",
       pattern: /^\/api\/skills\/([^/]+)\/?$/,
-      controller: (_req, match) =>
-        deleteSkillController(options.skillStore, decodeURIComponent(match[1] || "").trim()),
+      controller: (_req, match, userId) =>
+        deleteSkillController(
+          options.skillStore,
+          decodeURIComponent(match[1] || "").trim(),
+          userId || "",
+        ),
     },
     {
       method: "GET",
       pattern: /^\/api\/automations\/?$/,
-      controller: () => listAutomationsController(options.automationStore),
+      controller: (_req, _match, userId) =>
+        listAutomationsController(options.automationStore, userId || ""),
     },
     {
       method: "GET",
       pattern: /^\/api\/automations\/([^/]+)\/?$/,
-      controller: (_req, match) =>
-        getAutomationController(options.automationStore, decodeURIComponent(match[1] || "").trim()),
+      controller: (_req, match, userId) =>
+        getAutomationController(
+          options.automationStore,
+          decodeURIComponent(match[1] || "").trim(),
+          userId || "",
+        ),
     },
     {
       method: "POST",
       pattern: /^\/api\/automations\/?$/,
-      controller: (req) =>
-        upsertAutomationController(req, options.automationStore, options.automationScheduler),
+      controller: (req, _match, userId) =>
+        upsertAutomationController(
+          req,
+          options.automationStore,
+          options.automationScheduler,
+          userId || "",
+        ),
     },
     {
       method: "DELETE",
       pattern: /^\/api\/automations\/([^/]+)\/?$/,
-      controller: (_req, match) =>
+      controller: (_req, match, userId) =>
         deleteAutomationController(
           options.automationStore,
           options.automationScheduler,
           decodeURIComponent(match[1] || "").trim(),
+          userId || "",
         ),
     },
     {
       method: "POST",
       pattern: /^\/api\/automations\/([^/]+)\/run\/?$/,
-      controller: (_req, match) =>
+      controller: (_req, match, userId) =>
         runAutomationController(
           options.automationScheduler,
           decodeURIComponent(match[1] || "").trim(),
+          userId || "",
         ),
     },
   ];
@@ -364,6 +434,20 @@ export const createAmigoHttpHandler = (
     }
 
     return conversation.parentId || taskId;
+  };
+
+  const canAccessTask = (taskId: string, userId: string): boolean => {
+    const conversation = conversationRepository.get(taskId) || conversationRepository.load(taskId);
+    if (!conversation) {
+      return false;
+    }
+
+    const ownerUserId = readContextUserId(conversation.memory.context);
+    if (!ownerUserId) {
+      return true;
+    }
+
+    return ownerUserId === userId;
   };
 
   const parsePositiveInteger = (value: string | null): number | undefined => {
@@ -634,22 +718,58 @@ export const createAmigoHttpHandler = (
   return {
     async handle(req: Request): Promise<Response | null> {
       const url = new URL(req.url);
+      const respond = (response: Response) => applyCorsHeaders(req, response);
+
+      if (req.method === "OPTIONS") {
+        return matchesAppRoute(url.pathname) || url.pathname.startsWith("/api/auth/")
+          ? respond(noContentResponse())
+          : null;
+      }
+
+      if (url.pathname.startsWith("/api/auth/")) {
+        return respond(await handleAuthRequest(req));
+      }
+
       const hostedPreviewSandboxId = resolveHostedPreviewSandboxId(url);
       if (hostedPreviewSandboxId) {
         return proxyHostedPreviewRequest(req, hostedPreviewSandboxId);
       }
 
       if (TASK_EDITOR_SESSION_PATH_PATTERN.test(url.pathname)) {
-        return proxyHostedEditorRequest(req);
+        const authenticatedUserId = await getAuthenticatedUserId(req);
+        if (!authenticatedUserId?.trim()) {
+          return respond(unauthorizedResponse());
+        }
+        return respond(await proxyHostedEditorRequest(req));
       }
 
-      if (req.method === "OPTIONS") {
-        return matchesAppRoute(url.pathname) ? noContentResponse() : null;
+      const requiresAuthentication =
+        matchesAppRoute(url.pathname) ||
+        TASK_EDITOR_OPEN_FILE_PATH_PATTERN.test(url.pathname) ||
+        TASK_EDITOR_PATH_PATTERN.test(url.pathname) ||
+        TASK_EDITOR_SESSION_PATH_PATTERN.test(url.pathname) ||
+        TASK_PREVIEW_PATH_PATTERN.test(url.pathname);
+      const authenticatedUserId = requiresAuthentication ? await getAuthenticatedUserId(req) : null;
+
+      if (requiresAuthentication && !authenticatedUserId?.trim()) {
+        return respond(unauthorizedResponse());
       }
 
       const matchedRoute = matchAppRoute(req.method, url.pathname);
       if (matchedRoute) {
-        return matchedRoute.route.controller(req, matchedRoute.match);
+        const taskId = url.pathname.startsWith("/api/tasks/")
+          ? decodeURIComponent(matchedRoute.match[1] || "").trim()
+          : "";
+        if (taskId && authenticatedUserId && !canAccessTask(taskId, authenticatedUserId)) {
+          return respond(unauthorizedResponse());
+        }
+        return respond(
+          await matchedRoute.route.controller(
+            req,
+            matchedRoute.match,
+            authenticatedUserId || undefined,
+          ),
+        );
       }
 
       const taskEditorOpenFileRouteMatch = url.pathname.match(TASK_EDITOR_OPEN_FILE_PATH_PATTERN);
@@ -659,36 +779,45 @@ export const createAmigoHttpHandler = (
       if (req.method === "POST" && taskEditorOpenFileRouteMatch) {
         const taskId = decodeURIComponent(taskEditorOpenFileRouteMatch[1] || "").trim();
         if (!taskId) {
-          return jsonResponse(
-            {
-              error: "taskId 不能为空",
-              code: "INVALID_TASK_ID",
-            },
-            { status: 400 },
+          return respond(
+            jsonResponse(
+              {
+                error: "taskId 不能为空",
+                code: "INVALID_TASK_ID",
+              },
+              { status: 400 },
+            ),
           );
+        }
+        if (authenticatedUserId && !canAccessTask(taskId, authenticatedUserId)) {
+          return respond(unauthorizedResponse());
         }
 
         const sandboxKey = resolveSandboxKey(taskId);
         if (!sandboxKey) {
-          return jsonResponse(
-            {
-              error: `任务 ${taskId} 不存在`,
-              code: "TASK_NOT_FOUND",
-            },
-            { status: 404 },
+          return respond(
+            jsonResponse(
+              {
+                error: `任务 ${taskId} 不存在`,
+                code: "TASK_NOT_FOUND",
+              },
+              { status: 404 },
+            ),
           );
         }
 
         const body = await req.json().catch(() => null);
         const parsed = editorOpenFileRequestSchema.safeParse(body);
         if (!parsed.success) {
-          return jsonResponse(
-            {
-              error: "Invalid request body",
-              code: "INVALID_EDITOR_OPEN_FILE_REQUEST",
-              issues: parsed.error.issues,
-            },
-            { status: 400 },
+          return respond(
+            jsonResponse(
+              {
+                error: "Invalid request body",
+                code: "INVALID_EDITOR_OPEN_FILE_REQUEST",
+                issues: parsed.error.issues,
+              },
+              { status: 400 },
+            ),
           );
         }
 
@@ -699,16 +828,18 @@ export const createAmigoHttpHandler = (
             parsed.data.line,
             parsed.data.column,
           );
-          return jsonResponse({ success: true });
+          return respond(jsonResponse({ success: true }));
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           logger.error(`[AmigoApp] sandbox editor open-file 失败: ${message}`);
-          return jsonResponse(
-            {
-              error: message,
-              code: "SANDBOX_EDITOR_UNAVAILABLE",
-            },
-            { status: 503 },
+          return respond(
+            jsonResponse(
+              {
+                error: message,
+                code: "SANDBOX_EDITOR_UNAVAILABLE",
+              },
+              { status: 503 },
+            ),
           );
         }
       }
@@ -716,38 +847,47 @@ export const createAmigoHttpHandler = (
       if (req.method === "GET" && taskEditorRouteMatch) {
         const taskId = decodeURIComponent(taskEditorRouteMatch[1] || "").trim();
         if (!taskId) {
-          return jsonResponse(
-            {
-              error: "taskId 不能为空",
-              code: "INVALID_TASK_ID",
-            },
-            { status: 400 },
+          return respond(
+            jsonResponse(
+              {
+                error: "taskId 不能为空",
+                code: "INVALID_TASK_ID",
+              },
+              { status: 400 },
+            ),
           );
+        }
+        if (authenticatedUserId && !canAccessTask(taskId, authenticatedUserId)) {
+          return respond(unauthorizedResponse());
         }
 
         const sandboxKey = resolveSandboxKey(taskId);
         if (!sandboxKey) {
-          return jsonResponse(
-            {
-              error: `任务 ${taskId} 不存在`,
-              code: "TASK_NOT_FOUND",
-            },
-            { status: 404 },
+          return respond(
+            jsonResponse(
+              {
+                error: `任务 ${taskId} 不存在`,
+                code: "TASK_NOT_FOUND",
+              },
+              { status: 404 },
+            ),
           );
         }
 
         try {
           const redirectUrl = await buildTaskEditorRedirectUrl(req, sandboxKey);
-          return Response.redirect(redirectUrl.toString(), 307);
+          return respond(Response.redirect(redirectUrl.toString(), 307));
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           logger.error(`[AmigoApp] sandbox editor 启动失败: ${message}`);
-          return jsonResponse(
-            {
-              error: message,
-              code: "SANDBOX_EDITOR_UNAVAILABLE",
-            },
-            { status: 503 },
+          return respond(
+            jsonResponse(
+              {
+                error: message,
+                code: "SANDBOX_EDITOR_UNAVAILABLE",
+              },
+              { status: 503 },
+            ),
           );
         }
       }
@@ -755,38 +895,47 @@ export const createAmigoHttpHandler = (
       if (taskPreviewRouteMatch) {
         const taskId = decodeURIComponent(taskPreviewRouteMatch[1] || "").trim();
         if (!taskId) {
-          return jsonResponse(
-            {
-              error: "taskId 不能为空",
-              code: "INVALID_TASK_ID",
-            },
-            { status: 400 },
+          return respond(
+            jsonResponse(
+              {
+                error: "taskId 不能为空",
+                code: "INVALID_TASK_ID",
+              },
+              { status: 400 },
+            ),
           );
+        }
+        if (authenticatedUserId && !canAccessTask(taskId, authenticatedUserId)) {
+          return respond(unauthorizedResponse());
         }
 
         const sandboxKey = resolveSandboxKey(taskId);
         if (!sandboxKey) {
-          return jsonResponse(
-            {
-              error: `任务 ${taskId} 不存在`,
-              code: "TASK_NOT_FOUND",
-            },
-            { status: 404 },
+          return respond(
+            jsonResponse(
+              {
+                error: `任务 ${taskId} 不存在`,
+                code: "TASK_NOT_FOUND",
+              },
+              { status: 404 },
+            ),
           );
         }
 
         try {
           const redirectUrl = await buildTaskPreviewRedirectUrl(req, sandboxKey);
-          return Response.redirect(redirectUrl.toString(), 307);
+          return respond(Response.redirect(redirectUrl.toString(), 307));
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           logger.error(`[AmigoApp] sandbox preview 启动失败: ${message}`);
-          return jsonResponse(
-            {
-              error: message,
-              code: "SANDBOX_PREVIEW_UNAVAILABLE",
-            },
-            { status: 503 },
+          return respond(
+            jsonResponse(
+              {
+                error: message,
+                code: "SANDBOX_PREVIEW_UNAVAILABLE",
+              },
+              { status: 503 },
+            ),
           );
         }
       }

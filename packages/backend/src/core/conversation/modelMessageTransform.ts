@@ -58,14 +58,28 @@ const toHumanMessageContent = (message: ChatMessage): string | AmigoMessageConte
   return blocks;
 };
 
-export const toModelMessages = (messages: ChatMessage[], llm: AmigoLlm): AmigoModelMessage[] => {
+export const toModelMessages = (
+  messages: ChatMessage[],
+  llm: AmigoLlm,
+  initialSystemPrompt?: string,
+): AmigoModelMessage[] => {
   const normalizedMessages = injectRuntimeDateTimeContext(messages);
+  const promptPrefixedMessages = initialSystemPrompt?.trim()
+    ? [
+        {
+          role: "system",
+          type: "system",
+          content: initialSystemPrompt.trim(),
+        } satisfies ChatMessage,
+        ...normalizedMessages,
+      ]
+    : normalizedMessages;
 
   if (isGoogleGenAIModel(llm)) {
     let firstSystemContent: string | null = null;
     const transformed: AmigoModelMessage[] = [];
 
-    for (const message of normalizedMessages) {
+    for (const message of promptPrefixedMessages) {
       if (message.role === "system") {
         if (!firstSystemContent) {
           firstSystemContent = message.content;
@@ -96,7 +110,7 @@ export const toModelMessages = (messages: ChatMessage[], llm: AmigoLlm): AmigoMo
     return transformed;
   }
 
-  return normalizedMessages.map((message): AmigoModelMessage => {
+  return promptPrefixedMessages.map((message): AmigoModelMessage => {
     switch (message.role) {
       case "system":
         return { role: "system", content: message.content };

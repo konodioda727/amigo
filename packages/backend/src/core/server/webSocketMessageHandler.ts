@@ -12,19 +12,34 @@ import { getGlobalState } from "@/globalState";
 import { getSessionHistories } from "@/utils/getSessions";
 import { logger } from "@/utils/logger";
 import type { MessageRegistry } from "../registry";
+import type { ConversationWebSocketData } from "./index";
 
 type SocketErrorCode =
   | "TASK_NOT_FOUND"
+  | "UNAUTHORIZED"
   | "INVALID_MESSAGE"
   | "UNSUPPORTED_MESSAGE_TYPE"
   | "CUSTOM_MESSAGE_VALIDATION_ERROR"
   | "CUSTOM_MESSAGE_HANDLER_MISSING"
   | "CUSTOM_MESSAGE_HANDLER_ERROR";
 
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+
+const readConversationUserId = (context: unknown): string | null => {
+  if (!isPlainObject(context) || typeof context.userId !== "string" || !context.userId.trim()) {
+    return null;
+  }
+  return context.userId.trim();
+};
+
 export class ServerWebSocketMessageHandler {
   constructor(private readonly messageRegistry?: MessageRegistry) {}
 
-  async handleMessage(ws: ServerWebSocket, message: string): Promise<void> {
+  async handleMessage(
+    ws: ServerWebSocket<ConversationWebSocketData | undefined>,
+    message: string,
+  ): Promise<void> {
     try {
       const rawMessage = JSON.parse(message) as unknown;
       const builtInMessageParse = UserSendMessageSchema.safeParse(rawMessage);
@@ -47,7 +62,11 @@ export class ServerWebSocketMessageHandler {
         return;
       }
 
-      const conversation = await this.resolveConversation(taskId, parsedMessage);
+      const conversation = await this.resolveConversation(ws, taskId, parsedMessage);
+      if (!this.canAccessConversation(ws, conversation.memory.context)) {
+        this.sendSocketError(ws, "没有权限访问该会话", "UNAUTHORIZED");
+        return;
+      }
       this.attachConnectionAndAck(ws, taskId, parsedMessage, conversation.status);
 
       const resolver = getResolver(parsedMessage.type as USER_SEND_MESSAGE_NAME, conversation);
@@ -57,12 +76,13 @@ export class ServerWebSocketMessageHandler {
     }
   }
 
-  async handleOpen(ws: ServerWebSocket): Promise<void> {
+  async handleOpen(ws: ServerWebSocket<ConversationWebSocketData | undefined>): Promise<void> {
     ws.send(
       JSON.stringify({
         type: "connected",
         data: {
           message: "连接建立",
+          userId: ws.data?.userId || null,
           updateTime: Date.now(),
         },
       } as WebSocketMessage<"connected">),
@@ -72,13 +92,13 @@ export class ServerWebSocketMessageHandler {
       JSON.stringify({
         type: "sessionHistories",
         data: {
-          sessionHistories: await getSessionHistories(),
+          sessionHistories: await getSessionHistories(ws.data?.userId),
         },
       } as WebSocketMessage<"sessionHistories">),
     );
   }
 
-  handleClose(ws: ServerWebSocket): void {
+  handleClose(ws: ServerWebSocket<ConversationWebSocketData | undefined>): void {
     const conversationId = broadcaster.findConversationIdByWs(ws);
     if (!conversationId) {
       return;
@@ -88,7 +108,7 @@ export class ServerWebSocketMessageHandler {
   }
 
   private async handleLoadTaskMessage(
-    ws: ServerWebSocket,
+    ws: ServerWebSocket<ConversationWebSocketData | undefined>,
     taskId: string,
     parsedMessage: UserSendWebSocketMessage,
   ): Promise<void> {
@@ -100,6 +120,11 @@ export class ServerWebSocketMessageHandler {
       return;
     }
 
+    if (!this.canAccessConversation(ws, conversation.memory.context)) {
+      this.sendSocketError(ws, "没有权限访问该会话", "UNAUTHORIZED");
+      return;
+    }
+
     this.attachConnectionAndAck(ws, taskId, parsedMessage, conversation.status);
 
     const resolver = getResolver(parsedMessage.type as USER_SEND_MESSAGE_NAME, conversation);
@@ -107,7 +132,7 @@ export class ServerWebSocketMessageHandler {
   }
 
   private attachConnectionAndAck(
-    ws: ServerWebSocket,
+    ws: ServerWebSocket<ConversationWebSocketData | undefined>,
     taskId: string,
     parsedMessage: UserSendWebSocketMessage,
     status: ConversationStatus,
@@ -135,9 +160,14 @@ export class ServerWebSocketMessageHandler {
     return typeof taskId === "string" && taskId.trim() ? taskId.trim() : uuidV4();
   }
 
-  private async resolveConversation(taskId: string, parsedMessage: UserSendWebSocketMessage) {
+  private async resolveConversation(
+    ws: ServerWebSocket<ConversationWebSocketData | undefined>,
+    taskId: string,
+    parsedMessage: UserSendWebSocketMessage,
+  ) {
     if (parsedMessage.type !== "createTask") {
-      return conversationRepository.getOrLoad(taskId);
+      const conversation = conversationRepository.getOrLoad(taskId);
+      return conversation;
     }
 
     const existingConversation = conversationRepository.get(taskId);
@@ -162,7 +192,10 @@ export class ServerWebSocketMessageHandler {
       toolNames: config?.toolNames,
     });
 
-    const initialContext = config?.context ?? parsedMessage.data.context;
+    const initialContext = this.mergeAuthenticatedUserContext(
+      ws.data?.userId,
+      config?.context ?? parsedMessage.data.context,
+    );
     if (initialContext !== undefined) {
       conversation.memory.setContext(initialContext);
     }
@@ -175,7 +208,7 @@ export class ServerWebSocketMessageHandler {
   }
 
   private async tryHandleRegisteredMessage(
-    ws: ServerWebSocket,
+    ws: ServerWebSocket<ConversationWebSocketData | undefined>,
     rawMessage: unknown,
   ): Promise<boolean> {
     const type = this.extractMessageType(rawMessage);
@@ -225,7 +258,7 @@ export class ServerWebSocketMessageHandler {
   }
 
   private handleInvalidMessage(
-    ws: ServerWebSocket,
+    ws: ServerWebSocket<ConversationWebSocketData | undefined>,
     rawMessage: unknown,
     issue: { path?: PropertyKey[]; message?: string } | undefined,
   ): void {
@@ -261,7 +294,39 @@ export class ServerWebSocketMessageHandler {
     return typeof type === "string" ? type : null;
   }
 
-  private sendSocketError(ws: ServerWebSocket, message: string, code: SocketErrorCode): void {
+  private mergeAuthenticatedUserContext(userId: string | undefined, context: unknown): unknown {
+    if (!userId?.trim()) {
+      return context;
+    }
+
+    return {
+      ...(isPlainObject(context) ? context : {}),
+      userId,
+    };
+  }
+
+  private canAccessConversation(
+    ws: ServerWebSocket<ConversationWebSocketData | undefined>,
+    context: unknown,
+  ): boolean {
+    const socketUserId = ws.data?.userId?.trim();
+    if (!socketUserId) {
+      return false;
+    }
+
+    const conversationUserId = readConversationUserId(context);
+    if (!conversationUserId) {
+      return true;
+    }
+
+    return conversationUserId === socketUserId;
+  }
+
+  private sendSocketError(
+    ws: ServerWebSocket<ConversationWebSocketData | undefined>,
+    message: string,
+    code: SocketErrorCode,
+  ): void {
     ws.send(
       JSON.stringify({
         type: "error",

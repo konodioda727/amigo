@@ -1,6 +1,16 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { RowDataPacket } from "mysql2/promise";
 import { z } from "zod";
+import {
+  ensureMysqlSchemaUpToDate,
+  isMysqlConfigured,
+  listNotificationChannels,
+  mysqlExecute,
+  mysqlQuery,
+  parseJsonColumn,
+} from "../db";
 
 const JsonObjectSchema = z.record(z.string(), z.unknown());
 
@@ -108,6 +118,83 @@ const computeNextRunAt = (schedule: AutomationSchedule, now: Date): string => {
   return next.toISOString();
 };
 
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+
+const NOTIFICATION_AUTOMATION_PATTERN =
+  /(提醒|提醒我|通知|闹钟|alert|remind|reminder|notify|notification)/i;
+
+const isNotificationAutomation = (input: { prompt: string; context?: unknown }) => {
+  if (NOTIFICATION_AUTOMATION_PATTERN.test(input.prompt)) {
+    return true;
+  }
+
+  return isPlainObject(input.context) && input.context.trigger === "automation_notification";
+};
+
+type AutomationRow = RowDataPacket & {
+  id: string;
+  user_id: string;
+  name: string;
+  prompt: string;
+  skill_ids_json: unknown;
+  context_json: unknown;
+  schedule_type: string;
+  schedule_json: unknown;
+  enabled: number | boolean;
+  next_run_at: string | null;
+  last_run_at: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+const parseDateTime = (value: unknown): string | undefined => {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  const raw = String(value).trim();
+  if (!raw) {
+    return undefined;
+  }
+  if (raw.includes("T")) {
+    return new Date(raw).toISOString();
+  }
+  return new Date(`${raw.replace(" ", "T")}Z`).toISOString();
+};
+
+const mapAutomationRow = (row: AutomationRow): AutomationDefinition => {
+  const schedule = AutomationScheduleSchema.parse(
+    parseJsonColumn<AutomationSchedule>(row.schedule_json, {
+      type: "interval",
+      everyMinutes: 1,
+    }),
+  );
+  const enabled = row.enabled === true || row.enabled === 1 || String(row.enabled) === "1";
+  const skillIds = normalizeStringArray(
+    parseJsonColumn<string[]>(row.skill_ids_json, []).map((value) => String(value)),
+  );
+  const context = parseJsonColumn<Record<string, unknown> | null>(row.context_json, null);
+
+  return AutomationDefinitionSchema.parse({
+    id: row.id,
+    name: row.name,
+    prompt: row.prompt,
+    ...(skillIds ? { skillIds } : {}),
+    ...(context ? { context } : {}),
+    schedule,
+    enabled,
+    ...(parseDateTime(row.last_run_at) ? { lastRunAt: parseDateTime(row.last_run_at) } : {}),
+    ...(parseDateTime(row.next_run_at) ? { nextRunAt: parseDateTime(row.next_run_at) } : {}),
+    ...(row.last_error?.trim() ? { lastError: row.last_error.trim() } : {}),
+    createdAt: parseDateTime(row.created_at) || new Date(0).toISOString(),
+    updatedAt: parseDateTime(row.updated_at) || new Date(0).toISOString(),
+  });
+};
+
 export class AutomationStore {
   private readonly automationsDir: string;
   private readonly knownSkillIds?: () => Promise<Set<string>>;
@@ -118,10 +205,26 @@ export class AutomationStore {
   }
 
   async init(): Promise<void> {
+    if (isMysqlConfigured()) {
+      await ensureMysqlSchemaUpToDate();
+      return;
+    }
+
     await mkdir(this.automationsDir, { recursive: true });
   }
 
-  async list(): Promise<AutomationDefinition[]> {
+  async list(userId?: string): Promise<AutomationDefinition[]> {
+    if (isMysqlConfigured()) {
+      await this.init();
+      const rows = userId?.trim()
+        ? await mysqlQuery<AutomationRow>(
+            "SELECT * FROM automations WHERE user_id = ? ORDER BY name ASC",
+            [userId.trim()],
+          )
+        : await mysqlQuery<AutomationRow>("SELECT * FROM automations ORDER BY name ASC");
+      return rows.map(mapAutomationRow);
+    }
+
     await this.init();
     const entries = await readdir(this.automationsDir, { withFileTypes: true });
     const automations = await Promise.all(
@@ -132,7 +235,21 @@ export class AutomationStore {
     return automations.sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  async get(id: string): Promise<AutomationDefinition | null> {
+  async get(id: string, userId?: string): Promise<AutomationDefinition | null> {
+    if (isMysqlConfigured()) {
+      await this.init();
+      const rows = userId?.trim()
+        ? await mysqlQuery<AutomationRow>(
+            "SELECT * FROM automations WHERE id = ? AND user_id = ? LIMIT 1",
+            [id.trim(), userId.trim()],
+          )
+        : await mysqlQuery<AutomationRow>("SELECT * FROM automations WHERE id = ? LIMIT 1", [
+            id.trim(),
+          ]);
+      const row = rows[0];
+      return row ? mapAutomationRow(row) : null;
+    }
+
     try {
       return await this.readFromFile(this.getFilePath(id));
     } catch {
@@ -140,10 +257,91 @@ export class AutomationStore {
     }
   }
 
-  async upsert(input: AutomationUpsertInput): Promise<AutomationDefinition> {
-    await this.init();
+  async upsert(input: AutomationUpsertInput, userId?: string): Promise<AutomationDefinition> {
     await this.assertKnownSkills(input.skillIds);
 
+    if (isMysqlConfigured()) {
+      await this.init();
+      const nowIso = new Date().toISOString();
+      const normalizedId = (input.id?.trim() || slugify(input.name)).trim();
+      const existing = await this.get(normalizedId, userId);
+      const enabled = input.enabled ?? true;
+      const resolvedUserId = this.resolveAutomationUserId(input.context, userId);
+      await this.assertNotificationChannelsConfigured(resolvedUserId, input);
+      const context =
+        input.context && isPlainObject(input.context)
+          ? { ...input.context, userId: resolvedUserId }
+          : { userId: resolvedUserId };
+      const skillIds = normalizeStringArray(input.skillIds);
+      const nextRunAt = enabled ? computeNextRunAt(input.schedule, new Date(nowIso)) : null;
+
+      const payload = {
+        id: normalizedId,
+        userId,
+        name: input.name.trim(),
+        prompt: input.prompt.trim(),
+        skillIdsJson: skillIds ? JSON.stringify(skillIds) : null,
+        contextJson: JSON.stringify(context),
+        scheduleType: input.schedule.type,
+        scheduleJson: JSON.stringify(input.schedule),
+        enabled: enabled ? 1 : 0,
+        nextRunAt,
+        lastRunAt: existing?.lastRunAt ? new Date(existing.lastRunAt) : null,
+        lastError: existing?.lastError || null,
+        createdAt: existing?.createdAt ? new Date(existing.createdAt) : new Date(nowIso),
+        updatedAt: new Date(nowIso),
+      };
+
+      await mysqlExecute(
+        `
+          INSERT INTO automations (
+            id, user_id, name, prompt, skill_ids_json, context_json, schedule_type, schedule_json,
+            enabled, next_run_at, last_run_at, last_error, created_at, updated_at
+          ) VALUES (
+            ?, ?, ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?, ?
+          )
+          ON DUPLICATE KEY UPDATE
+            user_id = VALUES(user_id),
+            name = VALUES(name),
+            prompt = VALUES(prompt),
+            skill_ids_json = VALUES(skill_ids_json),
+            context_json = VALUES(context_json),
+            schedule_type = VALUES(schedule_type),
+            schedule_json = VALUES(schedule_json),
+            enabled = VALUES(enabled),
+            next_run_at = VALUES(next_run_at),
+            last_run_at = VALUES(last_run_at),
+            last_error = VALUES(last_error),
+            created_at = VALUES(created_at),
+            updated_at = VALUES(updated_at)
+        `,
+        [
+          payload.id,
+          resolvedUserId,
+          payload.name,
+          payload.prompt,
+          payload.skillIdsJson || "[]",
+          payload.contextJson,
+          payload.scheduleType,
+          payload.scheduleJson,
+          payload.enabled,
+          payload.nextRunAt ? new Date(payload.nextRunAt) : null,
+          payload.lastRunAt,
+          payload.lastError,
+          payload.createdAt,
+          payload.updatedAt,
+        ],
+      );
+
+      const saved = await this.get(normalizedId, resolvedUserId);
+      if (!saved) {
+        throw new Error(`automation 保存失败: ${normalizedId}`);
+      }
+      return saved;
+    }
+
+    await this.init();
     const now = new Date();
     const nowIso = now.toISOString();
     const normalizedId = (input.id?.trim() || slugify(input.name)).trim();
@@ -175,7 +373,18 @@ export class AutomationStore {
     return nextAutomation;
   }
 
-  async remove(id: string): Promise<boolean> {
+  async remove(id: string, userId?: string): Promise<boolean> {
+    if (isMysqlConfigured()) {
+      await this.init();
+      const result = userId?.trim()
+        ? await mysqlExecute("DELETE FROM automations WHERE id = ? AND user_id = ?", [
+            id.trim(),
+            userId.trim(),
+          ])
+        : await mysqlExecute("DELETE FROM automations WHERE id = ?", [id.trim()]);
+      return result.affectedRows > 0;
+    }
+
     try {
       await rm(this.getFilePath(id), { force: true });
       return true;
@@ -186,8 +395,65 @@ export class AutomationStore {
 
   async markRun(
     id: string,
-    result: { runAt?: Date; error?: string } = {},
+    result: { runAt?: Date; error?: string; conversationId?: string; runId?: string } = {},
   ): Promise<AutomationDefinition | null> {
+    if (isMysqlConfigured()) {
+      await this.init();
+      const automation = await this.get(id);
+      if (!automation) {
+        return null;
+      }
+
+      const runAt = result.runAt || new Date();
+      const shouldRemainEnabled =
+        automation.enabled && (result.error?.trim() ? true : automation.schedule.type !== "once");
+      await mysqlExecute(
+        `
+          UPDATE automations
+          SET enabled = ?,
+              next_run_at = ?,
+              last_run_at = ?,
+              last_error = ?,
+              updated_at = ?
+          WHERE id = ?
+        `,
+        [
+          shouldRemainEnabled ? 1 : 0,
+          shouldRemainEnabled ? new Date(computeNextRunAt(automation.schedule, runAt)) : null,
+          runAt,
+          result.error?.trim() || null,
+          new Date().toISOString(),
+          id.trim(),
+        ],
+      );
+
+      const runId = result.runId?.trim() || randomUUID();
+      await mysqlExecute(
+        `
+          INSERT INTO automation_runs (
+            id, automation_id, conversation_id, status, triggered_at, started_at, finished_at, error
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            conversation_id = VALUES(conversation_id),
+            status = VALUES(status),
+            finished_at = VALUES(finished_at),
+            error = VALUES(error)
+        `,
+        [
+          runId,
+          id.trim(),
+          result.conversationId || null,
+          result.error?.trim() ? "failed" : "completed",
+          runAt,
+          runAt,
+          runAt,
+          result.error?.trim() || null,
+        ],
+      );
+
+      return this.get(id);
+    }
+
     const automation = await this.get(id);
     if (!automation) {
       return null;
@@ -220,6 +486,62 @@ export class AutomationStore {
     if (missingSkillIds.length > 0) {
       throw new Error(`automation 引用了不存在的 skills: ${missingSkillIds.join(", ")}`);
     }
+  }
+
+  private resolveAutomationUserId(context: unknown, fallbackUserId?: string): string {
+    if (isPlainObject(context) && typeof context.userId === "string" && context.userId.trim()) {
+      return context.userId.trim();
+    }
+
+    if (fallbackUserId?.trim()) {
+      return fallbackUserId.trim();
+    }
+
+    throw new Error("automation 缺少 userId，无法确定归属用户。");
+  }
+
+  async startRun(id: string): Promise<string | null> {
+    if (!isMysqlConfigured()) {
+      return null;
+    }
+
+    await this.init();
+    const runId = randomUUID();
+    const now = new Date();
+    await mysqlExecute(
+      `
+        INSERT INTO automation_runs (
+          id, automation_id, status, triggered_at, started_at
+        ) VALUES (?, ?, 'running', ?, ?)
+      `,
+      [runId, id.trim(), now, now],
+    );
+    return runId;
+  }
+
+  private async assertNotificationChannelsConfigured(
+    userId: string,
+    input: Pick<AutomationUpsertInput, "prompt" | "context">,
+  ): Promise<void> {
+    if (!isMysqlConfigured() || !isNotificationAutomation(input)) {
+      return;
+    }
+
+    const contextHasChannel =
+      isPlainObject(input.context) &&
+      isPlainObject(input.context.feishu) &&
+      typeof input.context.feishu.chatId === "string" &&
+      input.context.feishu.chatId.trim();
+    if (contextHasChannel) {
+      return;
+    }
+
+    const channels = await listNotificationChannels(userId, "feishu");
+    if (channels.some((channel) => channel.enabled)) {
+      return;
+    }
+
+    throw new Error("当前账号还没有可用的飞书通知通道，无法创建提醒型 automation。");
   }
 
   private getFilePath(id: string): string {

@@ -89,7 +89,7 @@ const buildContextUsage = (params: {
 
 const getCompressionAnchorIndex = (messages: ChatMessage[]): number | null => {
   const index = messages.findLastIndex((message) => message.type === "compaction");
-  return index >= 1 ? index : null;
+  return index >= 0 ? index : null;
 };
 
 const getMessagesForCurrentContext = (messages: ChatMessage[]): ChatMessage[] => {
@@ -97,17 +97,12 @@ const getMessagesForCurrentContext = (messages: ChatMessage[]): ChatMessage[] =>
     return [...messages];
   }
 
-  const firstMessage = messages[0];
-  if (!firstMessage) {
-    return [];
-  }
-
   const anchorIndex = getCompressionAnchorIndex(messages);
   if (anchorIndex === null) {
     return [...messages];
   }
 
-  return [firstMessage, ...messages.slice(anchorIndex)];
+  return messages.slice(anchorIndex);
 };
 
 const buildCompressionTranscript = (messages: ChatMessage[]): string =>
@@ -180,7 +175,7 @@ const decideCompressionSplit = (
     return null;
   }
 
-  const anchorIndex = getCompressionAnchorIndex(messages) ?? 1;
+  const anchorIndex = getCompressionAnchorIndex(messages) ?? 0;
   if (anchorIndex >= messages.length - 1) {
     return null;
   }
@@ -248,7 +243,11 @@ const buildContextUsageSnapshot = (
   }
 
   const selectedMessages = getMessagesForCurrentContext(conversation.memory.messages);
-  const modelMessages = toModelMessages(selectedMessages, conversation.llm);
+  const modelMessages = toModelMessages(
+    selectedMessages,
+    conversation.llm,
+    conversation.memory.initialSystemPrompt,
+  );
   const estimatedTokens = estimateModelMessagesTokens(modelMessages);
 
   return {
@@ -288,10 +287,17 @@ export class ContextCompressionManager {
       if (conversation.memory.contextUsage) {
         conversation.setContextUsage(undefined);
       }
-      return toModelMessages(conversation.memory.messages, conversation.llm);
+      return toModelMessages(
+        conversation.memory.messages,
+        conversation.llm,
+        conversation.memory.initialSystemPrompt,
+      );
     }
 
-    const config = resolveModelContextConfig(conversation.llm.model)!;
+    const config = resolveModelContextConfig(conversation.llm.model);
+    if (!config) {
+      return snapshot.modelMessages;
+    }
     let selectedMessages = getMessagesForCurrentContext(conversation.memory.messages);
     let modelMessages = snapshot.modelMessages;
     let contextUsage = {
@@ -354,7 +360,11 @@ export class ContextCompressionManager {
       });
 
       selectedMessages = getMessagesForCurrentContext(conversation.memory.messages);
-      modelMessages = toModelMessages(selectedMessages, conversation.llm);
+      modelMessages = toModelMessages(
+        selectedMessages,
+        conversation.llm,
+        conversation.memory.initialSystemPrompt,
+      );
       const estimatedTokens = estimateModelMessagesTokens(modelMessages);
 
       const completedAt = new Date().toISOString();

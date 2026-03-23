@@ -1,4 +1,3 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
   type ChatMessage,
@@ -8,47 +7,48 @@ import {
   type SERVER_SEND_MESSAGE_NAME,
   StorageType,
   type SubTaskStatus,
-  type TaskStatusMetadata,
   type USER_SEND_MESSAGE_NAME,
   type WebSocketMessage,
 } from "@amigo-llm/types";
+import { getConversationPersistenceProvider } from "@/core/persistence";
+import type { ConversationPersistenceRecord } from "@/core/persistence/types";
 import { getTaskStoragePath } from "@/core/storage";
-import { logger } from "@/utils/logger";
-import { getTaskId } from "../templates/checklistParser";
 
 /**
  * 文件持久化内存管理类
- * 精简版本，直接存储OpenAI API兼容格式
+ *
+ * 保持既有 API 不变，但读写统一委托给 backend 内部 persistence provider。
  */
 export class FilePersistedMemory {
   private _messages: ChatMessage[] = [];
-  private _websocketMessages: WebSocketMessage<any>[] = [];
+  private _websocketMessages: WebSocketMessage<
+    USER_SEND_MESSAGE_NAME | SERVER_SEND_MESSAGE_NAME
+  >[] = [];
   private _conversationStatus: ConversationStatus = "idle";
+  private _initialSystemPrompt?: string;
   private _toolNames: string[] = [];
-  private _context: any;
+  private _context: unknown;
   private _autoApproveToolNames: string[] = [];
   private _pendingToolCall: PendingToolCall | null = null;
   private _subTasks: Record<string, SubTaskStatus> = {};
   private _contextUsage?: ContextUsageStatus;
   private _createdAt: string;
+  private _hasPersistedState = false;
+  private readonly persistenceProvider = getConversationPersistenceProvider();
 
   constructor(
     private taskId: string,
     private fatherTaskId?: string,
   ) {
     this._createdAt = new Date().toISOString();
-    this.loadTaskStatus();
-    this.loadOriginalFromFile();
-    this.loadWebsocketFromFile();
+    this.loadFromPersistence();
   }
 
   /**
-   * 检查任务是否存在于磁盘（通过检查 original.json 文件）
+   * 检查任务是否存在
    */
   static exists(taskId: string): boolean {
-    const storagePath = getTaskStoragePath(taskId);
-    const originalPath = path.join(storagePath, "messages", `${StorageType.ORIGINAL}.json`);
-    return existsSync(originalPath);
+    return getConversationPersistenceProvider().exists(taskId);
   }
 
   /**
@@ -85,6 +85,7 @@ export class FilePersistedMemory {
   get currentTaskId() {
     return this.taskId;
   }
+
   /**
    * 父记录 taskId
    */
@@ -99,89 +100,16 @@ export class FilePersistedMemory {
     return this._conversationStatus;
   }
 
+  get initialSystemPrompt(): string | undefined {
+    return this._initialSystemPrompt;
+  }
+
   /**
    * 设置会话状态并持久化
    */
   set conversationStatus(status: ConversationStatus) {
     this._conversationStatus = status;
     this.saveTaskStatus();
-  }
-
-  private ensureDirectoryExists(directory: string): void {
-    if (!existsSync(directory)) {
-      mkdirSync(directory, { recursive: true });
-    }
-  }
-
-  /**
-   * 加载任务状态元数据
-   */
-  private loadTaskStatus(): void {
-    if (existsSync(this.taskStatusPath)) {
-      try {
-        const data: TaskStatusMetadata = JSON.parse(readFileSync(this.taskStatusPath, "utf-8"));
-        this._conversationStatus = data.conversationStatus || "idle";
-        this._toolNames = data.toolNames || [];
-        this._context = data.context;
-        this._autoApproveToolNames = data.autoApproveToolNames || [];
-        this._pendingToolCall = data.pendingToolCall || null;
-        this._contextUsage = data.contextUsage;
-        const rawSubTasks = data.subTasks || {};
-        const normalizedSubTasks: Record<string, SubTaskStatus> = {};
-        for (const [key, status] of Object.entries(rawSubTasks)) {
-          const taskKey = getTaskId(key) || key;
-          const nextStatus: SubTaskStatus = {
-            ...status,
-            description: status.description || key,
-          };
-          const existing = normalizedSubTasks[taskKey];
-          if (!existing || (!existing.subTaskId && nextStatus.subTaskId)) {
-            normalizedSubTasks[taskKey] = nextStatus;
-          } else if (existing) {
-            normalizedSubTasks[taskKey] = {
-              ...existing,
-              ...nextStatus,
-              description: existing.description || nextStatus.description,
-            };
-          }
-        }
-        this._subTasks = normalizedSubTasks;
-        this._createdAt = data.createdAt || new Date().toISOString();
-        if (data.fatherTaskId) {
-          this.fatherTaskId = data.fatherTaskId;
-        }
-      } catch (error) {
-        logger.error(`加载任务状态失败: ${error}`);
-      }
-    }
-  }
-
-  /**
-   * 保存任务状态元数据
-   */
-  private saveTaskStatus(): boolean {
-    try {
-      this.ensureDirectoryExists(this.storagePath);
-      const metadata: TaskStatusMetadata = {
-        taskId: this.taskId,
-        fatherTaskId: this.fatherTaskId,
-        conversationStatus: this._conversationStatus,
-        toolNames: this._toolNames,
-        context: this._context,
-        autoApproveToolNames: this._autoApproveToolNames,
-        pendingToolCall: this._pendingToolCall || undefined,
-        subTasks: this._subTasks,
-        contextUsage: this._contextUsage,
-        createdAt: this._createdAt,
-        updatedAt: new Date().toISOString(),
-      };
-      writeFileSync(this.taskStatusPath, JSON.stringify(metadata, null, 2), "utf-8");
-      return true;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error(`保存任务状态失败: ${errorMessage}`);
-      return false;
-    }
   }
 
   /**
@@ -192,55 +120,7 @@ export class FilePersistedMemory {
   }
 
   /**
-   * 设置待确认的工具调用
-   */
-  public setPendingToolCall(toolCall: PendingToolCall | null): void {
-    this._pendingToolCall = toolCall;
-    this.saveTaskStatus();
-  }
-
-  private loadOriginalFromFile(): void {
-    const targetPath = path.join(this.messagesPath, `${StorageType.ORIGINAL}.json`);
-    if (existsSync(targetPath)) {
-      try {
-        const data = JSON.parse(readFileSync(targetPath, "utf-8"));
-        if (Array.isArray(data.messages)) {
-          this._messages = data.messages;
-        }
-      } catch (error) {
-        logger.error(`加载原始消息历史失败: ${error}`);
-      }
-    }
-  }
-
-  /**
-   * 判断是否是新会话（文件不存在或 messages 为空）
-   */
-  public isNewSession(): boolean {
-    const targetPath = path.join(this.messagesPath, `${StorageType.ORIGINAL}.json`);
-    if (!existsSync(targetPath)) {
-      return true;
-    }
-    // 文件存在但 messages 为空也认为是新会话
-    return this._messages.length === 0;
-  }
-
-  private loadWebsocketFromFile(): void {
-    const targetPath = path.join(this.messagesPath, `${StorageType.FRONT_END}.json`);
-    if (existsSync(targetPath)) {
-      try {
-        const data = JSON.parse(readFileSync(targetPath, "utf-8"));
-        if (Array.isArray(data.messages)) {
-          this._websocketMessages = data.messages;
-        }
-      } catch (error) {
-        logger.error(`加载WebSocket消息历史失败: ${error}`);
-      }
-    }
-  }
-
-  /**
-   * 直接获取原始消息列表 (OpenAI API所需格式)
+   * 获取原始消息列表
    */
   public get messages(): ChatMessage[] {
     return [...this._messages];
@@ -249,7 +129,9 @@ export class FilePersistedMemory {
   /**
    * 获取发送给前端的消息列表
    */
-  public getWebsocketMessages(): WebSocketMessage<any>[] {
+  public getWebsocketMessages(): WebSocketMessage<
+    USER_SEND_MESSAGE_NAME | SERVER_SEND_MESSAGE_NAME
+  >[] {
     return [...this._websocketMessages];
   }
 
@@ -259,32 +141,127 @@ export class FilePersistedMemory {
   public get lastMessage(): ChatMessage | undefined {
     return this._messages.at(-1);
   }
+
   /**
-   * 获取最近一条frontend信息
+   * 获取最近一条 frontend 信息
    */
-  public get lastWebsocketMessage(): WebSocketMessage<any> | undefined {
+  public get lastWebsocketMessage():
+    | WebSocketMessage<USER_SEND_MESSAGE_NAME | SERVER_SEND_MESSAGE_NAME>
+    | undefined {
     return this._websocketMessages.at(-1);
   }
+
   /**
-   * 判断是否是 partial message
-   * @param message
-   * @returns
+   * 判断是否覆盖上一条流式消息
    */
-  private isOverwritePrevMessage(message: ChatMessage) {
+  private isOverwritePrevMessage(message: ChatMessage): boolean {
     const lastMessage = this.lastMessage;
     const isOverwriteLastMessage =
       lastMessage?.partial &&
       lastMessage.role === message.role &&
       message.type === lastMessage.type;
-    return isOverwriteLastMessage;
+    return !!isOverwriteLastMessage;
+  }
+
+  private applyPersistenceRecord(record: ConversationPersistenceRecord): void {
+    const firstMessage = record.messages[0];
+    const legacyInitialSystemPrompt =
+      record.initialSystemPrompt ||
+      (firstMessage?.role === "system" && firstMessage.type === "system"
+        ? firstMessage.content
+        : undefined);
+    this._initialSystemPrompt = legacyInitialSystemPrompt;
+    this._messages =
+      legacyInitialSystemPrompt && firstMessage?.role === "system" && firstMessage.type === "system"
+        ? [...record.messages.slice(1)]
+        : [...record.messages];
+    this._websocketMessages = [...record.websocketMessages];
+    this._conversationStatus = record.conversationStatus;
+    this._toolNames = [...record.toolNames];
+    this._context = record.context;
+    this._autoApproveToolNames = [...record.autoApproveToolNames];
+    this._pendingToolCall = record.pendingToolCall;
+    this._subTasks = { ...record.subTasks };
+    this._contextUsage = record.contextUsage;
+    this._createdAt = record.createdAt;
+    this.fatherTaskId = record.fatherTaskId;
+    this._hasPersistedState = true;
+  }
+
+  private loadFromPersistence(): void {
+    const record = this.persistenceProvider.load(this.taskId);
+    if (record) {
+      this.applyPersistenceRecord(record);
+      return;
+    }
+
+    if (this.fatherTaskId) {
+      this._hasPersistedState = false;
+    }
+  }
+
+  private buildPersistenceRecord(): ConversationPersistenceRecord {
+    return {
+      taskId: this.taskId,
+      fatherTaskId: this.fatherTaskId,
+      conversationStatus: this._conversationStatus,
+      initialSystemPrompt: this._initialSystemPrompt,
+      toolNames: [...this._toolNames],
+      context: this._context,
+      autoApproveToolNames: [...this._autoApproveToolNames],
+      pendingToolCall: this._pendingToolCall,
+      subTasks: { ...this._subTasks },
+      contextUsage: this._contextUsage,
+      createdAt: this._createdAt,
+      updatedAt: new Date().toISOString(),
+      messages: [...this._messages],
+      websocketMessages: [...this._websocketMessages],
+    };
+  }
+
+  private persist(): boolean {
+    const saved = this.persistenceProvider.save(this.buildPersistenceRecord());
+    if (saved) {
+      this._hasPersistedState = true;
+    }
+    return saved;
+  }
+
+  /**
+   * 保存任务状态元数据
+   */
+  private saveTaskStatus(): boolean {
+    return this.persist();
+  }
+
+  /**
+   * 判断是否是新会话
+   */
+  public isNewSession(): boolean {
+    if (!this._hasPersistedState) {
+      return true;
+    }
+    return this._messages.length === 0 && !this._initialSystemPrompt;
+  }
+
+  public setInitialSystemPrompt(prompt: string): void {
+    const normalizedPrompt = prompt.trim();
+    this._initialSystemPrompt = normalizedPrompt || undefined;
+    this.saveTaskStatus();
+  }
+
+  /**
+   * 设置待确认的工具调用
+   */
+  public setPendingToolCall(toolCall: PendingToolCall | null): void {
+    this._pendingToolCall = toolCall;
+    this.saveTaskStatus();
   }
 
   /**
    * 增加新消息，可处理普通消息和流式消息
-   * @param message 消息对象
    */
-  public addMessage(message: ChatMessage) {
-    // 检查最后一条消息是否是未完成的流式消息，并且消息类型相同为 message
+  public addMessage(message: ChatMessage): void {
     if (this.isOverwritePrevMessage(message)) {
       this._messages[this._messages.length - 1] = {
         ...message,
@@ -306,14 +283,17 @@ export class FilePersistedMemory {
 
   public addWebsocketMessage<K extends USER_SEND_MESSAGE_NAME | SERVER_SEND_MESSAGE_NAME>(
     message: WebSocketMessage<K>,
-  ) {
+  ): void {
     const lastWebsocketMessage = this._websocketMessages.at(-1);
     const isUpdatePrevWebsocketMessage =
       lastWebsocketMessage?.data.partial && message.type === lastWebsocketMessage?.type;
     if (isUpdatePrevWebsocketMessage) {
-      this._websocketMessages[this._websocketMessages.length - 1] = message;
+      this._websocketMessages[this._websocketMessages.length - 1] =
+        message as unknown as WebSocketMessage<USER_SEND_MESSAGE_NAME | SERVER_SEND_MESSAGE_NAME>;
     } else {
-      this._websocketMessages.push(message);
+      this._websocketMessages.push(
+        message as unknown as WebSocketMessage<USER_SEND_MESSAGE_NAME | SERVER_SEND_MESSAGE_NAME>,
+      );
     }
     this.saveWebsocketToFile();
   }
@@ -321,16 +301,16 @@ export class FilePersistedMemory {
   /**
    * 设置工具名称列表
    */
-  public setToolNames(toolNames: string[]) {
-    this._toolNames = toolNames;
+  public setToolNames(toolNames: string[]): void {
+    this._toolNames = [...toolNames];
     this.saveTaskStatus();
   }
 
-  public get context(): any {
+  public get context(): unknown {
     return this._context;
   }
 
-  public setContext(context: any): void {
+  public setContext(context: unknown): void {
     this._context = context;
     this.saveTaskStatus();
   }
@@ -339,13 +319,13 @@ export class FilePersistedMemory {
    * 获取工具名称列表
    */
   public get toolNames(): string[] {
-    return this._toolNames;
+    return [...this._toolNames];
   }
 
   /**
    * 设置自动批准工具名称列表
    */
-  public setAutoApproveToolNames(toolNames: string[]) {
+  public setAutoApproveToolNames(toolNames: string[]): void {
     this._autoApproveToolNames = Array.from(
       new Set(toolNames.map((name) => name.trim()).filter(Boolean)),
     );
@@ -356,14 +336,14 @@ export class FilePersistedMemory {
    * 获取自动批准工具名称列表
    */
   public get autoApproveToolNames(): string[] {
-    return this._autoApproveToolNames;
+    return [...this._autoApproveToolNames];
   }
 
   /**
    * 获取子任务状态列表
    */
   public get subTasks(): Record<string, SubTaskStatus> {
-    return this._subTasks;
+    return { ...this._subTasks };
   }
 
   public get contextUsage(): ContextUsageStatus | undefined {
@@ -408,46 +388,17 @@ export class FilePersistedMemory {
   }
 
   /**
-   * 保存原始历史到文件（只保存消息数组）
+   * 保存原始历史
    */
   public saveOriginalToFile(): boolean {
-    try {
-      this.ensureDirectoryExists(this.messagesPath);
-      const data = {
-        messages: this._messages,
-        updatedAt: new Date().toISOString(),
-      };
-      const realMessageStoragePath = path.join(this.messagesPath, `${StorageType.ORIGINAL}.json`);
-      writeFileSync(realMessageStoragePath, JSON.stringify(data, null, 2), "utf-8");
-      return true;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error(`保存原始历史记录失败: ${errorMessage}`);
-      return false;
-    }
+    return this.persist();
   }
 
   /**
-   * 保存WebSocket消息到文件（只保存消息数组）
+   * 保存WebSocket消息历史
    */
   private saveWebsocketToFile(): boolean {
-    try {
-      this.ensureDirectoryExists(this.messagesPath);
-      const data = {
-        messages: this._websocketMessages,
-        updatedAt: new Date().toISOString(),
-      };
-      const websocketMessageStoragePath = path.join(
-        this.messagesPath,
-        `${StorageType.FRONT_END}.json`,
-      );
-      writeFileSync(websocketMessageStoragePath, JSON.stringify(data, null, 2), "utf-8");
-      return true;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error(`保存WebSocket消息历史失败: ${errorMessage}`);
-      return false;
-    }
+    return this.persist();
   }
 
   /**
@@ -455,19 +406,14 @@ export class FilePersistedMemory {
    */
   public clearHistory(): boolean {
     this._messages = [];
-    this._websocketMessages = []; // 同时清空WebSocket消息
-    // 将两个文件都清空
+    this._websocketMessages = [];
     return this.saveOriginalToFile() && this.saveWebsocketToFile();
   }
 
   /**
-   * 删除会话的所有存储文件
+   * 删除会话的所有存储
    */
   public async delete(): Promise<void> {
-    const { rmSync } = await import("node:fs");
-    if (existsSync(this.storagePath)) {
-      rmSync(this.storagePath, { recursive: true, force: true });
-      logger.info(`[Memory] 已删除存储目录: ${this.storagePath}`);
-    }
+    this.persistenceProvider.delete(this.taskId);
   }
 }

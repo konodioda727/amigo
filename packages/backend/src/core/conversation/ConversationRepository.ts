@@ -1,12 +1,9 @@
-import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
-import path from "node:path";
-import { StorageType, type TaskStatusMetadata, type ToolInterface } from "@amigo-llm/types";
+import type { ToolInterface } from "@amigo-llm/types";
+import { getConversationPersistenceProvider } from "@/core/persistence";
 import { getSandboxManager } from "@/core/sandbox";
 import { getSandboxContainerName } from "@/core/sandbox/containerIdentity";
-import { getStorageRootPath } from "@/core/storage";
 import { getGlobalState } from "@/globalState";
 import { logger } from "@/utils/logger";
-import { FilePersistedMemory } from "../memory";
 import { type AmigoLlm, getLlm } from "../model";
 import { CUSTOMED_TOOLS, getBaseTools, ToolService } from "../tools";
 import { Conversation, type ConversationType } from "./Conversation";
@@ -14,8 +11,7 @@ import { Conversation, type ConversationType } from "./Conversation";
 /**
  * 获取所有自定义工具（内置 CUSTOMED_TOOLS + SDK 注册的工具）
  */
-// biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
-function getAllCustomTools(): ToolInterface<any>[] {
+function getAllCustomTools(): ToolInterface<unknown>[] {
   const registryTools = getGlobalState("registryTools") || [];
   const registryToolNames = new Set(registryTools.map((t) => t.name));
   const filteredCustomedTools = CUSTOMED_TOOLS.filter((tool) => !registryToolNames.has(tool.name));
@@ -28,7 +24,7 @@ function getAllCustomTools(): ToolInterface<any>[] {
 export class ConversationRepository {
   private conversations = new Map<string, Conversation>();
 
-  private buildTaskRelationGraph(storageRoot: string): {
+  private buildTaskRelationGraph(): {
     existingTaskIds: Set<string>;
     parentMap: Map<string, string>;
     childrenMap: Map<string, Set<string>>;
@@ -36,6 +32,7 @@ export class ConversationRepository {
     const existingTaskIds = new Set<string>();
     const parentMap = new Map<string, string>();
     const childrenMap = new Map<string, Set<string>>();
+    const persistenceProvider = getConversationPersistenceProvider();
 
     const addRelation = (parentId: string, childId: string): void => {
       const children = childrenMap.get(parentId) || new Set<string>();
@@ -43,34 +40,13 @@ export class ConversationRepository {
       childrenMap.set(parentId, children);
     };
 
-    if (existsSync(storageRoot)) {
-      for (const entry of readdirSync(storageRoot, { withFileTypes: true })) {
-        if (!entry.isDirectory()) {
-          continue;
-        }
-
-        const taskId = entry.name;
-        existingTaskIds.add(taskId);
-
-        const taskStatusPath = path.join(storageRoot, taskId, `${StorageType.TASK_STATUS}.json`);
-        if (!existsSync(taskStatusPath)) {
-          continue;
-        }
-
-        try {
-          const taskStatus = JSON.parse(
-            readFileSync(taskStatusPath, "utf-8"),
-          ) as TaskStatusMetadata;
-          if (taskStatus.fatherTaskId) {
-            parentMap.set(taskId, taskStatus.fatherTaskId);
-            addRelation(taskStatus.fatherTaskId, taskId);
-          }
-        } catch (error) {
-          logger.warn(
-            `[ConversationRepository] 读取任务状态失败: ${taskStatusPath}, error: ${error}`,
-          );
-        }
+    for (const relation of persistenceProvider.listConversationRelations()) {
+      existingTaskIds.add(relation.taskId);
+      if (!relation.fatherTaskId) {
+        continue;
       }
+      parentMap.set(relation.taskId, relation.fatherTaskId);
+      addRelation(relation.fatherTaskId, relation.taskId);
     }
 
     for (const conversation of this.getAll()) {
@@ -111,15 +87,8 @@ export class ConversationRepository {
     return allTaskIds;
   }
 
-  private deleteTaskStorage(taskId: string, storageRoot: string): boolean {
-    const taskStoragePath = path.join(storageRoot, taskId);
-    if (!existsSync(taskStoragePath)) {
-      return false;
-    }
-
-    rmSync(taskStoragePath, { recursive: true, force: true });
-    logger.info(`[Memory] 已删除存储目录: ${taskStoragePath}`);
-    return true;
+  private deleteTaskStorage(taskId: string): boolean {
+    return getConversationPersistenceProvider().delete(taskId);
   }
 
   /**
@@ -156,8 +125,7 @@ export class ConversationRepository {
    */
   async deleteWithChildren(taskId: string): Promise<string[]> {
     const deletedIds: string[] = [];
-    const storageRoot = getStorageRootPath();
-    const { existingTaskIds, parentMap, childrenMap } = this.buildTaskRelationGraph(storageRoot);
+    const { existingTaskIds, parentMap, childrenMap } = this.buildTaskRelationGraph();
     if (!existingTaskIds.has(taskId)) {
       logger.warn(`[ConversationRepository] 任务不存在: ${taskId}`);
       return deletedIds;
@@ -183,7 +151,7 @@ export class ConversationRepository {
         }
       }
 
-      const deletedFromStorage = this.deleteTaskStorage(id, storageRoot);
+      const deletedFromStorage = this.deleteTaskStorage(id);
       const deletedFromMemory = this.remove(id);
       if (deletedFromStorage || deletedFromMemory) {
         deletedIds.push(id);
@@ -309,8 +277,7 @@ export class ConversationRepository {
     parentId?: string;
     customPrompt?: string;
     toolNames?: string[];
-    // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
-    tools?: ToolInterface<any>[];
+    tools?: ToolInterface<unknown>[];
     llm?: AmigoLlm;
   }): Conversation {
     const allCustomTools = getAllCustomTools();
@@ -371,7 +338,7 @@ export class ConversationRepository {
     }
 
     // 检查磁盘上是否存在
-    if (!FilePersistedMemory.exists(taskId)) {
+    if (!getConversationPersistenceProvider().exists(taskId)) {
       logger.warn(`[ConversationRepository] 任务不存在: ${taskId}`);
       return null;
     }

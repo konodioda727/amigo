@@ -61,8 +61,9 @@ export interface TaskStatusMetadata {
   taskId: string;
   fatherTaskId?: string;
   conversationStatus: ConversationStatus;
+  initialSystemPrompt?: string;
   toolNames: string[];
-  context?: any;
+  context?: unknown;
   autoApproveToolNames?: string[];
   pendingToolCall?: PendingToolCall;
   subTasks?: Record<string, SubTaskStatus>;

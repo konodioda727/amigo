@@ -2,9 +2,9 @@ import { execFile } from "node:child_process";
 import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { StorageType, type TaskStatusMetadata } from "@amigo-llm/types";
 import { conversationRepository } from "@/core/conversation";
-import { getCacheRootPath, getStorageRootPath } from "@/core/storage";
+import { getConversationPersistenceProvider } from "@/core/persistence";
+import { getCacheRootPath } from "@/core/storage";
 import { logger } from "@/utils/logger";
 
 const execFileAsync = promisify(execFile);
@@ -33,10 +33,6 @@ export type GithubSandboxBinding = Pick<
   "mirrorPath" | "branch" | "commitSha" | "repoUrl"
 >;
 
-function getStorageRoot(): string {
-  return getStorageRootPath();
-}
-
 function getCacheRoot(): string {
   return getCacheRootPath();
 }
@@ -47,10 +43,6 @@ function getBootstrapRoot(): string {
 
 function getMirrorRoot(): string {
   return path.join(getBootstrapRoot(), "mirrors");
-}
-
-function getTaskStatusPath(taskId: string): string {
-  return path.join(getStorageRoot(), taskId, `${StorageType.TASK_STATUS}.json`);
 }
 
 function createRepoCacheKey(repoUrl: string): string {
@@ -252,14 +244,12 @@ export async function bindGithubContextToTask(
 export async function getGithubSandboxBindingForTask(
   taskId: string,
 ): Promise<GithubSandboxBinding | null> {
-  const taskStatusPath = getTaskStatusPath(taskId);
-  if (!(await pathExists(taskStatusPath))) {
-    return null;
-  }
-
   try {
-    const raw = await Bun.file(taskStatusPath).text();
-    const metadata = JSON.parse(raw) as TaskStatusMetadata;
+    const metadata = getConversationPersistenceProvider().load(taskId);
+    if (!metadata) {
+      return null;
+    }
+
     const githubInput = extractGithubInput(metadata.context);
     if (!githubInput) {
       return null;

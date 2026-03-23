@@ -56,6 +56,7 @@ export const importSkillFromMarketController = async (
   req: Request,
   client: SkillHubMarketClient,
   skillStore: SkillStore,
+  userId: string,
 ) => {
   try {
     const body = await parseJsonBody(
@@ -63,7 +64,7 @@ export const importSkillFromMarketController = async (
       SkillHubMarketImportInputSchema,
       "INVALID_SKILL_IMPORT_REQUEST",
     );
-    return jsonResponse(await client.importSkill(body, skillStore));
+    return jsonResponse(await client.importSkill(body, skillStore, userId));
   } catch (error) {
     return errorResponse(error, {
       status: 400,

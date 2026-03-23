@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { AmigoLlm } from "@/core/model";
 import { ToolService } from "@/core/tools";
 import { setGlobalState } from "@/globalState";
 import { Conversation } from "../Conversation";
@@ -32,12 +33,13 @@ describe("Conversation system prompt overrides", () => {
 
     const conversation = Conversation.create({
       toolService,
-      llm: {} as any,
+      llm: {} as unknown as AmigoLlm,
       type: "main",
     });
 
-    const systemPrompt = conversation.memory.messages[0]?.content || "";
+    const systemPrompt = conversation.memory.initialSystemPrompt || "";
     expect(systemPrompt).toContain(overridePrompt);
     expect(systemPrompt).toContain(extraPrompt);
+    expect(conversation.memory.messages).toHaveLength(0);
   });
 });

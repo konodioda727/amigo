@@ -1,5 +1,6 @@
 import { logger } from "@amigo-llm/backend";
 import Bun, { type ServerWebSocket } from "bun";
+import { getAuthenticatedUserId } from "../auth/betterAuth";
 import type { AmigoHttpHandler } from "../http/appHttpHandler";
 
 interface PreviewProxyWebSocketData {
@@ -13,12 +14,17 @@ interface PreviewProxyWebSocketData {
 
 interface ConversationWebSocketData {
   kind: "conversation";
+  userId?: string;
 }
 
 type AppWebSocketData = PreviewProxyWebSocketData | ConversationWebSocketData | undefined;
 
 interface ConversationRuntimeServer {
-  tryUpgradeConversationWebSocket(req: Request, server: Bun.Server): boolean;
+  tryUpgradeConversationWebSocket(
+    req: Request,
+    server: Bun.Server<AppWebSocketData>,
+    data?: Omit<ConversationWebSocketData, "kind">,
+  ): boolean;
   handleWebSocketMessage(ws: ServerWebSocket, message: string | Buffer): Promise<void>;
   handleWebSocketOpen(ws: ServerWebSocket): Promise<void>;
   handleWebSocketClose(ws: ServerWebSocket, code: number, reason: string): void;
@@ -81,7 +87,12 @@ export class AmigoAppServer {
             return;
           }
 
-          if (this.runtimeServer.tryUpgradeConversationWebSocket(req, server)) {
+          const userId = await getAuthenticatedUserId(req);
+          if (!userId?.trim()) {
+            return new Response("Unauthorized", { status: 401 });
+          }
+
+          if (this.runtimeServer.tryUpgradeConversationWebSocket(req, server, { userId })) {
             return;
           }
 

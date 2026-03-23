@@ -1,5 +1,6 @@
 import type { ChatMessage, MessageDefinition, ToolInterface } from "@amigo-llm/types";
 import type { ModelConfig, ModelContextConfig } from "@/core/model/contextConfig";
+import type { ConversationPersistenceProvider } from "@/core/persistence/types";
 import type { SandboxManager } from "@/core/sandbox/types";
 import type { CreateTaskConfigResolver } from "@/core/server";
 
@@ -12,8 +13,7 @@ export interface GlobalStateType {
   globalStoragePath: string;
   globalCachePath: string;
   /** 用户通过 SDK 注册的自定义工具 */
-  // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
-  registryTools: ToolInterface<any>[];
+  registryTools: ToolInterface<unknown>[];
   /** 用户通过 SDK 注册的自定义消息定义 */
   registryMessages: MessageDefinition[];
   /** 额外自动批准的工具名称（在内置默认列表之外） */
@@ -23,12 +23,13 @@ export interface GlobalStateType {
   /** 通过 SDK 配置的全局追加系统提示词（用于 agent 特化） */
   extraSystemPrompt: string;
   /** 使用 SDK 覆盖基础工具集合 */
-  // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
-  baseTools?: Partial<Record<ConversationTypeKey, ToolInterface<any>[]>>;
+  baseTools?: Partial<Record<ConversationTypeKey, ToolInterface<unknown>[]>>;
   /** 使用 SDK 覆盖默认 system prompt */
   systemPrompts?: Partial<Record<ConversationTypeKey, string>>;
   /** 可注入的 sandbox manager */
   sandboxManager?: SandboxManager;
+  /** 可注入的会话 persistence provider */
+  conversationPersistenceProvider?: ConversationPersistenceProvider;
   /** 按模型配置 provider、baseURL、上下文窗口与压缩参数 */
   modelConfigs?: Record<string, ModelConfig | number>;
   /** 兼容旧命名，后续建议使用 modelConfigs */

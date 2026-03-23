@@ -3,9 +3,9 @@ import type { SkillStore } from "../../skills/skillStore";
 import { parseJsonBody } from "../shared/request";
 import { errorResponse, jsonResponse } from "../shared/response";
 
-export const listSkillsController = async (skillStore: SkillStore) => {
+export const listSkillsController = async (skillStore: SkillStore, userId: string) => {
   try {
-    return jsonResponse(await skillStore.list());
+    return jsonResponse(await skillStore.list(userId));
   } catch (error) {
     return errorResponse(error, {
       status: 500,
@@ -15,9 +15,13 @@ export const listSkillsController = async (skillStore: SkillStore) => {
   }
 };
 
-export const getSkillController = async (skillStore: SkillStore, skillId: string) => {
+export const getSkillController = async (
+  skillStore: SkillStore,
+  skillId: string,
+  userId: string,
+) => {
   try {
-    const skill = await skillStore.get(skillId);
+    const skill = await skillStore.get(skillId, userId);
     return skill
       ? jsonResponse(skill)
       : jsonResponse(
@@ -33,10 +37,14 @@ export const getSkillController = async (skillStore: SkillStore, skillId: string
   }
 };
 
-export const upsertSkillController = async (req: Request, skillStore: SkillStore) => {
+export const upsertSkillController = async (
+  req: Request,
+  skillStore: SkillStore,
+  userId: string,
+) => {
   try {
     const body = await parseJsonBody(req, SkillUpsertSchema, "INVALID_SKILL_REQUEST");
-    return jsonResponse(await skillStore.upsert(body));
+    return jsonResponse(await skillStore.upsert(body, userId));
   } catch (error) {
     return errorResponse(error, {
       status: 400,
@@ -46,9 +54,13 @@ export const upsertSkillController = async (req: Request, skillStore: SkillStore
   }
 };
 
-export const deleteSkillController = async (skillStore: SkillStore, skillId: string) => {
+export const deleteSkillController = async (
+  skillStore: SkillStore,
+  skillId: string,
+  userId: string,
+) => {
   try {
-    const removed = await skillStore.remove(skillId);
+    const removed = await skillStore.remove(skillId, userId);
     return removed
       ? jsonResponse({ success: true })
       : jsonResponse(

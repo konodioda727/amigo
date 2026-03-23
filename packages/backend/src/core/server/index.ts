@@ -5,12 +5,14 @@ import { configureLogger, type LoggerConfig } from "@/utils/logger";
 import type { ServerConfig } from "../config";
 import { type LlmFactory, setLlmFactory } from "../model";
 import type { ModelConfig, ModelContextConfig } from "../model/contextConfig";
+import type { ConversationPersistenceProvider } from "../persistence/types";
 import type { MessageRegistry, ToolRegistry } from "../registry";
 import type { SandboxManager } from "../sandbox";
 import { ServerWebSocketMessageHandler } from "./webSocketMessageHandler";
 
 export interface ConversationWebSocketData {
   kind: "conversation";
+  userId?: string;
 }
 
 type AmigoWebSocketData = ConversationWebSocketData | undefined;
@@ -54,12 +56,13 @@ export interface AmigoServerOptions {
   /** 全局追加系统提示词（应用级特化） */
   extraSystemPrompt?: string;
   /** 使用 SDK 覆盖基础工具集合 */
-  // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
-  baseTools?: Partial<Record<"main" | "sub", ToolInterface<any>[]>>;
+  baseTools?: Partial<Record<"main" | "sub", ToolInterface<unknown>[]>>;
   /** 使用 SDK 覆盖默认 system prompt */
   systemPrompts?: Partial<Record<"main" | "sub", string>>;
   /** 可注入的 sandbox manager */
   sandboxManager?: SandboxManager;
+  /** 可注入的会话 persistence provider */
+  conversationPersistenceProvider?: ConversationPersistenceProvider;
   /** 按模型配置 provider、baseURL、上下文窗口与压缩参数 */
   modelConfigs?: Record<string, ModelConfig | number>;
   /** 兼容旧命名，后续建议使用 modelConfigs */
@@ -109,6 +112,7 @@ class AmigoServer {
     setGlobalState("baseTools", options.baseTools || {});
     setGlobalState("systemPrompts", options.systemPrompts || {});
     setGlobalState("sandboxManager", options.sandboxManager);
+    setGlobalState("conversationPersistenceProvider", options.conversationPersistenceProvider);
     const modelConfigs = options.modelConfigs ?? options.modelContextConfigs;
     setGlobalState("modelConfigs", modelConfigs);
     setGlobalState("modelContextConfigs", modelConfigs);
@@ -133,8 +137,12 @@ class AmigoServer {
     return !!this._server;
   }
 
-  tryUpgradeConversationWebSocket(req: Request, server: Bun.Server): boolean {
-    return server.upgrade(req, { data: { kind: "conversation" } });
+  tryUpgradeConversationWebSocket(
+    req: Request,
+    server: Bun.Server,
+    data: Omit<ConversationWebSocketData, "kind"> = {},
+  ): boolean {
+    return server.upgrade(req, { data: { kind: "conversation", ...data } });
   }
 
   async handleWebSocketMessage(ws: ServerWebSocket, message: string | Buffer): Promise<void> {

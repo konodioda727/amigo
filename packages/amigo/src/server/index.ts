@@ -36,28 +36,37 @@ const envSandboxImage = (process.env.AMIGO_SANDBOX_IMAGE || "").trim();
 const envSandboxRuntime = (process.env.AMIGO_SANDBOX_RUNTIME || "").trim();
 const envPreviewBaseDomain = (process.env.AMIGO_PREVIEW_BASE_DOMAIN || "").trim();
 const envPreviewProtocol = (process.env.AMIGO_PREVIEW_PUBLIC_PROTOCOL || "").trim();
+const normalizedPreviewProtocol =
+  envPreviewProtocol === "http" || envPreviewProtocol === "https" ? envPreviewProtocol : undefined;
 
-const app = createAmigoApp({
-  ...(envPort ? { port: envPort } : {}),
-  ...(envCachePath ? { cachePath: path.resolve(envCachePath) } : {}),
-  ...(envSandboxImage || envSandboxRuntime || envSandboxMemoryMb
-    ? {
-        sandboxConfig: {
-          ...(envSandboxImage ? { imageName: envSandboxImage } : {}),
-          ...(envSandboxRuntime ? { runtime: envSandboxRuntime } : {}),
-          ...(envSandboxMemoryMb ? { memoryLimitBytes: envSandboxMemoryMb * 1024 * 1024 } : {}),
-        },
-      }
-    : {}),
-  ...(envPreviewBaseDomain || envPreviewProtocol
-    ? {
-        previewHostConfig: {
-          ...(envPreviewBaseDomain ? { baseDomain: envPreviewBaseDomain } : {}),
-          ...(envPreviewProtocol ? { publicProtocol: envPreviewProtocol } : {}),
-        },
-      }
-    : {}),
+const start = async () => {
+  const app = await createAmigoApp({
+    ...(envPort ? { port: envPort } : {}),
+    ...(envCachePath ? { cachePath: path.resolve(envCachePath) } : {}),
+    ...(envSandboxImage || envSandboxRuntime || envSandboxMemoryMb
+      ? {
+          sandboxConfig: {
+            ...(envSandboxImage ? { imageName: envSandboxImage } : {}),
+            ...(envSandboxRuntime ? { runtime: envSandboxRuntime } : {}),
+            ...(envSandboxMemoryMb ? { memoryLimitBytes: envSandboxMemoryMb * 1024 * 1024 } : {}),
+          },
+        }
+      : {}),
+    ...(envPreviewBaseDomain || envPreviewProtocol
+      ? {
+          previewHostConfig: {
+            ...(envPreviewBaseDomain ? { baseDomain: envPreviewBaseDomain } : {}),
+            ...(normalizedPreviewProtocol ? { publicProtocol: normalizedPreviewProtocol } : {}),
+          },
+        }
+      : {}),
+  });
+  app.server.start();
+
+  console.log(`[amigo] server started on :${app.port}`);
+};
+
+void start().catch((error) => {
+  console.error("[amigo] failed to start", error);
+  process.exitCode = 1;
 });
-app.server.start();
-
-console.log(`[amigo] server started on :${app.port}`);

@@ -106,14 +106,19 @@ const readJson = async <T>(response: Response): Promise<T> => {
 
 const getAdminBaseUrl = (wsUrl: string) => getHttpBaseUrlFromWebSocketUrl(wsUrl);
 
+const withCredentials: RequestInit = {
+  credentials: "include",
+};
+
 export const listSkills = async (wsUrl: string): Promise<SkillSummary[]> => {
-  const response = await fetch(`${getAdminBaseUrl(wsUrl)}/api/skills`);
+  const response = await fetch(`${getAdminBaseUrl(wsUrl)}/api/skills`, withCredentials);
   return readJson<SkillSummary[]>(response);
 };
 
 export const getSkill = async (wsUrl: string, skillId: string): Promise<SkillDefinition> => {
   const response = await fetch(
     `${getAdminBaseUrl(wsUrl)}/api/skills/${encodeURIComponent(skillId)}`,
+    withCredentials,
   );
   return readJson<SkillDefinition>(response);
 };
@@ -123,6 +128,7 @@ export const upsertSkill = async (
   payload: SkillUpsertInput,
 ): Promise<SkillDefinition> => {
   const response = await fetch(`${getAdminBaseUrl(wsUrl)}/api/skills`, {
+    ...withCredentials,
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -136,6 +142,7 @@ export const deleteSkill = async (wsUrl: string, skillId: string): Promise<void>
   const response = await fetch(
     `${getAdminBaseUrl(wsUrl)}/api/skills/${encodeURIComponent(skillId)}`,
     {
+      ...withCredentials,
       method: "DELETE",
     },
   );
@@ -143,7 +150,10 @@ export const deleteSkill = async (wsUrl: string, skillId: string): Promise<void>
 };
 
 export const getSkillMarketStatus = async (wsUrl: string): Promise<SkillMarketStatus> => {
-  const response = await fetch(`${getAdminBaseUrl(wsUrl)}/api/skills/market/status`);
+  const response = await fetch(
+    `${getAdminBaseUrl(wsUrl)}/api/skills/market/status`,
+    withCredentials,
+  );
   return readJson<SkillMarketStatus>(response);
 };
 
@@ -172,6 +182,7 @@ export const browseSkillMarket = async (
 
   const response = await fetch(
     `${getAdminBaseUrl(wsUrl)}/api/skills/market/catalog${searchParams.toString() ? `?${searchParams.toString()}` : ""}`,
+    withCredentials,
   );
   return readJson<SkillMarketItem[]>(response);
 };
@@ -186,6 +197,7 @@ export const searchSkillMarket = async (
   },
 ): Promise<SkillMarketItem[]> => {
   const response = await fetch(`${getAdminBaseUrl(wsUrl)}/api/skills/market/search`, {
+    ...withCredentials,
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -200,6 +212,7 @@ export const importSkillFromMarket = async (
   payload: Pick<SkillMarketItem, "id" | "slug" | "name" | "detailUrl">,
 ): Promise<SkillDefinition> => {
   const response = await fetch(`${getAdminBaseUrl(wsUrl)}/api/skills/market/import`, {
+    ...withCredentials,
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -210,7 +223,7 @@ export const importSkillFromMarket = async (
 };
 
 export const listAutomations = async (wsUrl: string): Promise<AutomationDefinition[]> => {
-  const response = await fetch(`${getAdminBaseUrl(wsUrl)}/api/automations`);
+  const response = await fetch(`${getAdminBaseUrl(wsUrl)}/api/automations`, withCredentials);
   return readJson<AutomationDefinition[]>(response);
 };
 
@@ -219,6 +232,7 @@ export const upsertAutomation = async (
   payload: AutomationUpsertInput,
 ): Promise<AutomationDefinition> => {
   const response = await fetch(`${getAdminBaseUrl(wsUrl)}/api/automations`, {
+    ...withCredentials,
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -232,6 +246,7 @@ export const deleteAutomation = async (wsUrl: string, automationId: string): Pro
   const response = await fetch(
     `${getAdminBaseUrl(wsUrl)}/api/automations/${encodeURIComponent(automationId)}`,
     {
+      ...withCredentials,
       method: "DELETE",
     },
   );
@@ -245,6 +260,7 @@ export const runAutomation = async (
   const response = await fetch(
     `${getAdminBaseUrl(wsUrl)}/api/automations/${encodeURIComponent(automationId)}/run`,
     {
+      ...withCredentials,
       method: "POST",
     },
   );

@@ -1,8 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
-import { StorageType } from "@amigo-llm/types";
 import type { Conversation, WebSocketBroadcaster } from "@/core/conversation";
-import { getTaskStoragePath } from "@/core/storage";
+import { getConversationPersistenceProvider } from "@/core/persistence";
 import { logger } from "./logger";
 
 /**
@@ -13,25 +10,17 @@ export const changeCurrentTaskId = async (
   conversation: Conversation,
   broadcaster: WebSocketBroadcaster,
 ) => {
-  const frontendJsonPath = path.join(
-    getTaskStoragePath(taskId),
-    "messages",
-    `${StorageType.FRONT_END}.json`,
-  );
   try {
-    const content = await fs.promises.readFile(frontendJsonPath, "utf-8");
-    const data = JSON.parse(content);
+    const record = getConversationPersistenceProvider().load(taskId);
 
-    if (data.messages && Array.isArray(data.messages)) {
-      broadcaster.broadcast(conversation.id, {
-        type: "taskHistory",
-        data: {
-          messages: data.messages,
-          taskId,
-          conversationStatus: conversation.status,
-        },
-      });
-    }
+    broadcaster.broadcast(conversation.id, {
+      type: "taskHistory",
+      data: {
+        messages: record?.websocketMessages || [],
+        taskId,
+        conversationStatus: conversation.status,
+      },
+    });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.info(`Task ${taskId} not found or error loading, treating as new task:`, errorMessage);

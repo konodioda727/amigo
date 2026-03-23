@@ -14,11 +14,6 @@ describe("toModelMessages runtime datetime context", () => {
     const fixedNow = new Date("2026-03-23T10:15:30.000Z");
     const messages: ChatMessage[] = [
       {
-        role: "system",
-        type: "system",
-        content: "BASE SYSTEM PROMPT",
-      },
-      {
         role: "user",
         type: "message",
         content: "6:50 提醒我",
@@ -26,7 +21,7 @@ describe("toModelMessages runtime datetime context", () => {
       },
     ];
 
-    const modelMessages = toModelMessages(messages, createStubLlm());
+    const modelMessages = toModelMessages(messages, createStubLlm(), "BASE SYSTEM PROMPT");
     const firstMessage = modelMessages[0];
     const secondMessage = modelMessages[1];
 
@@ -47,11 +42,6 @@ describe("toModelMessages runtime datetime context", () => {
     const secondUpdateTime = new Date("2026-03-23T10:15:30.000Z").getTime();
     const messages: ChatMessage[] = [
       {
-        role: "system",
-        type: "system",
-        content: "SYSTEM PROMPT",
-      },
-      {
         role: "user",
         type: "message",
         content: "昨天的消息",
@@ -70,7 +60,7 @@ describe("toModelMessages runtime datetime context", () => {
       },
     ];
 
-    const modelMessages = toModelMessages(messages, createStubLlm());
+    const modelMessages = toModelMessages(messages, createStubLlm(), "SYSTEM PROMPT");
 
     expect(String(modelMessages[1]?.content)).toBe("昨天的消息");
     expect(String(modelMessages[3]?.content)).toContain("今天 6:50 提醒我");
