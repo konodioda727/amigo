@@ -14,10 +14,7 @@ import {
   taskOrchestrator,
 } from "@amigo-llm/backend";
 import dotenv from "dotenv";
-import {
-  getUserCodingAgentTools,
-  USER_CODING_AGENT_AUTO_APPROVE_TOOLS,
-} from "./appTools/codingAgentTools";
+import { getUserCodingAgentTools } from "./appTools/codingAgentTools";
 import type { PenpotSyncConfig } from "./appTools/designDocTools/penpotSync/types";
 import { AutomationScheduler } from "./automations/automationScheduler";
 import { type AutomationDefinition, AutomationStore } from "./automations/automationStore";
@@ -150,11 +147,11 @@ export function createAmigoApp(options: AmigoAppOptions = {}): AmigoApp {
   }
 
   const runtimeServer = builder
-    .addAutoApproveTools([...USER_CODING_AGENT_AUTO_APPROVE_TOOLS])
     .appendSystemPrompt(AMIGO_APP_SYSTEM_PROMPT_APPENDIX)
     .modelConfigs(modelConfigs)
     .sandboxManager(sandboxManager)
     .skills({ provider: skillStore })
+    .addAutoApproveTools(builder.toolRegistry.getAll().map((tool) => tool.name))
     .onConversationCreate(async ({ taskId, context }) => {
       const taskContext = conversationRepository.get(taskId)?.memory.context ?? context;
       const githubBinding = await bindGithubContextToTask(taskId, taskContext);

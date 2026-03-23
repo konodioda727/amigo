@@ -281,8 +281,27 @@ export class Sandbox {
 
         stream.on("end", () => {
           const result = output + errorOutput;
-          logger.debug(`[Sandbox] Command completed, output: ${result.substring(0, 200)}`);
-          finishResolve(result);
+          void exec
+            .inspect()
+            .then((inspectResult) => {
+              const exitCode = inspectResult.ExitCode ?? 0;
+              if (exitCode !== 0) {
+                const detail = result.trim() || "<empty>";
+                logger.error(
+                  `[Sandbox] Command failed (exit=${exitCode}): ${detail.substring(0, 500)}`,
+                );
+                finishReject(new Error(`sandbox command failed (exit ${exitCode}): ${detail}`));
+                return;
+              }
+
+              logger.debug(`[Sandbox] Command completed, output: ${result.substring(0, 200)}`);
+              finishResolve(result);
+            })
+            .catch((inspectError) => {
+              finishReject(
+                inspectError instanceof Error ? inspectError : new Error(String(inspectError)),
+              );
+            });
         });
 
         stream.on("error", (err: Error) => {
@@ -393,6 +412,17 @@ export class Sandbox {
       this.previewHostPort = await findAvailableHostPort();
       const githubBinding =
         githubBindingOverride ?? (taskId ? await getGithubSandboxBindingForTask(taskId) : null);
+      if (taskId) {
+        if (githubBinding) {
+          logger.info(
+            `[Sandbox] github binding ready task=${taskId} branch=${githubBinding.branch} commit=${githubBinding.commitSha} mirror=${githubBinding.mirrorPath}`,
+          );
+        } else {
+          logger.warn(
+            `[Sandbox] github binding missing for task=${taskId}, sandbox will start empty`,
+          );
+        }
+      }
       const forwardedEnv = getForwardedSandboxEnvVars();
       const binds = githubBinding
         ? [`${githubBinding.mirrorPath}:${BOOTSTRAP_REPO_MOUNT_PATH}:ro`]
@@ -448,11 +478,15 @@ export class Sandbox {
 
       await this.container.start();
       if (githubBinding) {
+        logger.info(
+          `[Sandbox] hydrating bootstrap repo task=${taskId || "unknown"} branch=${githubBinding.branch} commit=${githubBinding.commitSha}`,
+        );
         await this.hydrateBootstrapRepository(
           githubBinding.branch,
           githubBinding.commitSha,
           githubBinding.repoUrl,
         );
+        logger.info(`[Sandbox] bootstrap repo hydrated task=${taskId || "unknown"}`);
       }
       logger.info("[Sandbox] 容器已启动");
     } catch (error) {
@@ -861,6 +895,9 @@ export class Sandbox {
     const command = commandLines.join("\n");
 
     const output = (await this.runCommand(command)) || "";
+    logger.info(
+      `[Sandbox] hydrate output branch=${branch} commit=${commitSha} output=${output.trim().substring(0, 500) || "<empty>"}`,
+    );
     if (output.includes("__AMIGO_BOOTSTRAP_REPO_MISSING__")) {
       throw new Error("预热仓库未挂载到 sandbox");
     }
