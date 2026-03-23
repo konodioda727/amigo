@@ -1,3 +1,4 @@
+import { conversationRepository } from "@amigo-llm/backend";
 import type { ToolInterface } from "@amigo-llm/types";
 import type { z } from "zod";
 import { type AutomationStore, AutomationUpsertSchema } from "../../automations/automationStore";
@@ -5,6 +6,33 @@ import { type AutomationStore, AutomationUpsertSchema } from "../../automations/
 const UpsertAutomationToolInputSchema = AutomationUpsertSchema;
 
 type UpsertAutomationToolInput = z.infer<typeof UpsertAutomationToolInputSchema>;
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+
+const extractFeishuContext = (context: unknown): Record<string, unknown> | undefined => {
+  if (!isPlainObject(context) || !isPlainObject(context.feishu)) {
+    return undefined;
+  }
+  return context.feishu;
+};
+
+const mergeAutomationContext = (
+  currentConversationContext: unknown,
+  inputContext: Record<string, unknown> | undefined,
+) => {
+  const feishuContext = extractFeishuContext(currentConversationContext);
+  if (!feishuContext) {
+    return inputContext;
+  }
+  if (inputContext && isPlainObject(inputContext.feishu)) {
+    return inputContext;
+  }
+  return {
+    ...(inputContext || {}),
+    feishu: feishuContext,
+  };
+};
 
 export const createUpsertAutomationTool = (
   automationStore: AutomationStore,
@@ -89,9 +117,18 @@ export const createUpsertAutomationTool = (
       params: [],
     },
   ],
-  async invoke({ params }) {
+  async invoke({ params, context }) {
     const input = UpsertAutomationToolInputSchema.parse(params as UpsertAutomationToolInput);
-    const automation = await automationStore.upsert(input);
+    const conversation =
+      conversationRepository.get(context.taskId) || conversationRepository.load(context.taskId);
+    const mergedContext = mergeAutomationContext(
+      conversation?.memory.context,
+      input.context as Record<string, unknown> | undefined,
+    );
+    const automation = await automationStore.upsert({
+      ...input,
+      ...(mergedContext ? { context: mergedContext } : {}),
+    });
     const action = input.id?.trim() ? "更新" : "创建";
     return {
       message: `已${action} automation: ${automation.name}`,

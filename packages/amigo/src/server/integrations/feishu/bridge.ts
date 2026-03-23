@@ -244,7 +244,11 @@ export class FeishuBridge {
     this.processedOutbound.set(outboundKey, Date.now());
 
     try {
-      await this.replyOrSendText(feishuContext, outboundText);
+      if (this.shouldSendDirectlyToChat(payload.context)) {
+        await this.sendText(feishuContext.chatId, outboundText);
+      } else {
+        await this.replyOrSendText(feishuContext, outboundText);
+      }
     } catch (error) {
       logger.error(
         `[FeishuBridge] 推送 assistant 消息到飞书失败 taskId=${payload.taskId}: ${
@@ -379,6 +383,10 @@ export class FeishuBridge {
           ? context.feishu.historyLimit
           : DEFAULT_HISTORY_LIMIT,
     };
+  }
+
+  private shouldSendDirectlyToChat(context: unknown): boolean {
+    return isPlainObject(context) && context.trigger === "automation";
   }
 
   private buildOutboundText(message: ConversationMessageHookPayload["message"]): string | null {
