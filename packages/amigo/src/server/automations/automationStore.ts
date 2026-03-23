@@ -9,6 +9,11 @@ const IntervalScheduleSchema = z.object({
   everyMinutes: z.number().int().positive(),
 });
 
+const OnceScheduleSchema = z.object({
+  type: z.literal("once"),
+  afterMinutes: z.number().int().positive(),
+});
+
 const DailyScheduleSchema = z.object({
   type: z.literal("daily"),
   hour: z.number().int().min(0).max(23),
@@ -24,6 +29,7 @@ const WeeklyScheduleSchema = z.object({
 
 export const AutomationScheduleSchema = z.discriminatedUnion("type", [
   IntervalScheduleSchema,
+  OnceScheduleSchema,
   DailyScheduleSchema,
   WeeklyScheduleSchema,
 ]);
@@ -74,6 +80,10 @@ const normalizeStringArray = (values: string[] | undefined): string[] | undefine
 const computeNextRunAt = (schedule: AutomationSchedule, now: Date): string => {
   if (schedule.type === "interval") {
     return new Date(now.getTime() + schedule.everyMinutes * 60_000).toISOString();
+  }
+
+  if (schedule.type === "once") {
+    return new Date(now.getTime() + schedule.afterMinutes * 60_000).toISOString();
   }
 
   if (schedule.type === "daily") {
@@ -184,10 +194,13 @@ export class AutomationStore {
     }
 
     const runAt = result.runAt || new Date();
+    const shouldRemainEnabled =
+      automation.enabled && (result.error?.trim() ? true : automation.schedule.type !== "once");
     const nextAutomation: AutomationDefinition = {
       ...automation,
       lastRunAt: runAt.toISOString(),
-      nextRunAt: automation.enabled ? computeNextRunAt(automation.schedule, runAt) : undefined,
+      enabled: shouldRemainEnabled,
+      nextRunAt: shouldRemainEnabled ? computeNextRunAt(automation.schedule, runAt) : undefined,
       lastError: result.error?.trim() || undefined,
       updatedAt: new Date().toISOString(),
     };

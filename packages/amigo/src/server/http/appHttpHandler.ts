@@ -313,7 +313,8 @@ export const createAmigoHttpHandler = (
     {
       method: "POST",
       pattern: /^\/api\/automations\/?$/,
-      controller: (req) => upsertAutomationController(req, options.automationStore),
+      controller: (req) =>
+        upsertAutomationController(req, options.automationStore, options.automationScheduler),
     },
     {
       method: "DELETE",
@@ -321,6 +322,7 @@ export const createAmigoHttpHandler = (
       controller: (_req, match) =>
         deleteAutomationController(
           options.automationStore,
+          options.automationScheduler,
           decodeURIComponent(match[1] || "").trim(),
         ),
     },

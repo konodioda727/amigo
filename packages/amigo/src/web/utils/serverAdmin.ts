@@ -44,6 +44,10 @@ export interface SkillMarketItem {
 
 export type AutomationSchedule =
   | {
+      type: "once";
+      afterMinutes: number;
+    }
+  | {
       type: "interval";
       everyMinutes: number;
     }

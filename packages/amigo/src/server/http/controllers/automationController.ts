@@ -39,10 +39,13 @@ export const getAutomationController = async (
 export const upsertAutomationController = async (
   req: Request,
   automationStore: AutomationStore,
+  automationScheduler: AutomationScheduler,
 ) => {
   try {
     const body = await parseJsonBody(req, AutomationUpsertSchema, "INVALID_AUTOMATION_REQUEST");
-    return jsonResponse(await automationStore.upsert(body));
+    const automation = await automationStore.upsert(body);
+    await automationScheduler.refreshSchedule();
+    return jsonResponse(automation);
   } catch (error) {
     return errorResponse(error, {
       status: 400,
@@ -54,10 +57,12 @@ export const upsertAutomationController = async (
 
 export const deleteAutomationController = async (
   automationStore: AutomationStore,
+  automationScheduler: AutomationScheduler,
   automationId: string,
 ) => {
   try {
     const removed = await automationStore.remove(automationId);
+    await automationScheduler.refreshSchedule();
     return removed
       ? jsonResponse({ success: true })
       : jsonResponse(

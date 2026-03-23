@@ -21,6 +21,10 @@ export class AutomationScheduler {
     await this.reschedule();
   }
 
+  async refreshSchedule(): Promise<void> {
+    await this.reschedule();
+  }
+
   stop(): void {
     this.started = false;
     if (this.timer) {
@@ -36,6 +40,7 @@ export class AutomationScheduler {
     }
 
     await this.executeAutomation(automation);
+    await this.reschedule();
     return this.automationStore.get(id);
   }
 

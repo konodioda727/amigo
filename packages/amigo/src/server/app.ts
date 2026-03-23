@@ -143,7 +143,7 @@ export function createAmigoApp(options: AmigoAppOptions = {}): AmigoApp {
   if (options.loggerConfig) {
     builder = builder.loggerConfig(options.loggerConfig);
   }
-  for (const tool of getUserCodingAgentTools(automationStore)) {
+  for (const tool of getUserCodingAgentTools(automationStore, automationScheduler)) {
     builder = builder.registerTool(tool);
   }
 

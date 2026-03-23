@@ -1,6 +1,7 @@
 import { conversationRepository } from "@amigo-llm/backend";
 import type { ToolInterface } from "@amigo-llm/types";
 import type { z } from "zod";
+import type { AutomationScheduler } from "../../automations/automationScheduler";
 import { type AutomationStore, AutomationUpsertSchema } from "../../automations/automationStore";
 
 const UpsertAutomationToolInputSchema = AutomationUpsertSchema;
@@ -36,11 +37,12 @@ const mergeAutomationContext = (
 
 export const createUpsertAutomationTool = (
   automationStore: AutomationStore,
+  automationScheduler: AutomationScheduler,
 ): ToolInterface<string> => ({
   name: "upsertAutomation",
   description: "创建或更新一个服务端 automation。适合用户要求定时、周期性、重复执行任务时使用。",
   whenToUse:
-    "当用户明确要求自动化、定时执行、每天/每周/每隔一段时间重复执行某个任务时，直接调用这个工具创建或更新 automation，不要让用户手动去管理页创建。",
+    "当用户明确要求自动化、定时执行、未来某个时间提醒、每天/每周/每隔一段时间重复执行某个任务时，直接调用这个工具创建或更新 automation，不要让用户手动去管理页创建。若用户只要求执行一次，优先使用 once，而不是 interval/daily/weekly。",
   params: [
     {
       name: "id",
@@ -75,12 +77,17 @@ export const createUpsertAutomationTool = (
       name: "schedule",
       optional: false,
       type: "object",
-      description: "调度配置。支持 interval、daily、weekly 三种类型。",
+      description: "调度配置。支持 once、interval、daily、weekly 四种类型。单次提醒优先用 once。",
       params: [
         {
           name: "type",
           optional: false,
-          description: "调度类型：interval | daily | weekly",
+          description: "调度类型：once | interval | daily | weekly",
+        },
+        {
+          name: "afterMinutes",
+          optional: true,
+          description: "当 type=once 时必填，表示多少分钟后执行一次并自动停用。",
         },
         {
           name: "everyMinutes",
@@ -129,6 +136,7 @@ export const createUpsertAutomationTool = (
       ...input,
       ...(mergedContext ? { context: mergedContext } : {}),
     });
+    await automationScheduler.refreshSchedule();
     const action = input.id?.trim() ? "更新" : "创建";
     return {
       message: `已${action} automation: ${automation.name}`,

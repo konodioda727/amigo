@@ -117,6 +117,21 @@ interface FeishuApiResponse {
   msg: string;
 }
 
+interface FeishuCardPayload {
+  config?: {
+    wide_screen_mode?: boolean;
+    enable_forward?: boolean;
+  };
+  header: {
+    template?: string;
+    title: {
+      tag: "plain_text";
+      content: string;
+    };
+  };
+  elements: Array<Record<string, unknown>>;
+}
+
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 
@@ -252,7 +267,9 @@ export class FeishuBridge {
     this.processedOutbound.set(outboundKey, Date.now());
 
     try {
-      if (this.shouldSendDirectlyToChat(payload.context)) {
+      if (this.isAutomationContext(payload.context)) {
+        await this.sendAutomationMessage(feishuContext.chatId, payload.context, outboundText);
+      } else if (this.shouldSendDirectlyToChat(payload.context)) {
         await this.sendText(feishuContext.chatId, outboundText);
       } else {
         await this.replyOrSendText(feishuContext, outboundText);
@@ -395,6 +412,12 @@ export class FeishuBridge {
   }
 
   private shouldSendDirectlyToChat(context: unknown): boolean {
+    return isPlainObject(context) && context.trigger === "automation";
+  }
+
+  private isAutomationContext(
+    context: unknown,
+  ): context is { trigger: "automation"; automationName?: unknown } {
     return isPlainObject(context) && context.trigger === "automation";
   }
 
@@ -639,6 +662,56 @@ export class FeishuBridge {
     );
   }
 
+  private async sendAutomationMessage(
+    chatId: string,
+    context: { trigger: "automation"; automationName?: unknown },
+    text: string,
+  ): Promise<void> {
+    const title =
+      typeof context.automationName === "string" && context.automationName.trim()
+        ? context.automationName.trim()
+        : "自动提醒";
+    await this.sendCard(chatId, this.buildAutomationCard(title, text));
+  }
+
+  private buildAutomationCard(title: string, text: string): FeishuCardPayload {
+    return {
+      config: {
+        wide_screen_mode: true,
+        enable_forward: true,
+      },
+      header: {
+        template: "blue",
+        title: {
+          tag: "plain_text",
+          content: title,
+        },
+      },
+      elements: [
+        {
+          tag: "div",
+          text: {
+            tag: "lark_md",
+            content: this.escapeLarkMarkdown(text),
+          },
+        },
+        {
+          tag: "note",
+          elements: [
+            {
+              tag: "plain_text",
+              content: `发送时间：${new Date().toLocaleString("zh-CN")}`,
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  private escapeLarkMarkdown(text: string): string {
+    return text.replace(/\r\n/g, "\n").replace(/\n/g, "\n\n");
+  }
+
   private async replyOrSendText(context: FeishuTaskContext["feishu"], text: string): Promise<void> {
     try {
       await this.replyText(context.lastIncomingMessageId, text, !!context.threadId);
@@ -675,6 +748,21 @@ export class FeishuBridge {
           receive_id: chatId,
           msg_type: "text",
           content: JSON.stringify({ text }),
+          uuid: crypto.randomUUID(),
+        }),
+      },
+    );
+  }
+
+  private async sendCard(chatId: string, card: FeishuCardPayload): Promise<void> {
+    await this.requestFeishu<FeishuApiResponse>(
+      "/open-apis/im/v1/messages?receive_id_type=chat_id",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          receive_id: chatId,
+          msg_type: "interactive",
+          content: JSON.stringify(card),
           uuid: crypto.randomUUID(),
         }),
       },

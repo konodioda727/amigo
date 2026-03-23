@@ -14,6 +14,9 @@ const formatDateTime = (value?: string): string =>
   value ? new Date(value).toLocaleString("zh-CN") : "-";
 
 const formatSchedule = (schedule: AutomationSchedule): string => {
+  if (schedule.type === "once") {
+    return `${schedule.afterMinutes} 分钟后执行一次`;
+  }
   if (schedule.type === "interval") {
     return `每 ${schedule.everyMinutes} 分钟`;
   }
