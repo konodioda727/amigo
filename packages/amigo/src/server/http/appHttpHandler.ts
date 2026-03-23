@@ -491,6 +491,30 @@ export const createAmigoHttpHandler = (
     }
   };
 
+  const buildProxyResponseHeaders = (
+    upstreamResponse: Response,
+    requestUrl: URL,
+    upstreamUrl: URL,
+    pathPrefix = "",
+  ): Headers => {
+    const headers = new Headers(upstreamResponse.headers);
+    const location = headers.get("location");
+    if (location) {
+      headers.set(
+        "location",
+        rewriteProxyLocationHeader(location, requestUrl, upstreamUrl, pathPrefix),
+      );
+    }
+
+    // Bun fetch may transparently decompress upstream bodies while retaining the
+    // original encoding metadata. Forwarding those headers makes browsers try to
+    // decode plain-text HTML/JS as brotli/gzip and the editor page hangs.
+    headers.delete("content-encoding");
+    headers.delete("content-length");
+
+    return headers;
+  };
+
   const proxyHostedPreviewRequest = async (req: Request, sandboxId: string): Promise<Response> => {
     const config = await getHostedPreviewProxyConfig(req);
     if (!config) {
@@ -524,11 +548,7 @@ export const createAmigoHttpHandler = (
     }
 
     const requestUrl = new URL(req.url);
-    const headers = new Headers(upstreamResponse.headers);
-    const location = headers.get("location");
-    if (location) {
-      headers.set("location", rewriteProxyLocationHeader(location, requestUrl, config.upstreamUrl));
-    }
+    const headers = buildProxyResponseHeaders(upstreamResponse, requestUrl, config.upstreamUrl);
 
     return new Response(upstreamResponse.body, {
       status: upstreamResponse.status,
@@ -597,14 +617,12 @@ export const createAmigoHttpHandler = (
     });
 
     const requestUrl = new URL(req.url);
-    const headers = new Headers(upstreamResponse.headers);
-    const location = headers.get("location");
-    if (location) {
-      headers.set(
-        "location",
-        rewriteProxyLocationHeader(location, requestUrl, config.upstreamUrl, sessionBasePath),
-      );
-    }
+    const headers = buildProxyResponseHeaders(
+      upstreamResponse,
+      requestUrl,
+      config.upstreamUrl,
+      sessionBasePath,
+    );
 
     return new Response(upstreamResponse.body, {
       status: upstreamResponse.status,
