@@ -108,9 +108,14 @@ export function createAmigoApp(options: AmigoAppOptions = {}): AmigoApp {
       automationName: automation.name,
       trigger: "automation",
     };
+    const sourceTaskId =
+      typeof automationContext.sourceTaskId === "string"
+        ? automationContext.sourceTaskId.trim()
+        : "";
     const taskConfig = await resolveTaskConfigFromContext(automationContext);
     const conversation = conversationRepository.create({
       type: "main",
+      ...(sourceTaskId ? { parentId: sourceTaskId } : {}),
       customPrompt: taskConfig?.customPrompt,
     });
 
@@ -153,15 +158,19 @@ export function createAmigoApp(options: AmigoAppOptions = {}): AmigoApp {
     .skills({ provider: skillStore })
     .addAutoApproveTools(builder.toolRegistry.getAll().map((tool) => tool.name))
     .onConversationCreate(async ({ taskId, context }) => {
-      const taskContext = conversationRepository.get(taskId)?.memory.context ?? context;
+      const conversation = conversationRepository.get(taskId);
+      const taskContext = conversation?.memory.context ?? context;
       const githubBinding = await bindGithubContextToTask(taskId, taskContext);
       const repoUrl =
         taskContext && typeof taskContext === "object" && "repoUrl" in taskContext
           ? String((taskContext as { repoUrl?: unknown }).repoUrl || "").trim()
           : "";
       if (repoUrl) {
-        logger.info(`[AmigoApp] 预热 task sandbox task=${taskId} repo=${repoUrl}`);
-        await sandboxManager.getOrCreate(taskId, undefined, githubBinding);
+        const sandboxOwnerTaskId = conversation?.parentId || taskId;
+        logger.info(
+          `[AmigoApp] 预热 task sandbox task=${taskId} sandboxOwner=${sandboxOwnerTaskId} repo=${repoUrl}`,
+        );
+        await sandboxManager.getOrCreate(sandboxOwnerTaskId, undefined, githubBinding);
       }
     })
     .onConversationMessage(async (payload) => {

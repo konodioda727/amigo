@@ -9,11 +9,15 @@ RUN apt-get update && apt-get install -y \
     bash \
     git \
     python3 \
+    python3-pip \
+    python3-venv \
     build-essential \
     curl \
     ripgrep \
     unzip \
     ca-certificates \
+    && ln -sf /usr/bin/python3 /usr/local/bin/python \
+    && ln -sf /usr/bin/pip3 /usr/local/bin/pip \
     && rm -rf /var/lib/apt/lists/*
 
 ENV BUN_INSTALL=/root/.bun

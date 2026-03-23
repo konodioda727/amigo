@@ -21,18 +21,19 @@ const extractFeishuContext = (context: unknown): Record<string, unknown> | undef
 const mergeAutomationContext = (
   currentConversationContext: unknown,
   inputContext: Record<string, unknown> | undefined,
+  sourceTaskId: string | undefined,
 ) => {
   const feishuContext = extractFeishuContext(currentConversationContext);
-  if (!feishuContext) {
-    return inputContext;
-  }
-  if (inputContext && isPlainObject(inputContext.feishu)) {
-    return inputContext;
-  }
-  return {
+  const mergedContext: Record<string, unknown> = {
     ...(inputContext || {}),
-    feishu: feishuContext,
   };
+  if (feishuContext && !(inputContext && isPlainObject(inputContext.feishu))) {
+    mergedContext.feishu = feishuContext;
+  }
+  if (sourceTaskId && typeof mergedContext.sourceTaskId !== "string") {
+    mergedContext.sourceTaskId = sourceTaskId;
+  }
+  return Object.keys(mergedContext).length > 0 ? mergedContext : undefined;
 };
 
 export const createUpsertAutomationTool = (
@@ -128,9 +129,11 @@ export const createUpsertAutomationTool = (
     const input = UpsertAutomationToolInputSchema.parse(params as UpsertAutomationToolInput);
     const conversation =
       conversationRepository.get(context.taskId) || conversationRepository.load(context.taskId);
+    const sourceTaskId = (context.parentId || context.taskId || "").trim() || undefined;
     const mergedContext = mergeAutomationContext(
       conversation?.memory.context,
       input.context as Record<string, unknown> | undefined,
+      sourceTaskId,
     );
     const automation = await automationStore.upsert({
       ...input,
