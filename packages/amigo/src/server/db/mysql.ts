@@ -85,6 +85,16 @@ export const parseJsonColumn = <T>(value: unknown, fallback: T): T => {
 
 export const isMysqlConfigured = (): boolean => !!readAmigoMysqlConfigFromEnv();
 
+export const requireMysqlConfigured = (): void => {
+  if (isMysqlConfigured()) {
+    return;
+  }
+
+  throw new Error(
+    "MySQL is required. Set MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, and MYSQL_DATABASE.",
+  );
+};
+
 export const getMysqlPool = (): Pool => {
   if (pool) {
     return pool;
@@ -120,9 +130,7 @@ export const mysqlTransaction = async <T>(
 ): Promise<T> => withAmigoTransaction(getMysqlPool(), fn);
 
 export const ensureMysqlSchemaUpToDate = async (): Promise<void> => {
-  if (!isMysqlConfigured()) {
-    return;
-  }
+  requireMysqlConfigured();
 
   if (!schemaReadyPromise) {
     schemaReadyPromise = ensureAmigoMysqlSchema(getMysqlPool()).then(() => undefined);
@@ -132,9 +140,7 @@ export const ensureMysqlSchemaUpToDate = async (): Promise<void> => {
 };
 
 export const ensureDefaultLocalWebUser = async (): Promise<PersistedUser | null> => {
-  if (!isMysqlConfigured()) {
-    return null;
-  }
+  requireMysqlConfigured();
 
   if (!localWebUserPromise) {
     localWebUserPromise = ensureMysqlSchemaUpToDate()

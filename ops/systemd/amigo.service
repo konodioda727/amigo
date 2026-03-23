@@ -1,6 +1,6 @@
 [Unit]
-Description=Amigo Bun Server
-After=network-online.target docker.service
+Description=Amigo Server
+After=network-online.target docker.service mysql.service mysqld.service
 Wants=network-online.target
 Requires=docker.service
 
@@ -11,10 +11,12 @@ Group=ubuntu
 WorkingDirectory=/var/www/amigo/backend
 Environment=PATH=/home/ubuntu/.bun/bin:/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=/var/www/amigo/shared/amigo.env
+Environment=NODE_ENV=production
 ExecStart=/usr/bin/env bun run dist/server/index.js
 Restart=always
 RestartSec=3
 TimeoutStopSec=20
+KillMode=mixed
 
 [Install]
 WantedBy=multi-user.target

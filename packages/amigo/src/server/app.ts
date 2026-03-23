@@ -23,8 +23,8 @@ import type { PreviewHostConfig } from "./config/previewHost";
 import { configureAppRuntimeConfig } from "./config/runtimeConfig";
 import {
   createMysqlConversationPersistenceProvider,
-  isMysqlConfigured,
   listNotificationChannels,
+  requireMysqlConfigured,
 } from "./db";
 import { createAmigoHttpHandler } from "./http/appHttpHandler";
 import { ConversationChannelRouter } from "./integrations/channels/router";
@@ -76,12 +76,11 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 
 export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<AmigoApp> {
+  requireMysqlConfigured();
   const port = options.port ?? 10013;
   const cachePath = options.cachePath || path.resolve(process.cwd(), ".amigo");
   const sandboxManager = new SandboxRegistry(resolveSandboxConfig(options.sandboxConfig));
-  const persistenceProvider = isMysqlConfigured()
-    ? await createMysqlConversationPersistenceProvider()
-    : undefined;
+  const persistenceProvider = await createMysqlConversationPersistenceProvider();
   const skillStore = new SkillStore(cachePath);
   const skillRuntime = new SkillRuntime(skillStore);
   const skillHubMarketClient = new SkillHubMarketClient();
@@ -97,10 +96,6 @@ export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<Ami
       typeof automationContext.feishu.chatId === "string"
     ) {
       return { feishu: automationContext.feishu };
-    }
-
-    if (!isMysqlConfigured()) {
-      return {};
     }
 
     const userId =
