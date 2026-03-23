@@ -3,6 +3,7 @@ import {
   AmigoServerBuilder,
   bindGithubContextToTask,
   conversationRepository,
+  getBaseTools,
   getGlobalState,
   type LoggerConfig,
   logger,
@@ -143,6 +144,12 @@ export function createAmigoApp(options: AmigoAppOptions = {}): AmigoApp {
     resolveTaskConfig: resolveTaskConfigFromContext,
   });
   const channelRouter = new ConversationChannelRouter([feishuBridge]);
+  const autoApproveToolNames = Array.from(
+    new Set([
+      ...getBaseTools("main").map((tool) => tool.name),
+      ...getBaseTools("sub").map((tool) => tool.name),
+    ]),
+  );
   let builder = new AmigoServerBuilder().port(port).cachePath(cachePath);
   if (options.loggerConfig) {
     builder = builder.loggerConfig(options.loggerConfig);
@@ -156,7 +163,10 @@ export function createAmigoApp(options: AmigoAppOptions = {}): AmigoApp {
     .modelConfigs(modelConfigs)
     .sandboxManager(sandboxManager)
     .skills({ provider: skillStore })
-    .addAutoApproveTools(builder.toolRegistry.getAll().map((tool) => tool.name))
+    .addAutoApproveTools([
+      ...autoApproveToolNames,
+      ...builder.toolRegistry.getAll().map((tool) => tool.name),
+    ])
     .onConversationCreate(async ({ taskId, context }) => {
       const conversation = conversationRepository.get(taskId);
       const taskContext = conversation?.memory.context ?? context;

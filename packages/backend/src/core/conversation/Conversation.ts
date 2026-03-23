@@ -54,10 +54,10 @@ export class Conversation {
   }
 
   private syncAutoApproveToolNamesToTaskStatus(): void {
-    if (this.memory.autoApproveToolNames.length > 0) {
-      return;
-    }
-    this.memory.setAutoApproveToolNames(getConfiguredAutoApproveToolNames());
+    this.memory.setAutoApproveToolNames([
+      ...this.memory.autoApproveToolNames,
+      ...getConfiguredAutoApproveToolNames(),
+    ]);
   }
 
   public broadcastTaskStatusMapUpdated(): void {

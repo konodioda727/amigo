@@ -880,6 +880,7 @@ export class Sandbox {
       "  echo '__AMIGO_SANDBOX_NOT_EMPTY__';",
       "  exit 1;",
       "fi",
+      `git config --global --add safe.directory ${shellQuote(BOOTSTRAP_REPO_MOUNT_PATH)}`,
       `git clone --no-local ${shellQuote(BOOTSTRAP_REPO_MOUNT_PATH)} /sandbox`,
       "cd /sandbox",
       `git remote set-url origin ${shellQuote(repoUrl)}`,
