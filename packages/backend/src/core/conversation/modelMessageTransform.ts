@@ -1,7 +1,25 @@
 import type { ChatMessage, UserMessageAttachment } from "@amigo-llm/types";
 import type { AmigoLlm, AmigoMessageContentPart, AmigoModelMessage } from "@/core/model";
+import { appendRuntimeDateTimeContextToUserInput } from "./runtimeDateTimeContext";
 
 const isGoogleGenAIModel = (llm: AmigoLlm) => llm.provider === "google-genai";
+
+const injectRuntimeDateTimeContext = (messages: ChatMessage[]): ChatMessage[] => {
+  const lastUserIndex = messages.findLastIndex((message) => message.role === "user");
+  if (lastUserIndex < 0) {
+    return messages;
+  }
+
+  const runtimeContextTime = new Date(messages[lastUserIndex]?.updateTime ?? Date.now());
+  return messages.map((message, index) =>
+    index === lastUserIndex
+      ? {
+          ...message,
+          content: appendRuntimeDateTimeContextToUserInput(message.content, runtimeContextTime),
+        }
+      : message,
+  );
+};
 
 const toAttachmentContentBlock = (attachment: UserMessageAttachment): AmigoMessageContentPart => {
   const common = {
@@ -41,11 +59,13 @@ const toHumanMessageContent = (message: ChatMessage): string | AmigoMessageConte
 };
 
 export const toModelMessages = (messages: ChatMessage[], llm: AmigoLlm): AmigoModelMessage[] => {
+  const normalizedMessages = injectRuntimeDateTimeContext(messages);
+
   if (isGoogleGenAIModel(llm)) {
     let firstSystemContent: string | null = null;
     const transformed: AmigoModelMessage[] = [];
 
-    for (const message of messages) {
+    for (const message of normalizedMessages) {
       if (message.role === "system") {
         if (!firstSystemContent) {
           firstSystemContent = message.content;
@@ -76,7 +96,7 @@ export const toModelMessages = (messages: ChatMessage[], llm: AmigoLlm): AmigoMo
     return transformed;
   }
 
-  return messages.map((message): AmigoModelMessage => {
+  return normalizedMessages.map((message): AmigoModelMessage => {
     switch (message.role) {
       case "system":
         return { role: "system", content: message.content };

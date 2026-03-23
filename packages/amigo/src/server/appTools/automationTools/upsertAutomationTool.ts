@@ -43,7 +43,7 @@ export const createUpsertAutomationTool = (
   name: "upsertAutomation",
   description: "创建或更新一个服务端 automation。适合用户要求定时、周期性、重复执行任务时使用。",
   whenToUse:
-    "当用户明确要求自动化、定时执行、未来某个时间提醒、每天/每周/每隔一段时间重复执行某个任务时，直接调用这个工具创建或更新 automation，不要让用户手动去管理页创建。若用户只要求执行一次，优先使用 once，而不是 interval/daily/weekly。",
+    "当用户明确要求自动化、定时执行、未来某个时间提醒、每天/每周/每隔一段时间重复执行某个任务时，直接调用这个工具创建或更新 automation，不要让用户手动去管理页创建。若用户只要求执行一次，优先使用 once，而不是 interval/daily/weekly。解析未明确上午/下午的时间时，要结合当前本地时间和上下文推断更合理的未来时间；若歧义仍然明显，再先追问。",
   params: [
     {
       name: "id",
@@ -78,7 +78,8 @@ export const createUpsertAutomationTool = (
       name: "schedule",
       optional: false,
       type: "object",
-      description: "调度配置。支持 once、interval、daily、weekly 四种类型。单次提醒优先用 once。",
+      description:
+        "调度配置。支持 once、interval、daily、weekly 四种类型。单次提醒优先用 once。对“6:50”这类未明确上午/下午的时间，要结合当前本地时间和上下文推断，优先选择更合理的未来时间；仍有明显歧义时再追问。",
       params: [
         {
           name: "type",
@@ -88,7 +89,7 @@ export const createUpsertAutomationTool = (
         {
           name: "afterMinutes",
           optional: true,
-          description: "当 type=once 时必填，表示多少分钟后执行一次并自动停用。",
+          description: "当 type=once 时必填，表示基于当前本地时间，多少分钟后执行一次并自动停用。",
         },
         {
           name: "everyMinutes",
@@ -98,7 +99,8 @@ export const createUpsertAutomationTool = (
         {
           name: "hour",
           optional: true,
-          description: "当 type=daily 或 weekly 时使用，0-23。",
+          description:
+            "当 type=daily 或 weekly 时使用，0-23，使用 24 小时制。例如晚上 6:50 应写为 hour=18、minute=50；若用户只说 6:50，要先结合当前本地时间和语境判断是 6:50 还是 18:50。",
         },
         {
           name: "minute",
