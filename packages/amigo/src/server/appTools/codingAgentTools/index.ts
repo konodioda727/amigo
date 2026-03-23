@@ -1,4 +1,4 @@
-import { repoSearchTool, runChecksTool } from "@amigo-llm/backend";
+import { runChecksTool } from "@amigo-llm/backend";
 import type { AutomationScheduler } from "../../automations/automationScheduler";
 import type { AutomationStore } from "../../automations/automationStore";
 import { createUpsertAutomationTool } from "../automationTools/upsertAutomationTool";
@@ -14,7 +14,6 @@ export const getUserCodingAgentTools = (
   automationStore: AutomationStore,
   automationScheduler: AutomationScheduler,
 ) => [
-  repoSearchTool,
   runChecksTool,
   listDesignAssetsTool,
   readDesignAssetTool,
@@ -26,7 +25,6 @@ export const getUserCodingAgentTools = (
 ];
 
 export const USER_CODING_AGENT_AUTO_APPROVE_TOOLS = [
-  "repoSearch",
   "runChecks",
   "listDesignAssets",
   "readDesignAsset",

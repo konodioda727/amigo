@@ -11,6 +11,7 @@ const DesignDocAvailableDocSchema = z.object({
       fileId: z.string().describe("绑定的 Penpot fileId"),
       penpotPageId: z.string().describe("绑定的 Penpot pageId"),
       fileUrl: z.string().describe("绑定的 Penpot 页面地址"),
+      publicUrl: z.string().optional().describe("对外公开查看的 Penpot 地址"),
     })
     .optional()
     .describe("当前设计稿绑定的 Penpot 页面信息"),
@@ -30,6 +31,7 @@ const DesignDocPenpotBindingSchema = z
     fileId: z.string().describe("绑定的 Penpot fileId"),
     penpotPageId: z.string().describe("绑定的 Penpot pageId"),
     fileUrl: z.string().describe("绑定的 Penpot 页面地址"),
+    publicUrl: z.string().optional().describe("对外公开查看的 Penpot 地址"),
   })
   .describe("当前设计稿绑定的 Penpot 页面信息");
 

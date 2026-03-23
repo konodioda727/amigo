@@ -10,6 +10,7 @@ import { errorResponse, jsonResponse } from "../shared/response";
 
 const penpotBindingRequestSchema = z.object({
   penpotUrl: z.string().url(),
+  publicUrl: z.string().url().optional(),
 });
 
 export const getPenpotBindingController = async (_req: Request, match: RegExpMatchArray) => {
@@ -37,7 +38,7 @@ export const updatePenpotBindingController = async (req: Request, match: RegExpM
       penpotBindingRequestSchema,
       "INVALID_PENPOT_BINDING_BODY",
     );
-    return jsonResponse(updatePenpotBinding(taskId, pageId, body.penpotUrl));
+    return jsonResponse(updatePenpotBinding(taskId, pageId, body.penpotUrl, body.publicUrl));
   } catch (error) {
     return errorResponse(error, { status: 500, code: "WRITE_PENPOT_BINDING_FAILED" });
   }

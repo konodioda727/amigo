@@ -43,6 +43,7 @@ export type PenpotComponentMap = Record<string, PenpotComponentBinding>;
 export interface PenpotBinding {
   pageId: string;
   penpotUrl: string;
+  publicUrl?: string;
   updatedAt: string;
   remoteRevision?: number;
   remoteVersion?: number;
@@ -119,6 +120,7 @@ export const readPenpotBinding = (taskId: string, pageId: string): PenpotBinding
     return {
       pageId: parsed.pageId,
       penpotUrl: parsed.penpotUrl,
+      publicUrl: typeof parsed.publicUrl === "string" ? parsed.publicUrl : undefined,
       updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : new Date().toISOString(),
       remoteRevision: typeof parsed.remoteRevision === "number" ? parsed.remoteRevision : undefined,
       remoteVersion: typeof parsed.remoteVersion === "number" ? parsed.remoteVersion : undefined,
@@ -183,6 +185,7 @@ export const writePenpotBinding = (
   const record: PenpotBinding = {
     pageId: normalizedPageId,
     penpotUrl: penpotUrl.trim(),
+    publicUrl: metadata?.publicUrl?.trim() || undefined,
     updatedAt: new Date().toISOString(),
     remoteRevision: metadata?.remoteRevision,
     remoteVersion: metadata?.remoteVersion,

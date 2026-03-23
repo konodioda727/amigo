@@ -79,6 +79,7 @@ const getPenpotBindingSummary = (taskId: string, pageId: string) => {
     fileId: target.fileId,
     penpotPageId: target.pageId,
     fileUrl: binding.penpotUrl,
+    publicUrl: binding.publicUrl,
   };
 };
 
@@ -348,7 +349,7 @@ export const createDesignDocFromMarkupTool = defineTool({
   description:
     "使用受限的 HTML + inline CSS 生成或扩展页面设计稿；传 update=true 时按 section.id 对已有页面做局部更新。这个工具的 <page> 根节点只是当前这一步 section 集合的容器，不等于必须一次提交完整页。",
   whenToUse:
-    "当需要创建、扩展、整体重建，或按区块局部更新页面设计稿时使用。复杂页面首次创建时，默认先只提交 1 个 section 或一组强耦合 section，不要一开始就整页提交。先调用 listDesignAssets 查看当前已有资产，再生成 markup。",
+    "当需要创建、扩展、整体重建，或按区块局部更新页面设计稿时使用。复杂页面首次创建时，默认先只提交 1 个 section 或一组强耦合 section，不要一开始就整页提交。先调用 listDesignAssets 查看当前已存储资产，再生成 markup；生成时只能复用这些已有资产。",
   params: [
     {
       name: "pageId",
@@ -364,7 +365,7 @@ export const createDesignDocFromMarkupTool = defineTool({
       name: "markupText",
       optional: false,
       description:
-        '受限 HTML/CSS 字符串。根节点必须是 <page>；<page> 的直接子节点必须是 <section>，并且每个 <section> 都要显式写 id、name、kind。<section> 只能作为 <page> 的直接子节点；左右分栏、卡片网格、侧边栏与主内容并排等布局，请在某个顶层 section 内用 div + flex / grid 表达，不要使用 float、fixed、sticky。不要使用 SVG；图标、插画和品牌图形统一优先通过 <use component="asset-id" id="instance-id" /> 或 <img asset="asset-id" /> 复用设计资产。复杂页面首次创建时，默认先只提交 1 个 section 或一组强耦合 section；如果这一步已经把多个 section 放进 page，那么这些 section 都必须细化完成，不能只停在骨架或 outline。创建页面时必须显式写 <page width="...">，并让宽度匹配目标端；移动端页面不要沿用 1440。设计稿尺寸必须受控：page.width 需在 240-2560 之间，page.minHeight 需在 200-20000 之间，section 和 node 的宽高也必须保持在合理范围内。若要在本次生成里顺手产出 component 资产，可在 <page> 下添加 <components>，里面声明一个或多个 <component id="...">...</component>；页面里可以立刻通过 <use component="asset-id" id="instance-id" /> 复用这些内联组件。支持 <page>、<components>、<component>、<section>、<div>、<text>、<button>、<img>、<shape>、<use>、<br>、<input>、<textarea> 及常见语义文本标签；支持的样式范围以工具白名单为准。不要使用 class、外部样式表、脚本或任意定位语法。转义后的 &lt;page&gt; / &lt;section&gt; 会被直接拒绝。',
+        '受限 HTML/CSS 字符串。根节点必须是 <page>；<page> 的直接子节点必须是 <section>，并且每个 <section> 都要显式写 id、name、kind。<section> 只能作为 <page> 的直接子节点；左右分栏、卡片网格、侧边栏与主内容并排等布局，请在某个顶层 section 内用 div + flex / grid 表达，不要使用 float、fixed、sticky。禁止使用 emoji。不要使用 SVG；图标、插画和品牌图形只能通过 <use component="asset-id" id="instance-id" /> 或 <img asset="asset-id" /> 复用 listDesignAssets 已返回的已存储设计资产，不要在本次生成里临时创建新资产或内联补资产。复杂页面首次创建时，默认先只提交 1 个 section 或一组强耦合 section；如果这一步已经把多个 section 放进 page，那么这些 section 都必须细化完成，不能只停在骨架或 outline。创建页面时必须显式写 <page width="...">，并让宽度匹配目标端；移动端页面不要沿用 1440。设计稿尺寸必须受控：page.width 需在 240-2560 之间，page.minHeight 需在 200-20000 之间，section 和 node 的宽高也必须保持在合理范围内。支持 <page>、<section>、<div>、<text>、<button>、<img>、<shape>、<use>、<br>、<input>、<textarea> 及常见语义文本标签；支持的样式范围以工具白名单为准。不要使用 class、外部样式表、脚本或任意定位语法。转义后的 &lt;page&gt; / &lt;section&gt; 会被直接拒绝。',
     },
     {
       name: "update",
@@ -684,9 +685,9 @@ export const createDesignDocFromMarkupTool = defineTool({
 export const replaceDesignSectionFromMarkupTool = defineTool({
   name: "replaceDesignSectionFromMarkup",
   description:
-    '用受限的 <section> HTML + inline CSS 替换现有设计稿中的单个区块，并仅同步受影响的区块到 Penpot。调用前先用 listDesignAssets 查看当前可复用的设计资产，再决定是否需要通过 <use component="..."> 或 <img asset="..."> 引用它们。',
+    "用受限的 <section> HTML + inline CSS 替换现有设计稿中的单个区块，并仅同步受影响的区块到 Penpot。调用前先用 listDesignAssets 查看当前可复用的已存储设计资产；生成时只能引用这些已有资产。",
   whenToUse:
-    "当页面已存在设计稿，只需要修改某个 section，而不是整体重建页面时使用。先调用 listDesignAssets 查看当前已有资产，再生成 markup。markupText 根节点必须是 <section>。",
+    "当页面已存在设计稿，只需要修改某个 section，而不是整体重建页面时使用。先调用 listDesignAssets 查看当前已存储资产，再生成 markup；生成时只能复用这些已有资产。markupText 根节点必须是 <section>。",
   params: [
     {
       name: "pageId",
@@ -702,7 +703,7 @@ export const replaceDesignSectionFromMarkupTool = defineTool({
       name: "markupText",
       optional: false,
       description:
-        '受限 HTML/CSS 字符串，根节点必须是 <section>。调用本工具前先用 listDesignAssets 查看当前已有设计资产，再决定具体引用方式。必须显式写 section 的 id、name、kind，且 name 必须是简短的人类可读区块名。支持的标签和样式范围与 createDesignDocFromMarkup 一致；复用设计组件时请写 <use component="asset-id" id="instance-id" />，复用图片资产时优先写 <img asset="asset-id" ... />，没有真实资产时也可以先写占位 src URL。支持 margin/margin-top/margin-right/margin-bottom/margin-left 和 margin:auto，<br> 可用于文本换行，display:grid + grid-template-columns 可用于等列网格；当前是静态设计稿，不需要动效或复杂交互；hover-/focus-/active- 前缀属性会被透传为元数据，但不参与布局和渲染。转义后的 &lt;section&gt; 会被直接拒绝。',
+        '受限 HTML/CSS 字符串，根节点必须是 <section>。调用本工具前先用 listDesignAssets 查看当前已存储设计资产，再决定具体引用方式。必须显式写 section 的 id、name、kind，且 name 必须是简短的人类可读区块名。禁止使用 emoji。支持的标签和样式范围与 createDesignDocFromMarkup 一致；复用设计组件时请写 <use component="asset-id" id="instance-id" />，复用图片资产时请写 <img asset="asset-id" ... />，且只能引用 listDesignAssets 已返回的已存储资产。支持 margin/margin-top/margin-right/margin-bottom/margin-left 和 margin:auto，<br> 可用于文本换行，display:grid + grid-template-columns 可用于等列网格；当前是静态设计稿，不需要动效或复杂交互；hover-/focus-/active- 前缀属性会被透传为元数据，但不参与布局和渲染。转义后的 &lt;section&gt; 会被直接拒绝。',
     },
   ],
   async invoke({ params, context }) {

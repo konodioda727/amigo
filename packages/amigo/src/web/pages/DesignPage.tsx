@@ -13,6 +13,10 @@ interface DesignDocListItem {
 interface PenpotBindingResponse {
   penpotBaseUrl: string;
   activeUrl: string;
+  binding?: {
+    penpotUrl: string;
+    publicUrl?: string;
+  } | null;
   syncState?:
     | {
         remoteRevision: number | null;

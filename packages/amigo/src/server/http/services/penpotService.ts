@@ -26,14 +26,19 @@ export const getPenpotBindingDetail = async (taskId: string, pageId: string) => 
     pageId,
     penpotBaseUrl,
     binding,
-    activeUrl: binding?.penpotUrl || penpotBaseUrl,
+    activeUrl: binding?.publicUrl || binding?.penpotUrl || penpotBaseUrl,
     syncState,
   };
 };
 
-export const updatePenpotBinding = (taskId: string, pageId: string, penpotUrl: string) => {
+export const updatePenpotBinding = (
+  taskId: string,
+  pageId: string,
+  penpotUrl: string,
+  publicUrl?: string,
+) => {
   const penpotBaseUrl = getPenpotBaseUrl();
-  const binding = writePenpotBinding(taskId, pageId, penpotUrl);
+  const binding = writePenpotBinding(taskId, pageId, penpotUrl, { publicUrl });
 
   return {
     success: true,
@@ -41,7 +46,7 @@ export const updatePenpotBinding = (taskId: string, pageId: string, penpotUrl: s
     pageId,
     penpotBaseUrl,
     binding,
-    activeUrl: binding.penpotUrl,
+    activeUrl: binding.publicUrl || binding.penpotUrl,
   };
 };
 

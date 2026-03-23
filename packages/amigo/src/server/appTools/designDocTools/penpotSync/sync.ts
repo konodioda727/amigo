@@ -711,6 +711,7 @@ export const importPenpotToDesignDoc = async (taskId: string, pageId: string) =>
   const remoteRevision = typeof file.revn === "number" ? file.revn : undefined;
   const remoteVersion = typeof file.vern === "number" ? file.vern : undefined;
   writePenpotBinding(taskId, pageId, binding.penpotUrl, {
+    publicUrl: binding.publicUrl,
     remoteRevision,
     remoteVersion,
     lastForwardSyncRevision: binding.lastForwardSyncRevision,
@@ -849,6 +850,7 @@ export const syncDesignDocToPenpot = async (
   const remoteRevision = typeof updatedFile.revn === "number" ? updatedFile.revn : undefined;
   const remoteVersion = typeof updatedFile.vern === "number" ? updatedFile.vern : undefined;
   writePenpotBinding(taskId, pageId, fileUrl, {
+    publicUrl: existingBinding?.publicUrl,
     remoteRevision,
     remoteVersion,
     lastForwardSyncRevision: remoteRevision,
@@ -990,6 +992,7 @@ export const syncDesignDocSectionToPenpot = async (
   const remoteRevision = typeof updatedFile.revn === "number" ? updatedFile.revn : undefined;
   const remoteVersion = typeof updatedFile.vern === "number" ? updatedFile.vern : undefined;
   writePenpotBinding(taskId, pageId, fileUrl, {
+    publicUrl: existingBinding?.publicUrl,
     remoteRevision,
     remoteVersion,
     lastForwardSyncRevision: remoteRevision,

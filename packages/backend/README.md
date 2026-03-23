@@ -267,8 +267,8 @@ new AmigoServerBuilder().systemPrompts({
 ```ts
 import { AmigoServerBuilder, defineTool } from "@amigo-llm/backend/sdk";
 
-const repoSearch = defineTool({
-  name: "repoSearch",
+const projectLookup = defineTool({
+  name: "projectLookup",
   description: "在仓库内搜索文本",
   params: [{ name: "query", optional: false, description: "搜索关键词" }],
   async invoke() {
@@ -280,15 +280,15 @@ const repoSearch = defineTool({
 });
 
 new AmigoServerBuilder().baseTools({
-  main: [repoSearch],
-  sub: [repoSearch],
+  main: [projectLookup],
+  sub: [projectLookup],
 });
 ```
 
 也可以分别设置：
 
 ```ts
-new AmigoServerBuilder().mainBaseTools([repoSearch]).subBaseTools([repoSearch]);
+new AmigoServerBuilder().mainBaseTools([projectLookup]).subBaseTools([projectLookup]);
 ```
 
 说明：
