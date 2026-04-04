@@ -4,7 +4,6 @@ import type { ToolMessageRendererProps } from "../../types/renderers";
 import { DefaultBashRenderer } from "./tools/DefaultBashRenderer";
 import { DefaultBrowserSearchRenderer } from "./tools/DefaultBrowserSearchRenderer";
 import { DefaultCompleteTaskRenderer } from "./tools/DefaultCompleteTaskRenderer";
-import { DefaultCompletionResultRenderer } from "./tools/DefaultCompletionResultRenderer";
 import { DefaultCreateDesignDocRenderer } from "./tools/DefaultCreateDesignDocRenderer";
 import { DefaultCreateTaskDocsRenderer } from "./tools/DefaultCreateTaskDocsRenderer";
 import { DefaultEditFileRenderer } from "./tools/DefaultEditFileRenderer";
@@ -35,9 +34,6 @@ const toolRendererMap: {
     ToolMessageRendererProps<"executeTaskList">
   >,
   completeTask: DefaultCompleteTaskRenderer as React.FC<ToolMessageRendererProps<"completeTask">>,
-  completionResult: DefaultCompletionResultRenderer as React.FC<
-    ToolMessageRendererProps<"completionResult">
-  >,
 };
 
 /**

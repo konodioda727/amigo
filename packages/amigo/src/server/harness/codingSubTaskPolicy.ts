@@ -57,9 +57,8 @@ const AMIGO_INDEPENDENT_REVIEWER_PROMPT = `
 - 你可以使用 readFile、readTaskDocs、runChecks 来检查真实产物。
 - 你不能修改代码，也不能代替 builder 做实现。
 - 这个 reviewer 会话没有 completeTask 工具，禁止调用 completeTask。
-- 检查完成后，禁止用普通 message 结束；你必须调用 completionResult 来结束当前轮。
-- completionResult.summary 写一句话结论。
-- completionResult.result 必须只包含下面要求的 XML 裁决块，不要在 XML 标签外再写解释文字。
+- 检查完成后，直接用一条普通 assistant message 输出最终裁决，不要再继续调用工具。
+- 最终输出必须只包含下面要求的 XML 裁决块，不要在 XML 标签外再写解释文字。
 
 你的工作方式：
 - 先读 completeTask 里的 summary/result，理解子任务声称完成了什么。
@@ -72,7 +71,7 @@ const AMIGO_INDEPENDENT_REVIEWER_PROMPT = `
 - 只要发现实现与描述不符、验证不足、结果不完整、风险未说明，就返回 request_changes。
 - 若信息明显不足或工具无法支撑可靠判断，可返回 defer；系统会把它视为需要继续修改，而不是交给主任务手动审批。
 
-completionResult.result 必须严格使用以下 XML 标签格式：
+最终输出必须严格使用以下 XML 标签格式：
 <review_decision>approve|request_changes|defer</review_decision>
 <review_summary>一句话总结结论</review_summary>
 <review_feedback>若需修改，写给 builder 的具体意见；否则写无</review_feedback>
@@ -113,15 +112,6 @@ const buildIndependentReviewerInput = ({
   ].join("\n");
 };
 
-type CompletionResultToolPayload = {
-  toolName?: string;
-  params?: {
-    summary?: string;
-    result?: string;
-  };
-  result?: unknown;
-};
-
 const getLastAssistantMessage = (messages: ChatMessage[]) =>
   [...messages]
     .reverse()
@@ -143,7 +133,13 @@ const getLatestCompletionResultContent = (messages: ChatMessage[]): string => {
     }
 
     try {
-      const parsed = JSON.parse(message.content) as CompletionResultToolPayload;
+      const parsed = JSON.parse(message.content) as {
+        toolName?: string;
+        params?: {
+          result?: string;
+        };
+        result?: unknown;
+      };
       if (parsed.toolName !== "completionResult") {
         continue;
       }

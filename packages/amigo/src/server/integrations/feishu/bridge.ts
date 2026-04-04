@@ -7,7 +7,9 @@ import {
 import type { ConversationMessageHookPayload, CreateTaskConfig } from "@amigo-llm/backend/sdk";
 import * as Lark from "@larksuiteoapi/node-sdk";
 import {
+  findFeishuChannelOwnerUserId,
   findOrCreateExternalIdentityUser,
+  findPreferredLocalWebUser,
   getFeishuAppCredentials,
   upsertNotificationChannel,
 } from "../../db";
@@ -137,6 +139,12 @@ interface FeishuCardPayload {
     };
   };
   elements: Array<Record<string, unknown>>;
+}
+
+interface ToolTransportPayload {
+  toolName?: unknown;
+  result?: unknown;
+  error?: unknown;
 }
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -309,6 +317,10 @@ export class FeishuBridge implements ConversationChannelProvider {
       return;
     }
 
+    if (!this.shouldForwardOutboundMessage(payload.taskId, payload.message)) {
+      return;
+    }
+
     const outboundText = this.buildOutboundText(payload.message);
     if (!outboundText) {
       return;
@@ -465,6 +477,33 @@ export class FeishuBridge implements ConversationChannelProvider {
 
   private async resolveOrCreateUser(event: FeishuReceiveEvent): Promise<string | null> {
     const senderExternalId = extractSenderId(event);
+    const matchedChannelOwnerUserId = await findFeishuChannelOwnerUserId({
+      chatId: event.message.chat_id,
+      tenantKey: event.sender.tenant_key,
+    }).catch((error) => {
+      logger.warn(
+        `[FeishuBridge] 通过通道匹配 Web 用户失败 messageId=${event.message.message_id} chatId=${event.message.chat_id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return null;
+    });
+    if (matchedChannelOwnerUserId) {
+      return matchedChannelOwnerUserId;
+    }
+
+    const preferredLocalWebUser = await findPreferredLocalWebUser().catch((error) => {
+      logger.warn(
+        `[FeishuBridge] 查询首选 Web 用户失败 messageId=${event.message.message_id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return null;
+    });
+    if (preferredLocalWebUser?.id) {
+      return preferredLocalWebUser.id;
+    }
+
     if (!senderExternalId) {
       logger.warn(
         `[FeishuBridge] 飞书事件缺少 sender id，无法绑定本地用户 messageId=${event.message.message_id} chatId=${event.message.chat_id} ${describeSenderIds(event)}`,
@@ -548,6 +587,73 @@ export class FeishuBridge implements ConversationChannelProvider {
 
     if (message.type === "askFollowupQuestion") {
       return this.formatFollowupQuestionMessage(message.content);
+    }
+
+    if (message.type === "tool") {
+      return this.formatIdleToolMessage(message.content);
+    }
+
+    return null;
+  }
+
+  private shouldForwardOutboundMessage(
+    taskId: string,
+    message: ConversationMessageHookPayload["message"],
+  ): boolean {
+    if (message.role !== "assistant" || message.partial) {
+      return false;
+    }
+
+    if (message.type === "message") {
+      return true;
+    }
+
+    if (message.type === "askFollowupQuestion") {
+      const conversation =
+        conversationRepository.get(taskId) || conversationRepository.load(taskId);
+      const tool = conversation?.toolService.getToolFromName("askFollowupQuestion");
+      return tool?.completionBehavior === "idle";
+    }
+
+    if (message.type !== "tool") {
+      return false;
+    }
+
+    const payload = this.parseToolTransportPayload(message.content);
+    if (!payload || typeof payload.toolName !== "string" || !payload.toolName.trim()) {
+      return false;
+    }
+
+    const conversation = conversationRepository.get(taskId) || conversationRepository.load(taskId);
+    const toolName = payload.toolName.trim();
+    const tool = conversation?.toolService.getToolFromName(toolName);
+    return toolName === "completeTask" || tool?.completionBehavior === "idle";
+  }
+
+  private parseToolTransportPayload(content: string): ToolTransportPayload | null {
+    try {
+      const parsed = JSON.parse(content) as ToolTransportPayload;
+      return isPlainObject(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private formatIdleToolMessage(content: string): string | null {
+    const payload = this.parseToolTransportPayload(content);
+    if (!payload || typeof payload.toolName !== "string") {
+      return null;
+    }
+
+    const result = payload.result;
+    if (typeof result === "string") {
+      const text = result.trim();
+      return text || null;
+    }
+
+    if (isPlainObject(result) && typeof result.message === "string") {
+      const text = result.message.trim();
+      return text || null;
     }
 
     return null;

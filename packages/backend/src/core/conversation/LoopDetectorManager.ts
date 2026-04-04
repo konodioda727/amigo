@@ -52,7 +52,6 @@ const MUTATING_TOOL_NAMES = new Set([
   "installDependencies",
   "updateDevServer",
   "createTaskDocs",
-  "completionResult",
   "completeTask",
 ]);
 
@@ -137,7 +136,7 @@ const extractResourceKeys = (interaction: ToolInteraction): string[] => {
 
 const inferFallbackProgressKind = (toolName: string): ToolProgressKind | undefined => {
   if (MUTATING_TOOL_NAMES.has(toolName)) {
-    return toolName === "completionResult" || toolName === "completeTask" ? "completion" : "write";
+    return toolName === "completeTask" ? "completion" : "write";
   }
   if (RESOURCE_READ_TOOL_NAMES.has(toolName)) {
     return toolName === "browserSearch" ? "search" : "read";
@@ -373,7 +372,7 @@ const detectNoProgress = (interactions: ToolInteraction[]): LoopDetection | null
 const toLoopGuidance = (detection: LoopDetection): string => {
   switch (detection.kind) {
     case "repeated_same_interaction":
-      return `同一个工具 ${detection.toolName} 已使用相同参数连续执行 ${detection.count} 次，并得到等价结果。不要再次调用相同工具和参数；请直接利用现有结果进入下一步，或在任务已完成时调用 completionResult。`;
+      return `同一个工具 ${detection.toolName} 已使用相同参数连续执行 ${detection.count} 次，并得到等价结果。不要再次调用相同工具和参数；请直接利用现有结果进入下一步，或直接结束当前轮。`;
     case "resource_read_loop":
       return `你已经连续 ${detection.count} 次读取同一资源 ${detection.resourceKey}。不要继续重复读取；请基于现有内容做修改、验证，或明确结束当前任务。`;
     case "tool_oscillation":

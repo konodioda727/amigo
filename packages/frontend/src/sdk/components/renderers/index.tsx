@@ -66,10 +66,6 @@ export { DefaultThinkRenderer } from "./DefaultThinkRenderer";
 export { DefaultToolRenderer } from "./DefaultToolRenderer";
 export { DefaultUserMessageRenderer } from "./DefaultUserMessageRenderer";
 export { DefaultBrowserSearchRenderer } from "./tools/DefaultBrowserSearchRenderer";
-export {
-  CompletionResultBody,
-  DefaultCompletionResultRenderer,
-} from "./tools/DefaultCompletionResultRenderer";
 // Re-export tool-specific renderers
 export {
   DefaultEditFileRenderer,

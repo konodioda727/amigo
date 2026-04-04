@@ -18,15 +18,27 @@ const extractFeishuContext = (context: unknown): Record<string, unknown> | undef
   return context.feishu;
 };
 
+const extractUserId = (context: unknown): string | undefined => {
+  if (!isPlainObject(context) || typeof context.userId !== "string") {
+    return undefined;
+  }
+  const userId = context.userId.trim();
+  return userId || undefined;
+};
+
 const mergeAutomationContext = (
   currentConversationContext: unknown,
   inputContext: Record<string, unknown> | undefined,
   sourceTaskId: string | undefined,
 ) => {
   const feishuContext = extractFeishuContext(currentConversationContext);
+  const currentUserId = extractUserId(currentConversationContext);
   const mergedContext: Record<string, unknown> = {
     ...(inputContext || {}),
   };
+  if (currentUserId && typeof mergedContext.userId !== "string") {
+    mergedContext.userId = currentUserId;
+  }
   if (feishuContext && !(inputContext && isPlainObject(inputContext.feishu))) {
     mergedContext.feishu = feishuContext;
   }

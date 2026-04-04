@@ -13,15 +13,15 @@ import { createTool } from "./base";
 import { getTaskDocsPath } from "./taskDocs/utils";
 
 /**
- * 子任务完成工具
- * 用于子任务完成时自动更新父任务的 taskList，并标记任务结束
+ * 完成工具
+ * 主任务用于收尾当前任务；子任务额外会自动更新父任务的 taskList。
  */
 export const CompleteTask = createTool({
   name: "completeTask",
   description:
-    "🎯 【子任务专用】子任务完成后，使用此工具标记任务结束、返回最终结论，并自动更新父任务的待办列表。**这是子任务结束的唯一正确方式。**",
+    "🎯 任务完成后，使用此工具标记当前任务结束并返回最终结论。若当前任务是子任务，还会自动更新父任务的待办列表。",
   whenToUse:
-    "仅在子任务范围内的问题已真正解决、最终交付物已准备好、且没有未完成步骤/待验证项/阻塞项时调用，用于回传 summary/result 并标记父任务对应项完成。主任务、部分完成、仅汇报进度或未完成状态不要调用。",
+    "仅在当前任务范围内的问题已真正解决、最终交付物已准备好、且没有未完成步骤/待验证项/阻塞项时调用。主任务会直接收尾当前轮；子任务会额外标记父任务对应项完成。部分完成、仅汇报进度或未完成状态不要调用。",
   params: [
     {
       name: "summary",
@@ -53,12 +53,11 @@ export const CompleteTask = createTool({
       "waiting_tool_confirmation",
     ]);
 
-    // 检查是否是子任务
     if (!context.parentId) {
-      logger.error("[completeTask] 此工具只能在子任务中使用");
+      logger.info(`[completeTask] 主任务 ${context.taskId} 完成，直接返回最终结果`);
       return {
-        message: "错误：completeTask 工具只能在子任务中使用",
-        toolResult: "错误：completeTask 工具只能在子任务中使用",
+        message: params.summary?.trim() || "任务已完成",
+        toolResult: result,
       };
     }
 

@@ -97,7 +97,7 @@ export class CompletionHandler {
    * 处理 completeTask 工具
    */
   private handleCompleteTask(conversation: Conversation): boolean {
-    logger.info("\n子任务已完成（completeTask）。");
+    logger.info("\n任务已完成（completeTask）。");
     conversation.status = "completed";
     clearConversationContinuations(conversation.id);
 
@@ -109,7 +109,7 @@ export class CompletionHandler {
       },
     });
 
-    logger.info(`[CompletionHandler] 子任务 ${conversation.id} 已通过 completeTask 完成`);
+    logger.info(`[CompletionHandler] 会话 ${conversation.id} 已通过 completeTask 完成`);
     conversation.userInput = "";
     return false;
   }

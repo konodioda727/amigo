@@ -58,6 +58,11 @@ export interface NotificationChannelRecord {
   updatedAt: string;
 }
 
+interface FeishuChannelOwnerLookupInput {
+  chatId: string;
+  tenantKey?: string;
+}
+
 let pool: Pool | null = null;
 let schemaReadyPromise: Promise<void> | null = null;
 let localWebUserPromise: Promise<PersistedUser | null> | null = null;
@@ -187,6 +192,92 @@ export const ensureDefaultLocalWebUser = async (): Promise<PersistedUser | null>
   }
 
   return localWebUserPromise;
+};
+
+export const findPreferredLocalWebUser = async (): Promise<PersistedUser | null> => {
+  await ensureMysqlSchemaUpToDate();
+
+  const db = getDrizzleDb();
+  const rows = await db
+    .select({
+      id: usersTable.id,
+      tenantId: usersTable.tenantId,
+      kind: usersTable.kind,
+      displayName: usersTable.displayName,
+      status: usersTable.status,
+      email: usersTable.email,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.kind, "local_web"))
+    .limit(10);
+
+  if (rows.length === 0) {
+    return null;
+  }
+
+  const preferredRows =
+    rows.filter((row) => typeof row.email === "string" && row.email.trim()) || [];
+  const selectedRow =
+    preferredRows.length === 1 ? preferredRows[0] : rows.length === 1 ? rows[0] : null;
+
+  if (!selectedRow) {
+    return null;
+  }
+
+  return {
+    id: selectedRow.id,
+    tenantId: selectedRow.tenantId,
+    kind: selectedRow.kind as PersistedUser["kind"],
+    displayName: selectedRow.displayName,
+    status: selectedRow.status,
+    email: selectedRow.email,
+  };
+};
+
+export const findFeishuChannelOwnerUserId = async (
+  input: FeishuChannelOwnerLookupInput,
+): Promise<string | null> => {
+  await ensureMysqlSchemaUpToDate();
+
+  const chatId = input.chatId.trim();
+  if (!chatId) {
+    return null;
+  }
+
+  const tenantKey = input.tenantKey?.trim() || "";
+  const rows = await mysqlQuery<
+    RowDataPacket & {
+      userId: string;
+    }
+  >(
+    tenantKey
+      ? `
+          SELECT nc.user_id AS userId
+          FROM notification_channels nc
+          INNER JOIN users u ON u.id = nc.user_id
+          WHERE nc.type = 'feishu'
+            AND nc.enabled = 1
+            AND u.kind = 'local_web'
+            AND JSON_UNQUOTE(JSON_EXTRACT(nc.config_json, '$.chatId')) = ?
+            AND JSON_UNQUOTE(JSON_EXTRACT(nc.config_json, '$.tenantKey')) = ?
+          ORDER BY nc.is_default DESC, nc.updated_at DESC
+          LIMIT 1
+        `
+      : `
+          SELECT nc.user_id AS userId
+          FROM notification_channels nc
+          INNER JOIN users u ON u.id = nc.user_id
+          WHERE nc.type = 'feishu'
+            AND nc.enabled = 1
+            AND u.kind = 'local_web'
+            AND JSON_UNQUOTE(JSON_EXTRACT(nc.config_json, '$.chatId')) = ?
+          ORDER BY nc.is_default DESC, nc.updated_at DESC
+          LIMIT 1
+        `,
+    tenantKey ? [chatId, tenantKey] : [chatId],
+  );
+
+  return rows[0]?.userId?.trim() || null;
 };
 
 const readExternalIdentityUserWithDb = async (
