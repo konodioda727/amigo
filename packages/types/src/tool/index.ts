@@ -3,6 +3,7 @@ import { AskFollowupQuestionSchema } from "./askFollowupQuestions";
 import { BashSchema } from "./bash";
 import { BrowserSearchSchema } from "./browserSearch";
 import { CompleteTaskSchema } from "./completeTask";
+import { CompletionResultSchema } from "./completionResult";
 import type { ToolExecutionContext } from "./context";
 import {
   OrchestrateFinalDesignDraftSchema,
@@ -29,6 +30,7 @@ export type { ToolExecutionContext } from "./context";
 
 export const toolSchemas = z.discriminatedUnion("name", [
   AskFollowupQuestionSchema,
+  CompletionResultSchema,
   CompleteTaskSchema,
   BrowserSearchSchema,
   ReviewSubTaskSchema,
@@ -57,6 +59,10 @@ export const toolSchemas = z.discriminatedUnion("name", [
 export type ToolNames = z.infer<typeof toolSchemas>["name"];
 
 export type ToolSchema = z.infer<typeof toolSchemas>;
+export type {
+  CompletionResultParams,
+  CompletionResultResult,
+} from "./completionResult";
 export type {
   OrchestrateFinalDesignDraftParams,
   OrchestrateFinalDesignDraftResult,

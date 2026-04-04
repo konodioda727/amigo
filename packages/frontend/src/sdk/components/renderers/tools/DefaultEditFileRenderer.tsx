@@ -59,7 +59,6 @@ const getPreviewContent = (message: ToolMessageRendererProps<"editFile">["messag
       : undefined;
   const beforeFromResult = transportPreview?.beforeContent;
   const afterFromResult = transportPreview?.afterContent;
-  const mode = message.params.mode ?? "overwrite";
 
   if (beforeFromResult !== undefined || afterFromResult !== undefined) {
     return {
@@ -70,6 +69,14 @@ const getPreviewContent = (message: ToolMessageRendererProps<"editFile">["messag
   }
 
   if (typeof message.params.content === "string") {
+    if (typeof message.params.expectedOriginalContent === "string") {
+      return {
+        beforeText: message.params.expectedOriginalContent,
+        afterText: message.params.content,
+        source: "params" as const,
+      };
+    }
+
     return {
       beforeText: "",
       afterText: message.params.content,
@@ -77,10 +84,13 @@ const getPreviewContent = (message: ToolMessageRendererProps<"editFile">["messag
     };
   }
 
-  if (mode === "patch" && typeof message.params.replace === "string") {
+  if (
+    typeof message.params.oldString === "string" &&
+    typeof message.params.newString === "string"
+  ) {
     return {
-      beforeText: "",
-      afterText: message.params.replace,
+      beforeText: message.params.oldString,
+      afterText: message.params.newString,
       source: "params" as const,
     };
   }

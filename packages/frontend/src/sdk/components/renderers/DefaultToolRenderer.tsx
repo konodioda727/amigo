@@ -4,6 +4,7 @@ import type { ToolMessageRendererProps } from "../../types/renderers";
 import { DefaultBashRenderer } from "./tools/DefaultBashRenderer";
 import { DefaultBrowserSearchRenderer } from "./tools/DefaultBrowserSearchRenderer";
 import { DefaultCompleteTaskRenderer } from "./tools/DefaultCompleteTaskRenderer";
+import { DefaultCompletionResultRenderer } from "./tools/DefaultCompletionResultRenderer";
 import { DefaultCreateDesignDocRenderer } from "./tools/DefaultCreateDesignDocRenderer";
 import { DefaultCreateTaskDocsRenderer } from "./tools/DefaultCreateTaskDocsRenderer";
 import { DefaultEditFileRenderer } from "./tools/DefaultEditFileRenderer";
@@ -34,6 +35,9 @@ const toolRendererMap: {
     ToolMessageRendererProps<"executeTaskList">
   >,
   completeTask: DefaultCompleteTaskRenderer as React.FC<ToolMessageRendererProps<"completeTask">>,
+  completionResult: DefaultCompletionResultRenderer as React.FC<
+    ToolMessageRendererProps<"completionResult">
+  >,
 };
 
 /**
@@ -82,7 +86,7 @@ export const DefaultToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
     );
   }
 
-  if (message.toolName === "readDesignDoc") {
+  if (String(message.toolName) === "readDesignDoc") {
     return (
       <DefaultReadDesignDocRenderer
         {...(props as unknown as React.ComponentProps<typeof DefaultReadDesignDocRenderer>)}
@@ -90,7 +94,7 @@ export const DefaultToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
     );
   }
 
-  if (message.toolName === "listDesignDocs") {
+  if (String(message.toolName) === "listDesignDocs") {
     return (
       <DefaultListDesignDocsRenderer
         {...(props as unknown as React.ComponentProps<typeof DefaultListDesignDocsRenderer>)}
