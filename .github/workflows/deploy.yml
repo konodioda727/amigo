@@ -48,7 +48,7 @@ jobs:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
           ssh -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "mkdir -p '${DEPLOY_PATH}/frontend' '${DEPLOY_PATH}/backend/dist/server' '${DEPLOY_PATH}/backend/dist/data' '${DEPLOY_PATH}/backend/assets' '${DEPLOY_PATH}/shared'"
+            "mkdir -p '${DEPLOY_PATH}/frontend' '${DEPLOY_PATH}/backend/dist/server' '${DEPLOY_PATH}/backend/dist/data' '${DEPLOY_PATH}/backend/dist/vendor' '${DEPLOY_PATH}/backend/assets' '${DEPLOY_PATH}/shared'"
 
       - name: Upload frontend dist
         env:
@@ -83,6 +83,17 @@ jobs:
             -e "ssh -p ${DEPLOY_PORT}" \
             packages/amigo/dist/data/ "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/backend/dist/data/"
 
+      - name: Upload backend preview runtime vendor assets
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || 22 }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          rsync -az --delete \
+            -e "ssh -p ${DEPLOY_PORT}" \
+            packages/amigo/dist/vendor/ "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/backend/dist/vendor/"
+
       - name: Upload backend runtime package metadata
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -92,7 +103,7 @@ jobs:
         run: |
           rsync -az \
             -e "ssh -p ${DEPLOY_PORT}" \
-            packages/amigo/package.json "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/backend/dist/package.json"
+            packages/amigo/dist/package.json "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/backend/dist/package.json"
 
       - name: Upload sandbox assets
         env:
