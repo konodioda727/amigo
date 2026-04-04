@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { existsSync } from "node:fs";
-import { cp, mkdir, rm } from "node:fs/promises";
+import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -9,9 +9,12 @@ const require = createRequire(import.meta.url);
 const distDir = path.resolve("dist");
 const serverOutdir = path.join(distDir, "server");
 const dataOutdir = path.join(distDir, "data");
+const vendorOutdir = path.join(distDir, "vendor");
 const scriptsOutdir = path.join(serverOutdir, "scripts");
 const backendPromptRoot = path.resolve("..", "backend", "src", "core", "systemPrompt");
 const screenshotHelperScriptPath = path.resolve("scripts", "capture-preview-screenshot.mjs");
+const frontendTokensPath = path.resolve("..", "frontend", "src", "styles", "tokens.css");
+const packageJsonPath = path.resolve("package.json");
 
 if (existsSync(serverOutdir)) {
   await rm(serverOutdir, { recursive: true, force: true });
@@ -19,6 +22,10 @@ if (existsSync(serverOutdir)) {
 
 if (existsSync(dataOutdir)) {
   await rm(dataOutdir, { recursive: true, force: true });
+}
+
+if (existsSync(vendorOutdir)) {
+  await rm(vendorOutdir, { recursive: true, force: true });
 }
 
 const buildProcess = Bun.spawn(
@@ -35,12 +42,24 @@ if (exitCode !== 0) {
   throw new Error(`Failed to build @amigo-llm/amigo server bundle (exit ${exitCode})`);
 }
 
+const appPackageJson = require(packageJsonPath) as {
+  devDependencies?: Record<string, string>;
+};
+const tailwindVersion = appPackageJson.devDependencies?.tailwindcss;
+const tailwindCliVersion = appPackageJson.devDependencies?.["@tailwindcss/cli"];
+
+if (!tailwindVersion || !tailwindCliVersion) {
+  throw new Error("Missing tailwind preview runtime dependencies in packages/amigo/package.json");
+}
+
 const cssTreePackageJsonPath = require.resolve("css-tree/package.json");
 const cssTreeRoot = path.dirname(cssTreePackageJsonPath);
 const patchJsonPath = path.join(cssTreeRoot, "data", "patch.json");
 
 await mkdir(dataOutdir, { recursive: true });
+await mkdir(vendorOutdir, { recursive: true });
 await cp(patchJsonPath, path.join(dataOutdir, "patch.json"));
+await cp(frontendTokensPath, path.join(vendorOutdir, "tokens.css"));
 await cp(path.join(backendPromptRoot, "main"), path.join(serverOutdir, "main"), {
   recursive: true,
 });
@@ -52,3 +71,21 @@ await mkdir(scriptsOutdir, { recursive: true });
 if (existsSync(screenshotHelperScriptPath)) {
   await cp(screenshotHelperScriptPath, path.join(scriptsOutdir, "capture-preview-screenshot.mjs"));
 }
+
+await writeFile(
+  path.join(distDir, "package.json"),
+  `${JSON.stringify(
+    {
+      private: true,
+      name: "@amigo-llm/amigo-preview-runtime",
+      type: "module",
+      dependencies: {
+        "@tailwindcss/cli": tailwindCliVersion,
+        tailwindcss: tailwindVersion,
+      },
+    },
+    null,
+    2,
+  )}\n`,
+  "utf-8",
+);

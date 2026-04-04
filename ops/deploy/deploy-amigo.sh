@@ -48,10 +48,20 @@ if [[ ! -d "${APP_DIR}/dist/server" ]]; then
   exit 1
 fi
 
+if [[ ! -f "${APP_DIR}/dist/package.json" ]]; then
+  echo "Missing preview runtime package manifest: ${APP_DIR}/dist/package.json" >&2
+  exit 1
+fi
+
 if [[ ! -f "${SANDBOX_ASSETS_DIR}/Dockerfile" ]]; then
   echo "Missing sandbox Dockerfile: ${SANDBOX_ASSETS_DIR}/Dockerfile" >&2
   exit 1
 fi
+
+(
+  cd "${APP_DIR}/dist"
+  bun install --production
+)
 
 DOCKER_BUILDKIT=1 docker build -t "${SANDBOX_IMAGE}" "${SANDBOX_ASSETS_DIR}"
 

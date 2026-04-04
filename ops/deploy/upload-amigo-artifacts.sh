@@ -40,7 +40,7 @@ if [[ "${BUILD_FIRST}" == "1" ]]; then
   bun run --filter @amigo-llm/amigo build
 fi
 
-ssh_cmd "mkdir -p '${REMOTE_PATH}/frontend' '${REMOTE_PATH}/backend/dist/server' '${REMOTE_PATH}/backend/dist/data' '${REMOTE_PATH}/backend/assets' '${REMOTE_PATH}/shared' '${REMOTE_PATH}/cache'"
+ssh_cmd "mkdir -p '${REMOTE_PATH}/frontend' '${REMOTE_PATH}/backend/dist/server' '${REMOTE_PATH}/backend/dist/data' '${REMOTE_PATH}/backend/dist/vendor' '${REMOTE_PATH}/backend/assets' '${REMOTE_PATH}/shared' '${REMOTE_PATH}/cache'"
 
 rsync_cmd \
   "${ROOT_DIR}/packages/amigo/dist/web/" \
@@ -54,8 +54,12 @@ rsync_cmd \
   "${ROOT_DIR}/packages/amigo/dist/data/" \
   "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}/backend/dist/data/"
 
+rsync_cmd \
+  "${ROOT_DIR}/packages/amigo/dist/vendor/" \
+  "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}/backend/dist/vendor/"
+
 rsync -az -e "ssh ${SSH_BASE_OPTS[*]}" \
-  "${ROOT_DIR}/packages/amigo/package.json" \
+  "${ROOT_DIR}/packages/amigo/dist/package.json" \
   "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}/backend/dist/package.json"
 
 rsync_cmd \
@@ -92,6 +96,7 @@ Uploaded:
 - ${REMOTE_PATH}/frontend
 - ${REMOTE_PATH}/backend/dist/server
 - ${REMOTE_PATH}/backend/dist/data
+- ${REMOTE_PATH}/backend/dist/vendor
 - ${REMOTE_PATH}/backend/dist/package.json
 - ${REMOTE_PATH}/backend/assets
 - ${REMOTE_PATH}/backend/deploy-amigo.sh

@@ -1,6 +1,6 @@
+import { spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import plugin from "bun-plugin-tailwind";
 import type { FinalDesignDraft, LayoutOption, ModuleDraft } from "./shared";
 import {
   AMIGO_PACKAGE_ROOT,
@@ -23,7 +23,6 @@ import {
   getModuleDraftPreviewSourcePath,
   normalizeId,
   toCssSpecifier,
-  WORKSPACE_ROOT,
 } from "./shared";
 import {
   readStoredFinalDesignDraft,
@@ -31,6 +30,87 @@ import {
   readStoredModuleDraft,
   writeStoredFinalDesignDraftRecord,
 } from "./storage";
+
+const PREVIEW_VENDOR_DIR = path.resolve(AMIGO_PACKAGE_ROOT, "vendor");
+const PREVIEW_TOKENS_PATH = path.join(PREVIEW_VENDOR_DIR, "tokens.css");
+const PREVIEW_TAILWIND_ENTRY_PATH = path.resolve(
+  AMIGO_PACKAGE_ROOT,
+  "node_modules",
+  "tailwindcss",
+  "index.css",
+);
+const PREVIEW_TAILWIND_CLI_PATH = path.resolve(
+  AMIGO_PACKAGE_ROOT,
+  "node_modules",
+  "@tailwindcss",
+  "cli",
+  "dist",
+  "index.mjs",
+);
+
+const ensurePreviewRuntimeExists = () => {
+  if (!existsSync(PREVIEW_TOKENS_PATH)) {
+    throw new Error(`缺少预览 tokens 文件：${PREVIEW_TOKENS_PATH}`);
+  }
+  if (!existsSync(PREVIEW_TAILWIND_ENTRY_PATH)) {
+    throw new Error(`缺少 Tailwind 运行时入口：${PREVIEW_TAILWIND_ENTRY_PATH}`);
+  }
+  if (!existsSync(PREVIEW_TAILWIND_CLI_PATH)) {
+    throw new Error(
+      `缺少 Tailwind CLI：${PREVIEW_TAILWIND_CLI_PATH}。请重新部署并执行 backend/deploy-amigo.sh`,
+    );
+  }
+};
+
+const buildPreviewCssSource = (props: {
+  buildDir: string;
+  sourcePath: string;
+  bodyLines: string[];
+}) =>
+  [
+    `@import "${toCssSpecifier(path.relative(props.buildDir, PREVIEW_TOKENS_PATH))}";`,
+    `@import "${toCssSpecifier(path.relative(props.buildDir, PREVIEW_TAILWIND_ENTRY_PATH))}";`,
+    `@source "${toCssSpecifier(path.relative(props.buildDir, props.sourcePath))}";`,
+    "",
+    ...props.bodyLines,
+    "",
+  ].join("\n");
+
+const runTailwindCli = async (props: {
+  inputPath: string;
+  outputPath: string;
+  cwd: string;
+  errorMessage: string;
+}) => {
+  ensurePreviewRuntimeExists();
+
+  const child = spawn(
+    "node",
+    [PREVIEW_TAILWIND_CLI_PATH, "-i", props.inputPath, "-o", props.outputPath, "--minify"],
+    {
+      cwd: props.cwd,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+
+  const stdoutChunks: Buffer[] = [];
+  const stderrChunks: Buffer[] = [];
+  child.stdout.on("data", (chunk) => stdoutChunks.push(Buffer.from(chunk)));
+  child.stderr.on("data", (chunk) => stderrChunks.push(Buffer.from(chunk)));
+
+  const exitCode = await new Promise<number>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", (code) => resolve(code ?? 1));
+  });
+
+  if (exitCode !== 0 || !existsSync(props.outputPath)) {
+    const details = Buffer.concat([...stdoutChunks, ...stderrChunks])
+      .toString("utf-8")
+      .trim();
+    throw new Error(details ? `${props.errorMessage}\n${details}` : props.errorMessage);
+  }
+};
 
 const buildPreviewDocument = (draft: FinalDesignDraft, cssText: string) => `<!doctype html>
 <html lang="zh-CN">
@@ -95,68 +175,37 @@ export const compileFinalDesignDraftPreview = async (
   const previewSourcePath = getFinalDraftPreviewSourcePath(taskId, normalizedDraftId);
   const previewCssPath = getFinalDraftPreviewCssPath(taskId, normalizedDraftId);
   const previewHtmlPath = getFinalDraftPreviewHtmlPath(taskId, normalizedDraftId);
-  const tokensPath = path.resolve(
-    WORKSPACE_ROOT,
-    "packages",
-    "frontend",
-    "src",
-    "styles",
-    "tokens.css",
-  );
-  const tailwindEntryPath = path.resolve(
-    AMIGO_PACKAGE_ROOT,
-    "node_modules",
-    "tailwindcss",
-    "index.css",
-  );
 
   writeFileSync(sourcePath, `${draft.content.trim()}\n`, "utf-8");
   writeFileSync(
     previewSourcePath,
-    [
-      `@import "${toCssSpecifier(path.relative(buildDir, tokensPath))}";`,
-      `@import "${toCssSpecifier(path.relative(buildDir, tailwindEntryPath))}";`,
-      `@source "${toCssSpecifier(path.relative(buildDir, sourcePath))}";`,
-      "",
-      ":root {",
-      "  color-scheme: light;",
-      "}",
-      "",
-      "body {",
-      "  margin: 0;",
-      '  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;',
-      "}",
-      "",
-      "#amigo-design-flow-root {",
-      "  min-height: 100vh;",
-      "}",
-      "",
-    ].join("\n"),
+    buildPreviewCssSource({
+      buildDir,
+      sourcePath,
+      bodyLines: [
+        ":root {",
+        "  color-scheme: light;",
+        "}",
+        "",
+        "body {",
+        "  margin: 0;",
+        '  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;',
+        "}",
+        "",
+        "#amigo-design-flow-root {",
+        "  min-height: 100vh;",
+        "}",
+      ],
+    }),
     "utf-8",
   );
 
-  const result = await Bun.build({
-    entrypoints: [previewSourcePath],
-    outdir: buildDir,
-    plugins: [plugin],
-    minify: true,
-    target: "browser",
+  await runTailwindCli({
+    inputPath: previewSourcePath,
+    outputPath: previewCssPath,
+    cwd: buildDir,
+    errorMessage: "最终界面预览编译失败",
   });
-
-  if (!result.success || !existsSync(previewCssPath)) {
-    const logs = result.logs
-      .map((entry) => {
-        if (typeof entry.message === "string") {
-          return entry.message;
-        }
-        if (entry && typeof entry === "object" && "message" in entry && entry.message) {
-          return String(entry.message);
-        }
-        return String(entry);
-      })
-      .filter(Boolean);
-    throw new Error(logs.join("\n") || "最终界面预览编译失败");
-  }
 
   const cssText = readFileSync(previewCssPath, "utf-8");
   writeFileSync(previewHtmlPath, buildPreviewDocument(draft, cssText), "utf-8");
@@ -188,91 +237,60 @@ export const compileLayoutOptionPreview = async (
   const previewSourcePath = getLayoutOptionPreviewSourcePath(taskId, normalizedLayoutId);
   const previewCssPath = getLayoutOptionPreviewCssPath(taskId, normalizedLayoutId);
   const previewHtmlPath = getLayoutOptionPreviewHtmlPath(taskId, normalizedLayoutId);
-  const tokensPath = path.resolve(
-    WORKSPACE_ROOT,
-    "packages",
-    "frontend",
-    "src",
-    "styles",
-    "tokens.css",
-  );
-  const tailwindEntryPath = path.resolve(
-    AMIGO_PACKAGE_ROOT,
-    "node_modules",
-    "tailwindcss",
-    "index.css",
-  );
 
   writeFileSync(sourcePath, `${option.source.trim()}\n`, "utf-8");
   writeFileSync(
     previewSourcePath,
-    [
-      `@import "${toCssSpecifier(path.relative(buildDir, tokensPath))}";`,
-      `@import "${toCssSpecifier(path.relative(buildDir, tailwindEntryPath))}";`,
-      `@source "${toCssSpecifier(path.relative(buildDir, sourcePath))}";`,
-      "",
-      ":root {",
-      "  color-scheme: light;",
-      "}",
-      "",
-      "body {",
-      "  margin: 0;",
-      '  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;',
-      "}",
-      "",
-      "[data-module-id] {",
-      "  position: relative;",
-      "  outline: 1px dashed rgba(15, 23, 42, 0.18);",
-      "  outline-offset: -1px;",
-      "}",
-      "",
-      "[data-module-id]::before {",
-      "  content: attr(data-module-id);",
-      "  position: absolute;",
-      "  top: 8px;",
-      "  left: 8px;",
-      "  z-index: 10;",
-      "  border-radius: 999px;",
-      "  background: rgba(15, 23, 42, 0.92);",
-      "  color: white;",
-      "  padding: 4px 10px;",
-      "  font-size: 12px;",
-      "  font-weight: 600;",
-      "  line-height: 1;",
-      "}",
-      "",
-      "[data-slot] {",
-      "  border-radius: 14px;",
-      "  border: 1px dashed rgba(100, 116, 139, 0.42);",
-      "  background: rgba(255, 255, 255, 0.72);",
-      "}",
-      "",
-    ].join("\n"),
+    buildPreviewCssSource({
+      buildDir,
+      sourcePath,
+      bodyLines: [
+        ":root {",
+        "  color-scheme: light;",
+        "}",
+        "",
+        "body {",
+        "  margin: 0;",
+        '  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;',
+        "}",
+        "",
+        "[data-module-id] {",
+        "  position: relative;",
+        "  outline: 1px dashed rgba(15, 23, 42, 0.18);",
+        "  outline-offset: -1px;",
+        "}",
+        "",
+        "[data-module-id]::before {",
+        "  content: attr(data-module-id);",
+        "  position: absolute;",
+        "  top: 8px;",
+        "  left: 8px;",
+        "  z-index: 10;",
+        "  border-radius: 999px;",
+        "  background: rgba(15, 23, 42, 0.92);",
+        "  color: white;",
+        "  padding: 4px 10px;",
+        "  font-size: 12px;",
+        "  font-weight: 600;",
+        "  line-height: 1;",
+        "}",
+        "",
+        "[data-slot] {",
+        "  border-radius: 14px;",
+        "  border: 1px dashed rgba(100, 116, 139, 0.42);",
+        "  background: rgba(255, 255, 255, 0.72);",
+        "}",
+      ],
+    }),
     "utf-8",
   );
 
-  const result = await Bun.build({
-    entrypoints: [previewSourcePath],
-    outdir: buildDir,
-    plugins: [plugin],
-    minify: true,
-    target: "browser",
+  await runTailwindCli({
+    inputPath: previewSourcePath,
+    outputPath: previewCssPath,
+    cwd: buildDir,
+    errorMessage: "布局骨架预览编译失败",
   });
-
-  if (!result.success || !existsSync(previewCssPath)) {
-    const logs = result.logs
-      .map((entry) => {
-        if (typeof entry.message === "string") {
-          return entry.message;
-        }
-        if (entry && typeof entry === "object" && "message" in entry && entry.message) {
-          return String(entry.message);
-        }
-        return String(entry);
-      })
-      .filter(Boolean);
-    throw new Error(logs.join("\n") || "布局骨架预览编译失败");
-  }
 
   const cssText = readFileSync(previewCssPath, "utf-8");
   writeFileSync(previewHtmlPath, buildLayoutOptionPreviewDocument(option, cssText), "utf-8");
@@ -317,87 +335,56 @@ export const compileModuleDraftPreview = async (
     normalizedDraftId,
     normalizedModuleId,
   );
-  const tokensPath = path.resolve(
-    WORKSPACE_ROOT,
-    "packages",
-    "frontend",
-    "src",
-    "styles",
-    "tokens.css",
-  );
-  const tailwindEntryPath = path.resolve(
-    AMIGO_PACKAGE_ROOT,
-    "node_modules",
-    "tailwindcss",
-    "index.css",
-  );
 
   writeFileSync(sourcePath, `${draft.html.trim()}\n`, "utf-8");
   writeFileSync(
     previewSourcePath,
-    [
-      `@import "${toCssSpecifier(path.relative(buildDir, tokensPath))}";`,
-      `@import "${toCssSpecifier(path.relative(buildDir, tailwindEntryPath))}";`,
-      `@source "${toCssSpecifier(path.relative(buildDir, sourcePath))}";`,
-      "",
-      ":root {",
-      "  color-scheme: light;",
-      "}",
-      "",
-      "body {",
-      "  margin: 0;",
-      '  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;',
-      "}",
-      "",
-      "#amigo-design-flow-root {",
-      "  width: 100%;",
-      "}",
-      "",
-      "[data-module-id] {",
-      "  position: relative;",
-      "}",
-      "",
-      "[data-module-id]::before {",
-      "  content: attr(data-module-id);",
-      "  position: absolute;",
-      "  top: 12px;",
-      "  left: 12px;",
-      "  z-index: 10;",
-      "  border-radius: 999px;",
-      "  background: rgba(15, 23, 42, 0.92);",
-      "  color: white;",
-      "  padding: 4px 10px;",
-      "  font-size: 12px;",
-      "  font-weight: 600;",
-      "  line-height: 1;",
-      "}",
-      "",
-    ].join("\n"),
+    buildPreviewCssSource({
+      buildDir,
+      sourcePath,
+      bodyLines: [
+        ":root {",
+        "  color-scheme: light;",
+        "}",
+        "",
+        "body {",
+        "  margin: 0;",
+        '  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;',
+        "}",
+        "",
+        "#amigo-design-flow-root {",
+        "  width: 100%;",
+        "}",
+        "",
+        "[data-module-id] {",
+        "  position: relative;",
+        "}",
+        "",
+        "[data-module-id]::before {",
+        "  content: attr(data-module-id);",
+        "  position: absolute;",
+        "  top: 12px;",
+        "  left: 12px;",
+        "  z-index: 10;",
+        "  border-radius: 999px;",
+        "  background: rgba(15, 23, 42, 0.92);",
+        "  color: white;",
+        "  padding: 4px 10px;",
+        "  font-size: 12px;",
+        "  font-weight: 600;",
+        "  line-height: 1;",
+        "}",
+      ],
+    }),
     "utf-8",
   );
 
-  const result = await Bun.build({
-    entrypoints: [previewSourcePath],
-    outdir: buildDir,
-    plugins: [plugin],
-    minify: true,
-    target: "browser",
+  await runTailwindCli({
+    inputPath: previewSourcePath,
+    outputPath: previewCssPath,
+    cwd: buildDir,
+    errorMessage: "模块预览编译失败",
   });
-
-  if (!result.success || !existsSync(previewCssPath)) {
-    const logs = result.logs
-      .map((entry) => {
-        if (typeof entry.message === "string") {
-          return entry.message;
-        }
-        if (entry && typeof entry === "object" && "message" in entry && entry.message) {
-          return String(entry.message);
-        }
-        return String(entry);
-      })
-      .filter(Boolean);
-    throw new Error(logs.join("\n") || "模块预览编译失败");
-  }
 
   const cssText = readFileSync(previewCssPath, "utf-8");
   writeFileSync(previewHtmlPath, buildModuleDraftPreviewDocument(draft, cssText), "utf-8");
