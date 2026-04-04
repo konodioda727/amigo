@@ -189,19 +189,20 @@ export class ToolExecutor {
       this.lastToolHadError = true;
       this.lastToolError = { toolName, error, type };
 
-      // 发送错误的 WebSocket 消息（使用 partial: true 表示这不是最终状态）
+      // 工具执行报错后，这次 tool call 已经结束。
+      // 这里必须发 non-partial 终态消息，否则会被 partial 节流吞掉，前端会一直停留在 loading。
       this.emitToolTransportMessage(
         conversation,
         type,
         JSON.stringify({
-          result: "",
+          result: toolResult,
           params,
           toolName,
           toolCallId: toolCall.toolCallId,
           error,
           websocketData,
         } satisfies ToolContent),
-        true,
+        false,
         this.toolCallUpdateTimes.get(toolCallKey) ?? callUpdateTime,
       );
       this.toolCallUpdateTimes.delete(toolCallKey);

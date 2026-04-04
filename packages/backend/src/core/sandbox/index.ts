@@ -5,7 +5,12 @@ import { PassThrough } from "node:stream";
 import Docker from "dockerode";
 import { getCacheRootPath } from "@/core/storage";
 import { getGlobalState } from "@/globalState";
-import { type GithubSandboxBinding, getGithubSandboxBindingForTask } from "@/integrations/github";
+import {
+  type GithubGitAuth,
+  type GithubSandboxBinding,
+  getGithubSandboxBindingForTask,
+  resolveGithubGitAuth,
+} from "@/integrations/github";
 import { logger } from "@/utils/logger";
 import { getSandboxContainerName } from "./containerIdentity";
 import { normalizeEditorOpenFilePath } from "./editorFilePath";
@@ -118,7 +123,7 @@ function normalizeInstallCommandForComparison(command: string | undefined): stri
   return (command || "").trim().replace(/\s+/g, " ");
 }
 
-function getForwardedSandboxEnvVars(): string[] {
+function getDirectGithubEnvVars(): string[] {
   return GITHUB_TOKEN_ENV_KEYS.map((key) => {
     const value = process.env[key]?.trim();
     return value ? `${key}=${value}` : "";
@@ -128,7 +133,7 @@ function getForwardedSandboxEnvVars(): string[] {
 function shouldConfigureGithubCredentialHelper(repoUrl: string): boolean {
   try {
     const parsed = new URL(repoUrl);
-    return parsed.protocol === "https:" && parsed.hostname === "github.com";
+    return parsed.protocol === "https:" && !!parsed.hostname.trim();
   } catch {
     return false;
   }
@@ -138,6 +143,14 @@ function buildGithubCredentialHelperCommand(): string {
   return `git config credential.helper ${shellQuote(
     '!f() { if [ "$1" = get ]; then echo "username=x-access-token"; echo "password=${GITHUB_TOKEN:-${GH_TOKEN:-}}"; fi; }; f',
   )}`;
+}
+
+function getForwardedSandboxEnvVars(githubAuth: GithubGitAuth | null): string[] {
+  const directEnv = getDirectGithubEnvVars();
+  if (directEnv.length > 0) {
+    return directEnv;
+  }
+  return githubAuth ? [`GITHUB_TOKEN=${githubAuth.token}`] : [];
 }
 
 const findAvailableHostPort = async (): Promise<number> =>
@@ -277,7 +290,7 @@ export class Sandbox {
         });
 
         // 使用 dockerode 的 demuxStream 来分离 stdout 和 stderr
-        docker!.modem.demuxStream(stream, stdout, stderr);
+        docker?.modem.demuxStream(stream, stdout, stderr);
 
         stream.on("end", () => {
           const result = output + errorOutput;
@@ -368,7 +381,7 @@ export class Sandbox {
         stderrOutput += chunk.toString("utf8");
       });
 
-      docker!.modem.demuxStream(stream, stdout, stderr);
+      docker?.modem.demuxStream(stream, stdout, stderr);
 
       stream.on("error", (error: Error) => {
         finish(error);
@@ -423,7 +436,8 @@ export class Sandbox {
           );
         }
       }
-      const forwardedEnv = getForwardedSandboxEnvVars();
+      const githubAuth = githubBinding ? await resolveGithubGitAuth(githubBinding.repoUrl) : null;
+      const forwardedEnv = getForwardedSandboxEnvVars(githubAuth);
       const binds = githubBinding
         ? [`${githubBinding.mirrorPath}:${BOOTSTRAP_REPO_MOUNT_PATH}:ro`]
         : [];
@@ -484,7 +498,7 @@ export class Sandbox {
         await this.hydrateBootstrapRepository(
           githubBinding.branch,
           githubBinding.commitSha,
-          githubBinding.repoUrl,
+          githubAuth?.repoUrl || githubBinding.repoUrl,
         );
         logger.info(`[Sandbox] bootstrap repo hydrated task=${taskId || "unknown"}`);
       }

@@ -1,6 +1,4 @@
-import { NotebookPen } from "lucide-react";
 import type React from "react";
-import { OpenDesignDocButton } from "./OpenDesignDocButton";
 import { ToolAccordion } from "./ToolAccordion";
 
 interface CreateDesignDocToolOutput {
@@ -58,9 +56,7 @@ export const DefaultCreateDesignDocRenderer: React.FC<CreateDesignDocRendererPro
   return (
     <ToolAccordion
       key={`${toolName}-${params?.pageId || storedDoc?.pageId || "unknown"}-${expansionKey}`}
-      icon={<NotebookPen size={14} />}
       title={`${isEditMode ? "修改设计稿" : "创建设计稿"}: ${String(params?.pageId || storedDoc?.pageId || "未命名")}`}
-      action={<OpenDesignDocButton pageId={String(params?.pageId || storedDoc?.pageId || "")} />}
       isLoading={isLoading}
       hasError={hasError}
       error={error}

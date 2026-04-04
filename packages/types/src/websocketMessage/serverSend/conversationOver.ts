@@ -12,6 +12,7 @@ export const ConversationOverSchema = z.object({
         "interrupt",
         "error",
         "message",
+        "tool",
       ])
       .optional(),
   }),

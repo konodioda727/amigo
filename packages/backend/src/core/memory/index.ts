@@ -13,7 +13,7 @@ import {
 import { getConversationPersistenceProvider } from "@/core/persistence";
 import type { ConversationPersistenceRecord } from "@/core/persistence/types";
 import { getTaskStoragePath } from "@/core/storage";
-import type { ResolvedModelConfig } from "../model/contextConfig";
+import type { ModelConfigSnapshot } from "../model/contextConfig";
 
 /**
  * 文件持久化内存管理类
@@ -29,7 +29,7 @@ export class FilePersistedMemory {
   private _initialSystemPrompt?: string;
   private _toolNames: string[] = [];
   private _context: unknown;
-  private _modelConfigSnapshot?: ResolvedModelConfig;
+  private _modelConfigSnapshot?: ModelConfigSnapshot;
   private _autoApproveToolNames: string[] = [];
   private _pendingToolCall: PendingToolCall | null = null;
   private _subTasks: Record<string, SubTaskStatus> = {};
@@ -319,11 +319,11 @@ export class FilePersistedMemory {
     this.saveTaskStatus();
   }
 
-  public get modelConfigSnapshot(): ResolvedModelConfig | undefined {
+  public get modelConfigSnapshot(): ModelConfigSnapshot | undefined {
     return this._modelConfigSnapshot;
   }
 
-  public setModelConfigSnapshot(modelConfigSnapshot: ResolvedModelConfig | undefined): void {
+  public setModelConfigSnapshot(modelConfigSnapshot: ModelConfigSnapshot | undefined): void {
     this._modelConfigSnapshot = modelConfigSnapshot;
     this.saveTaskStatus();
   }

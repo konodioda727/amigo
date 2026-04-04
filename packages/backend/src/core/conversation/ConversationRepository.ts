@@ -279,6 +279,9 @@ export class ConversationRepository {
     toolNames?: string[];
     tools?: ToolInterface<unknown>[];
     llm?: AmigoLlm;
+    context?: unknown;
+    modelConfigSnapshot?: Parameters<Conversation["memory"]["setModelConfigSnapshot"]>[0];
+    autoApproveToolNames?: string[];
   }): Conversation {
     const allCustomTools = getAllCustomTools();
     const type = params?.type || "main";
@@ -300,6 +303,9 @@ export class ConversationRepository {
       type,
       parentId: params?.parentId,
       customPrompt: params?.customPrompt,
+      context: params?.context,
+      modelConfigSnapshot: params?.modelConfigSnapshot,
+      autoApproveToolNames: params?.autoApproveToolNames,
     });
 
     this.save(conversation);

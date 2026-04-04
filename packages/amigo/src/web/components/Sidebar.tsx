@@ -71,7 +71,7 @@ const Sidebar: React.FC = () => {
             </button>
 
             {menuOpen ? (
-              <div className="absolute bottom-[calc(100%+10px)] left-0 right-0 rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
+              <div className="absolute bottom-[calc(100%+10px)] left-0 right-0 rounded-sm border border-white/60 bg-white/80 p-1.5 shadow-lg backdrop-blur-md">
                 <MenuAction
                   icon={<Settings className="h-4 w-4" />}
                   label="设置"
@@ -127,7 +127,7 @@ const MenuAction: React.FC<{
   <button
     type="button"
     onClick={() => void onClick()}
-    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-slate-700 transition hover:bg-slate-50 hover:text-slate-950"
+    className="flex w-full items-center gap-3 rounded-sm px-3 py-2.5 text-left text-sm text-slate-700 transition hover:bg-white/80 hover:text-slate-950"
   >
     <span className="text-slate-500">{icon}</span>
     <span>{label}</span>

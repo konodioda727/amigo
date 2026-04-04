@@ -6,6 +6,7 @@ import type {
   AmigoLlmStreamOptions,
   AmigoMessageContentPart,
   AmigoModelMessage,
+  AmigoToolCall,
   AmigoToolDefinition,
 } from "../types";
 
@@ -22,8 +23,18 @@ type OpenAIContentPart =
     };
 
 type OpenAIMessage = {
-  role: "system" | "user" | "assistant";
-  content: string | OpenAIContentPart[];
+  role: "system" | "user" | "assistant" | "tool";
+  content?: string | OpenAIContentPart[] | null;
+  tool_call_id?: string;
+  name?: string;
+  tool_calls?: Array<{
+    id?: string;
+    type: "function";
+    function: {
+      name: string;
+      arguments: string;
+    };
+  }>;
 };
 
 type OpenAIProviderOptions = {
@@ -70,8 +81,44 @@ const toOpenAIContentPart = (part: AmigoMessageContentPart): OpenAIContentPart =
   };
 };
 
+const toOpenAIToolCalls = (toolCalls: AmigoToolCall[]) =>
+  toolCalls.map((toolCall) => ({
+    ...(toolCall.id ? { id: toolCall.id } : {}),
+    type: "function" as const,
+    function: {
+      name: toolCall.name,
+      arguments: JSON.stringify(toolCall.arguments),
+    },
+  }));
+
 const toOpenAIMessages = (messages: AmigoModelMessage[]): OpenAIMessage[] => {
   return messages.map((message) => {
+    if (message.role === "tool") {
+      return {
+        role: "tool",
+        content:
+          typeof message.content === "string"
+            ? message.content
+            : message.content.map(toOpenAIContentPart),
+        ...(message.toolCallId ? { tool_call_id: message.toolCallId } : {}),
+        ...(message.toolName ? { name: message.toolName } : {}),
+      };
+    }
+
+    if (message.toolCalls && message.toolCalls.length > 0) {
+      const content =
+        typeof message.content === "string"
+          ? message.content.trim()
+            ? message.content
+            : null
+          : message.content.map(toOpenAIContentPart);
+      return {
+        role: "assistant",
+        content,
+        tool_calls: toOpenAIToolCalls(message.toolCalls),
+      };
+    }
+
     if (typeof message.content === "string") {
       return {
         role: message.role,
@@ -103,6 +150,7 @@ const toOpenAITools = (tools?: AmigoToolDefinition[]) => {
 
 const REASONING_PART_TYPES = new Set(["reasoning", "reasoning_text", "thinking", "thought"]);
 const TEXT_PART_TYPES = new Set(["text", "output_text"]);
+const THINK_TAG_PATTERN = /<\/?think\b[^>]*>/gi;
 
 const asRecord = (value: unknown): Record<string, unknown> | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -241,6 +289,8 @@ const concatIfMissing = (base: string, extra: string): string => {
   return `${base}${extra}`;
 };
 
+const stripThinkTags = (text: string): string => text.replace(THINK_TAG_PATTERN, "");
+
 const extractTextDelta = (
   choice:
     | {
@@ -263,8 +313,8 @@ const extractTextDelta = (
   const reasoningFromDelta = extractReasoningFromDelta(choice.delta);
 
   return {
-    text: concatIfMissing(contentDeltas.text, textFallback),
-    reasoning: concatIfMissing(contentDeltas.reasoning, reasoningFromDelta),
+    text: stripThinkTags(concatIfMissing(contentDeltas.text, textFallback)),
+    reasoning: stripThinkTags(concatIfMissing(contentDeltas.reasoning, reasoningFromDelta)),
   };
 };
 

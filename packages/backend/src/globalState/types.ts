@@ -1,5 +1,10 @@
 import type { ChatMessage, MessageDefinition, ToolInterface } from "@amigo-llm/types";
-import type { ModelConfig, ModelContextConfig } from "@/core/model/contextConfig";
+import type {
+  ModelConfig,
+  ModelContextConfig,
+  ModelSelection,
+  ResolvedModelConfig,
+} from "@/core/model/contextConfig";
 import type { ConversationPersistenceProvider } from "@/core/persistence/types";
 import type { SandboxManager } from "@/core/sandbox/types";
 import type { CreateTaskConfigResolver } from "@/core/server";
@@ -34,6 +39,11 @@ export interface GlobalStateType {
   modelConfigs?: Record<string, ModelConfig>;
   /** 兼容旧命名，后续建议使用 modelConfigs */
   modelContextConfigs?: Record<string, ModelContextConfig>;
+  /** 应用层可注入的按用户解析模型配置方法 */
+  userModelConfigResolver?: (payload: {
+    userId?: string;
+    selection: string | ModelSelection;
+  }) => ResolvedModelConfig | null;
   /** 会话创建完成后的 app 层 hook */
   onConversationCreate?: (payload: { taskId: string; context?: unknown }) => void | Promise<void>;
   /** 会话消息产生后的 app 层 hook */

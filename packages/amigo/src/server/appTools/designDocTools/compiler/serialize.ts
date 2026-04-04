@@ -193,15 +193,6 @@ const serializeNode = (node: DesignNode, indent: string): string => {
     ...(style ? { style } : {}),
   };
 
-  if (node.props?.componentRef && typeof node.props.componentRef === "string") {
-    return `${indent}<use ${renderAttributes({
-      component: node.props.componentRef,
-      id: node.id,
-      ...(node.name && node.name !== node.id ? { name: node.name } : {}),
-      ...getStateAttributes(node),
-    })} />`;
-  }
-
   if (
     node.props?.controlType === "input" ||
     node.props?.controlType === "textarea" ||
@@ -253,9 +244,7 @@ const serializeNode = (node: DesignNode, indent: string): string => {
   if (node.type === "image") {
     return `${indent}<img ${renderAttributes({
       ...common,
-      ...(typeof node.props?.assetRef === "string"
-        ? { asset: node.props.assetRef }
-        : { src: node.assetUrl }),
+      ...(node.assetUrl ? { src: node.assetUrl } : {}),
       ...(typeof node.props?.alt === "string" ? { alt: node.props.alt } : {}),
       ...getStateAttributes(node),
     })} />`;

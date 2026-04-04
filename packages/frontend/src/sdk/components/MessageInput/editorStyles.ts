@@ -16,10 +16,20 @@ export const messageInputEditorStyles = `
     margin: 0 auto;
   }
 
+  .tiptap-editor-wrapper.is-image-drag-active .ProseMirror {
+    border-color: #93c5fd;
+    background:
+      linear-gradient(0deg, rgba(239, 246, 255, 0.92), rgba(239, 246, 255, 0.92)),
+      #ffffff;
+    box-shadow: 0 0 0 4px rgba(147, 197, 253, 0.2);
+  }
+
   .tiptap-editor-wrapper .ProseMirror {
     min-height: 60px;
     max-height: 320px;
     overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
     padding: 18px 108px 18px 60px;
     border-radius: 30px;
     border: 1px solid #e5e7eb;
@@ -30,9 +40,6 @@ export const messageInputEditorStyles = `
     line-height: 1.5;
     transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
     outline: none;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
   }
 
   .tiptap-editor-wrapper .ProseMirror:focus {

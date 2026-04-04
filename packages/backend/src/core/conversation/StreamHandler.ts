@@ -55,6 +55,7 @@ export class StreamHandler {
       let reasoningBuffer = "";
       let reasoningUpdateTime: number | null = null;
       let reasoningFinalized = false;
+      let toolCallStarted = false;
       let currentTool = "message";
 
       for await (const event of stream) {
@@ -72,6 +73,9 @@ export class StreamHandler {
         }
 
         if (event.type === "reasoning_delta") {
+          if (toolCallStarted) {
+            continue;
+          }
           if (!event.text) {
             continue;
           }
@@ -90,6 +94,9 @@ export class StreamHandler {
         }
 
         if (event.type === "text_delta") {
+          if (toolCallStarted) {
+            continue;
+          }
           if (!event.text) {
             continue;
           }
@@ -106,6 +113,7 @@ export class StreamHandler {
           if (!event.name) {
             continue;
           }
+          toolCallStarted = true;
           if (!reasoningFinalized) {
             this.transport.emitFinalThink(conversation, reasoningBuffer, reasoningUpdateTime);
             reasoningFinalized = true;
@@ -196,7 +204,9 @@ export class StreamHandler {
       if (!reasoningFinalized) {
         this.transport.emitFinalThink(conversation, reasoningBuffer, reasoningUpdateTime);
       }
-      this.transport.emitFinalMessage(conversation, messageBuffer);
+      if (!toolCallStarted) {
+        this.transport.emitFinalMessage(conversation, messageBuffer);
+      }
       contextCompressionManager.syncContextUsage(conversation);
 
       this.consecutiveErrorCount = 0;

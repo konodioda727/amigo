@@ -1,13 +1,12 @@
 import "../../../../provider/__tests__/setup";
 import { describe, expect, it } from "bun:test";
 import { render } from "@testing-library/react";
-import { Settings } from "lucide-react";
 import { ToolAccordion } from "../ToolAccordion";
 
 describe("ToolAccordion", () => {
-  it("applies shimmer to both icon and title while loading", () => {
+  it("applies shimmer to the title while loading", () => {
     const view = render(
-      <ToolAccordion icon={<Settings size={14} />} title="执行中工具" isLoading>
+      <ToolAccordion title="执行中工具" isLoading>
         <div>内容</div>
       </ToolAccordion>,
     );

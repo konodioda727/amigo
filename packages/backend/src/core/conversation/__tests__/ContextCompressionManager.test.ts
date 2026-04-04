@@ -80,11 +80,104 @@ describe("ContextCompressionManager helpers", () => {
     expect(selected.map((message) => message.updateTime)).toEqual([4, 5]);
   });
 
+  it("prefers the latest completionResult checkpoint over older history", () => {
+    const messages: ChatMessage[] = [
+      createMessage(1, "old-1"),
+      {
+        role: "assistant",
+        type: "tool",
+        content: JSON.stringify({
+          toolName: "completionResult",
+          result: "checkpoint-1",
+          params: {
+            summary: "checkpoint-1",
+            result: "checkpoint-1",
+          },
+        }),
+        updateTime: 2,
+      },
+      {
+        role: "system",
+        type: "message",
+        content: "tool result after checkpoint-1",
+        updateTime: 3,
+      },
+      createMessage(4, "recent-1"),
+      {
+        role: "assistant",
+        type: "tool",
+        content: JSON.stringify({
+          toolName: "completionResult",
+          result: "checkpoint-2",
+          params: {
+            summary: "checkpoint-2",
+            result: "checkpoint-2",
+          },
+        }),
+        updateTime: 5,
+      },
+      {
+        role: "system",
+        type: "message",
+        content: "tool result after checkpoint-2",
+        updateTime: 6,
+      },
+      createMessage(7, "recent-2", "assistant"),
+    ];
+
+    const selected = __testing__.getMessagesForCurrentContext(messages);
+
+    expect(selected.map((message) => message.updateTime)).toEqual([5, 6, 7]);
+  });
+
+  it("prefers the latest completionResult checkpoint even when a compaction marker exists earlier", () => {
+    const messages: ChatMessage[] = [
+      createMessage(1, "old-1"),
+      {
+        role: "system",
+        type: "compaction",
+        content: "compressed summary",
+        updateTime: 2,
+      },
+      createMessage(3, "recent-1"),
+      {
+        role: "assistant",
+        type: "tool",
+        content: JSON.stringify({
+          toolName: "completionResult",
+          result: "checkpoint",
+          params: {
+            summary: "checkpoint",
+            result: "checkpoint",
+          },
+        }),
+        updateTime: 4,
+      },
+      {
+        role: "system",
+        type: "message",
+        content: "tool result after checkpoint",
+        updateTime: 5,
+      },
+      createMessage(6, "recent-2"),
+    ];
+
+    const selected = __testing__.getMessagesForCurrentContext(messages);
+
+    expect(selected.map((message) => message.updateTime)).toEqual([4, 5, 6]);
+  });
+
   it("builds a fresh context usage snapshot from current memory", () => {
     setGlobalState("modelConfigs", {
       "doubao-seed-2.0-code": {
         provider: "openai-compatible",
-        contextWindow: 100,
+        apiKey: "test-key",
+        models: [
+          {
+            name: "doubao-seed-2.0-code",
+            contextWindow: 100,
+          },
+        ],
         compressionThreshold: 0.8,
         targetRatio: 0.5,
       },

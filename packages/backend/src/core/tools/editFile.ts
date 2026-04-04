@@ -1,6 +1,10 @@
+import type { EditFileDiagnostics } from "@amigo-llm/types";
 import type { Sandbox } from "@/core/sandbox";
+import { getGlobalState } from "@/globalState";
 import { logger } from "@/utils/logger";
 import { createTool } from "./base";
+import type { EditFileDiagnosticsProvider } from "./editFileDiagnostics";
+import { createToolResult } from "./result";
 
 /**
  * 转义 shell 特殊字符，使用 base64 编码来安全传输内容
@@ -23,20 +27,18 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
-function toBoolean(value: unknown, defaultValue: boolean): boolean {
-  if (typeof value === "boolean") {
-    return value;
+function parseLineNumber(value: unknown): number {
+  if (typeof value === "number") {
+    return Math.trunc(value);
   }
   if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (["true", "1", "yes", "on"].includes(normalized)) {
-      return true;
-    }
-    if (["false", "0", "no", "off"].includes(normalized)) {
-      return false;
-    }
+    return Number.parseInt(value, 10);
   }
-  return defaultValue;
+  return Number.NaN;
+}
+
+function splitLines(content: string): string[] {
+  return content.length === 0 ? [] : content.split("\n");
 }
 
 export interface EditFileWebsocketData {
@@ -47,6 +49,24 @@ export interface EditFileWebsocketData {
 export interface EditFilePreview {
   websocketData?: EditFileWebsocketData;
 }
+
+type EditFileOperation =
+  | {
+      kind: "write";
+      content: string;
+    }
+  | {
+      kind: "searchReplace";
+      oldString: string;
+      newString: string;
+    }
+  | {
+      kind: "linePatch";
+      startLine: number;
+      endLine: number;
+      content: string;
+      expectedOriginalContent: string;
+    };
 
 function buildEditFileWebsocketData(
   beforeContent: string | undefined,
@@ -64,24 +84,237 @@ function buildEditFileWebsocketData(
   return preview;
 }
 
+function resolveEditFileOperation(params: {
+  content?: unknown;
+  startLine?: unknown;
+  endLine?: unknown;
+  expectedOriginalContent?: unknown;
+  oldString?: unknown;
+  newString?: unknown;
+}): { operation?: EditFileOperation; error?: string } {
+  const hasStartLine = params.startLine !== undefined;
+  const hasEndLine = params.endLine !== undefined;
+  const hasExpectedOriginalContent = params.expectedOriginalContent !== undefined;
+  const hasOldString = params.oldString !== undefined;
+  const hasNewString = params.newString !== undefined;
+  const usesLinePatch = hasStartLine || hasEndLine || hasExpectedOriginalContent;
+  const usesSearchReplace = hasOldString || hasNewString;
+
+  if (usesLinePatch && usesSearchReplace) {
+    return {
+      error:
+        "局部修改一次只能选择一种方式：要么使用 startLine/endLine/content/expectedOriginalContent，要么使用 oldString/newString",
+    };
+  }
+
+  if (hasStartLine !== hasEndLine) {
+    return {
+      error: "按行修改需要同时提供 startLine 和 endLine",
+    };
+  }
+
+  if (hasOldString !== hasNewString) {
+    return {
+      error: "精确替换需要同时提供 oldString 和 newString",
+    };
+  }
+
+  if (usesSearchReplace) {
+    if (typeof params.oldString !== "string" || params.oldString.length === 0) {
+      return {
+        error: "精确替换需要提供非空的 oldString",
+      };
+    }
+
+    if (typeof params.newString !== "string") {
+      return {
+        error: "精确替换需要提供 newString",
+      };
+    }
+
+    if (params.oldString === params.newString) {
+      return {
+        error: "oldString 和 newString 不能完全相同",
+      };
+    }
+
+    return {
+      operation: {
+        kind: "searchReplace",
+        oldString: params.oldString,
+        newString: params.newString,
+      },
+    };
+  }
+
+  if (hasStartLine && hasEndLine) {
+    const startLine = parseLineNumber(params.startLine);
+    const endLine = parseLineNumber(params.endLine);
+
+    if (
+      !Number.isFinite(startLine) ||
+      !Number.isFinite(endLine) ||
+      startLine <= 0 ||
+      endLine < startLine
+    ) {
+      return {
+        error:
+          "按行修改需要提供合法的 startLine 和 endLine，且 startLine >= 1、endLine >= startLine",
+      };
+    }
+
+    if (typeof params.content !== "string") {
+      return {
+        error: "按行修改需要提供 content",
+      };
+    }
+
+    if (typeof params.expectedOriginalContent !== "string") {
+      return {
+        error: "按行修改需要提供 expectedOriginalContent，用于校验当前文件片段仍与读取时一致",
+      };
+    }
+
+    return {
+      operation: {
+        kind: "linePatch",
+        startLine,
+        endLine,
+        content: params.content,
+        expectedOriginalContent: params.expectedOriginalContent,
+      },
+    };
+  }
+
+  if (typeof params.content !== "string") {
+    return {
+      error:
+        "整文件写入需要提供 content；如果只改局部，请提供 startLine、endLine、content 和 expectedOriginalContent，或使用 oldString/newString",
+    };
+  }
+
+  return {
+    operation: {
+      kind: "write",
+      content: params.content,
+    },
+  };
+}
+
+function applyLinePatch(
+  originalContent: string,
+  operation: Extract<EditFileOperation, { kind: "linePatch" }>,
+): { updatedContent?: string; error?: string } {
+  const lines = splitLines(originalContent);
+  if (operation.startLine > lines.length + 1) {
+    return {
+      error: `startLine 超出范围，当前文件只有 ${lines.length} 行`,
+    };
+  }
+
+  const currentSlice = lines
+    .slice(operation.startLine - 1, Math.min(lines.length, operation.endLine))
+    .join("\n");
+  if (currentSlice !== operation.expectedOriginalContent) {
+    return {
+      error:
+        "按行修改前校验失败：目标行内容已发生变化。请先重新 readFile，并基于最新内容传入 expectedOriginalContent 后再试。",
+    };
+  }
+
+  const updatedContent = [
+    ...lines.slice(0, operation.startLine - 1),
+    ...operation.content.split("\n"),
+    ...lines.slice(Math.min(lines.length, operation.endLine)),
+  ].join("\n");
+
+  return { updatedContent };
+}
+
+function applySearchReplace(
+  originalContent: string,
+  operation: Extract<EditFileOperation, { kind: "searchReplace" }>,
+): { updatedContent?: string; error?: string } {
+  const matchCount = originalContent.split(operation.oldString).length - 1;
+
+  if (matchCount === 0) {
+    return {
+      error:
+        "精确替换失败：oldString 未在文件中命中。请先 readFile，确保传入完整且精确的原文片段。",
+    };
+  }
+
+  if (matchCount > 1) {
+    return {
+      error: `精确替换失败：oldString 在文件中命中 ${matchCount} 次，无法唯一定位。请提供更长的上下文使其唯一。`,
+    };
+  }
+
+  return {
+    updatedContent: originalContent.replace(operation.oldString, operation.newString),
+  };
+}
+
 export const normalizeEditFilePath = (filePath: string): string =>
   filePath.trim().replace(/^(\.\/)+/, "");
+
+const runConfiguredEditFileDiagnostics = async (params: {
+  taskId: string;
+  parentId?: string;
+  sandbox: Sandbox;
+  filePath: string;
+  beforeContent?: string;
+  afterContent: string;
+  signal?: AbortSignal;
+}): Promise<EditFileDiagnostics | undefined> => {
+  const provider = getGlobalState("editFileDiagnosticsProvider") as
+    | EditFileDiagnosticsProvider
+    | undefined;
+  if (!provider) {
+    return undefined;
+  }
+
+  try {
+    return await provider(params);
+  } catch (error) {
+    logger.warn(
+      `[EditFile] 运行编辑后诊断失败 ${params.filePath}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return undefined;
+  }
+};
+
+const buildEditFileTransportMessage = (
+  successMsg: string,
+  diagnostics?: EditFileDiagnostics,
+): string => {
+  if (!diagnostics || diagnostics.status === "clean") {
+    return successMsg;
+  }
+
+  return `${successMsg}；${diagnostics.summary}`;
+};
 
 export async function buildEditFilePreview(
   sandbox: Sandbox,
   params: {
     filePath: string;
     content?: string;
-    mode?: string;
     startLine?: number;
     endLine?: number;
-    search?: string;
-    replace?: string;
-    replaceAll?: boolean;
+    expectedOriginalContent?: string;
+    oldString?: string;
+    newString?: string;
   },
 ): Promise<EditFilePreview> {
   const cleanPath = normalizeEditFilePath(params.filePath);
-  const mode = params.mode || "overwrite";
+  const { operation } = resolveEditFileOperation(params);
+  if (!operation) {
+    return {};
+  }
+
   const existsResult = await sandbox.runCommand(
     `test -f ${shellQuote(cleanPath)} && echo "exists" || echo "not_found"`,
   );
@@ -90,62 +323,27 @@ export async function buildEditFilePreview(
     ? (await sandbox.runCommand(`cat ${shellQuote(cleanPath)}`)) || ""
     : undefined;
 
-  if (mode === "patch") {
-    if (originalContent === undefined) {
-      return {};
-    }
-
-    const hasLinePatch = params.startLine !== undefined || params.endLine !== undefined;
-    const hasSearchReplace = params.search !== undefined || params.replace !== undefined;
-
-    if (
-      hasLinePatch &&
-      params.startLine !== undefined &&
-      params.endLine !== undefined &&
-      typeof params.content === "string"
-    ) {
-      const lines = originalContent.split("\n");
-      const start = Math.max(1, Number(params.startLine)) - 1;
-      const end = Math.min(lines.length, Number(params.endLine));
-      const newLines = params.content.split("\n");
-      const updated = [...lines.slice(0, start), ...newLines, ...lines.slice(end)].join("\n");
-      return {
-        websocketData: buildEditFileWebsocketData(originalContent, updated),
-      };
-    }
-
-    if (hasSearchReplace && typeof params.search === "string" && params.replace !== undefined) {
-      const replaceText = String(params.replace);
-      const replaceAllFlag = toBoolean(params.replaceAll, false);
-      let updatedContent = originalContent;
-
-      if (replaceAllFlag) {
-        updatedContent = originalContent.split(params.search).join(replaceText);
-      } else {
-        const index = originalContent.indexOf(params.search);
-        if (index >= 0) {
-          updatedContent =
-            originalContent.slice(0, index) +
-            replaceText +
-            originalContent.slice(index + params.search.length);
-        }
-      }
-
-      return {
-        websocketData: buildEditFileWebsocketData(originalContent, updatedContent),
-      };
-    }
-
-    return {};
-  }
-
-  if (typeof params.content === "string") {
+  if (operation.kind === "write") {
     return {
-      websocketData: buildEditFileWebsocketData(originalContent, params.content),
+      websocketData: buildEditFileWebsocketData(originalContent, operation.content),
     };
   }
 
-  return {};
+  if (originalContent === undefined) {
+    return {};
+  }
+
+  const { updatedContent } =
+    operation.kind === "linePatch"
+      ? applyLinePatch(originalContent, operation)
+      : applySearchReplace(originalContent, operation);
+  if (updatedContent === undefined) {
+    return {};
+  }
+
+  return {
+    websocketData: buildEditFileWebsocketData(originalContent, updatedContent),
+  };
 }
 
 /**
@@ -155,9 +353,16 @@ export async function buildEditFilePreview(
 export const EditFile = createTool({
   name: "editFile",
   description:
-    "在沙箱中创建或修改文件。支持创建/覆盖写入，以及 patch 模式（按行替换或字符串查找替换）。",
+    "在沙箱中写入文件。支持整文件写入、按唯一 oldString/newString 精确替换，或基于 startLine/endLine 的受保护局部替换。",
   whenToUse:
-    "需要创建文件、覆盖文件或做局部修改（patch/search-replace）时使用。改动前先 readFile，改动后建议 runChecks 验证。",
+    "需要创建文件、覆盖整个文件、做唯一文本替换，或在已知精确上下文下修改局部内容时使用。改动前先 readFile；局部修改必须携带最新原文片段用于校验；改动后建议 runChecks 验证。",
+  historyProfile: {
+    progressKind: "write",
+    getResourceKeys: ({ params }) =>
+      typeof params.filePath === "string" && params.filePath.trim()
+        ? [params.filePath.trim().replace(/^(\.\/)+/, "")].map((filePath) => `file:${filePath}`)
+        : [],
+  },
 
   params: [
     {
@@ -168,72 +373,78 @@ export const EditFile = createTool({
     {
       name: "content",
       optional: true,
-      description: "文件内容（create/overwrite 或行号 patch 模式必填）",
-    },
-    {
-      name: "mode",
-      optional: true,
-      description: "操作模式：create=仅创建新文件，overwrite=覆盖写入（默认），patch=修改指定行",
+      description:
+        "整文件写入时必填；按行修改时需与 startLine、endLine、expectedOriginalContent 一起提供",
     },
     {
       name: "startLine",
       optional: true,
-      description: "patch 模式下的起始行号（从 1 开始）",
+      description: "可选：起始行号（从 1 开始）。仅作为局部修改的定位提示",
     },
     {
       name: "endLine",
       optional: true,
-      description: "patch 模式下的结束行号（包含）",
+      description: "可选：结束行号（包含）。仅作为局部修改的定位提示",
     },
     {
-      name: "search",
+      name: "expectedOriginalContent",
       optional: true,
-      description: "patch 模式可选：按字符串查找替换时的 search 文本",
+      description:
+        "按行修改时必填：startLine-endLine 当前应匹配的原文片段。必须与最新 readFile 结果完全一致，不含行号。",
     },
     {
-      name: "replace",
+      name: "oldString",
       optional: true,
-      description: "patch 模式可选：按字符串查找替换时的 replace 文本",
+      description: "可选：对已有文件做精确文本替换时使用。必须在文件中唯一命中，并与原文完全一致。",
     },
     {
-      name: "replaceAll",
+      name: "newString",
       optional: true,
-      description: "patch 模式可选：是否替换所有匹配（默认 false）",
-    },
-    {
-      name: "failIfNoMatch",
-      optional: true,
-      description: "patch 模式可选：无匹配时是否报错（默认 true）",
+      description: "可选：与 oldString 配对使用，表示替换后的新文本。",
     },
   ],
 
   async invoke({ params, context }) {
-    const {
-      filePath,
-      content,
-      mode = "overwrite",
-      startLine,
-      endLine,
-      search,
-      replace,
-      replaceAll,
-      failIfNoMatch,
-    } = params;
+    const { filePath, content, startLine, endLine, expectedOriginalContent, oldString, newString } =
+      params;
 
-    logger.info(`[EditFile] invoke called with filePath: ${filePath}, mode: ${mode}`);
+    logger.info(
+      `[EditFile] invoke called with filePath: ${filePath}, startLine: ${String(startLine)}, endLine: ${String(endLine)}`,
+    );
     logger.info(
       `[EditFile] context.taskId: ${context.taskId}, context.parentId: ${context.parentId}`,
     );
 
     if (!filePath || filePath.trim() === "") {
       const errorMsg = "文件路径不能为空";
-      return {
-        message: errorMsg,
-        toolResult: { success: false, filePath: "", message: errorMsg },
-      };
+      return createToolResult(
+        { success: false, filePath: "", message: errorMsg },
+        { transportMessage: errorMsg },
+      );
     }
 
     const cleanPath = normalizeEditFilePath(filePath);
+    const { operation, error } = resolveEditFileOperation({
+      content,
+      startLine,
+      endLine,
+      expectedOriginalContent,
+      oldString,
+      newString,
+    });
+
+    if (!operation) {
+      return createToolResult(
+        {
+          success: false,
+          filePath: cleanPath,
+          message: error || "editFile 参数无效",
+        },
+        {
+          transportMessage: error || "editFile 参数无效",
+        },
+      );
+    }
 
     try {
       logger.info(`[EditFile] Calling context.getSandbox()...`);
@@ -244,10 +455,10 @@ export const EditFile = createTool({
 
       if (!sandbox || !sandbox.isRunning()) {
         const errorMsg = "沙箱未运行，无法编辑文件";
-        return {
-          message: errorMsg,
-          toolResult: { success: false, filePath: cleanPath, message: errorMsg },
-        };
+        return createToolResult(
+          { success: false, filePath: cleanPath, message: errorMsg },
+          { transportMessage: errorMsg },
+        );
       }
 
       const dirPath = cleanPath.includes("/")
@@ -258,191 +469,88 @@ export const EditFile = createTool({
         await sandbox.runCommand(`mkdir -p ${shellQuote(dirPath)}`);
       }
 
-      if (mode === "create") {
-        const existsResult = await sandbox.runCommand(
-          `test -f ${shellQuote(cleanPath)} && echo "exists" || echo "not_found"`,
-        );
-        if (existsResult?.includes("exists")) {
-          const errorMsg = `文件已存在: ${cleanPath}。使用 mode='overwrite' 来覆盖`;
-          return {
-            message: errorMsg,
-            toolResult: { success: false, filePath: cleanPath, message: errorMsg },
-          };
-        }
-      }
-
-      if (mode === "patch") {
-        const existsResult = await sandbox.runCommand(
-          `test -f ${shellQuote(cleanPath)} && echo "exists" || echo "not_found"`,
-        );
-        if (!existsResult?.includes("exists")) {
-          const errorMsg = `文件不存在: ${cleanPath}。patch 模式只能修改已有文件；请先用 mode='create' 或 mode='overwrite' 创建文件`;
-          return {
-            message: errorMsg,
-            toolResult: { success: false, filePath: cleanPath, message: errorMsg },
-          };
-        }
-
-        const originalContent = await sandbox.runCommand(`cat ${shellQuote(cleanPath)}`);
-        if (originalContent === undefined) {
-          const errorMsg = "无法读取原文件内容";
-          return {
-            message: errorMsg,
-            toolResult: { success: false, filePath: cleanPath, message: errorMsg },
-          };
-        }
-
-        const hasLinePatch = startLine !== undefined || endLine !== undefined;
-        const hasSearchReplace = search !== undefined || replace !== undefined;
-
-        if (hasLinePatch) {
-          if (startLine === undefined || endLine === undefined) {
-            const errorMsg = "行号 patch 模式需要同时提供 startLine 和 endLine";
-            return {
-              message: errorMsg,
-              toolResult: { success: false, filePath: cleanPath, message: errorMsg },
-            };
-          }
-          if (typeof content !== "string") {
-            const errorMsg = "行号 patch 模式需要提供 content";
-            return {
-              message: errorMsg,
-              toolResult: { success: false, filePath: cleanPath, message: errorMsg },
-            };
-          }
-
-          const lines = originalContent.split("\n");
-          const start = Math.max(1, Number(startLine)) - 1;
-          const end = Math.min(lines.length, Number(endLine));
-          const newLines = content.split("\n");
-          const resultLines = [...lines.slice(0, start), ...newLines, ...lines.slice(end)];
-
-          const base64Content = escapeShellContent(resultLines.join("\n"));
-          await sandbox.runCommand(
-            `printf '%s' ${shellQuote(base64Content)} | base64 -d > ${shellQuote(cleanPath)}`,
-          );
-
-          const linesWritten = newLines.length;
-          const successMsg = `成功修改文件 ${cleanPath} 的第 ${startLine}-${endLine} 行（共 ${linesWritten} 行）`;
-          logger.info(`[EditFile] ${successMsg}`);
-
-          return {
-            message: successMsg,
-            toolResult: {
-              success: true,
-              filePath: cleanPath,
-              message: successMsg,
-              linesWritten,
-            },
-            websocketData: buildEditFileWebsocketData(originalContent, resultLines.join("\n")),
-          };
-        }
-
-        if (hasSearchReplace) {
-          if (typeof search !== "string" || replace === undefined) {
-            const errorMsg = "字符串 patch 模式需要同时提供 search 和 replace";
-            return {
-              message: errorMsg,
-              toolResult: { success: false, filePath: cleanPath, message: errorMsg },
-            };
-          }
-          if (search.length === 0) {
-            const errorMsg = "search 不能为空字符串";
-            return {
-              message: errorMsg,
-              toolResult: { success: false, filePath: cleanPath, message: errorMsg },
-            };
-          }
-
-          const replaceText = String(replace);
-          const replaceAllFlag = toBoolean(replaceAll, false);
-          const failIfNoMatchFlag = toBoolean(failIfNoMatch, true);
-
-          let replacements = 0;
-          let updatedContent = originalContent;
-
-          if (replaceAllFlag) {
-            const parts = originalContent.split(search);
-            replacements = Math.max(0, parts.length - 1);
-            updatedContent = parts.join(replaceText);
-          } else {
-            const index = originalContent.indexOf(search);
-            if (index >= 0) {
-              replacements = 1;
-              updatedContent =
-                originalContent.slice(0, index) +
-                replaceText +
-                originalContent.slice(index + search.length);
-            }
-          }
-
-          if (replacements === 0 && failIfNoMatchFlag) {
-            const errorMsg = `未找到可替换内容（search="${search}"）`;
-            return {
-              message: errorMsg,
-              toolResult: {
-                success: false,
-                filePath: cleanPath,
-                message: errorMsg,
-                replacements: 0,
-              },
-            };
-          }
-
-          const base64Content = escapeShellContent(updatedContent);
-          await sandbox.runCommand(
-            `printf '%s' ${shellQuote(base64Content)} | base64 -d > ${shellQuote(cleanPath)}`,
-          );
-
-          const successMsg =
-            replacements === 0
-              ? `未找到匹配，文件保持不变: ${cleanPath}`
-              : `成功在文件 ${cleanPath} 中执行字符串替换（替换 ${replacements} 处）`;
-          logger.info(`[EditFile] ${successMsg}`);
-
-          return {
-            message: successMsg,
-            toolResult: {
-              success: true,
-              filePath: cleanPath,
-              message: successMsg,
-              replacements,
-              linesWritten: updatedContent.split("\n").length,
-            },
-            websocketData: buildEditFileWebsocketData(originalContent, updatedContent),
-          };
-        }
-
-        const errorMsg =
-          "patch 模式需要提供行号参数（startLine/endLine + content）或字符串参数（search + replace）";
-        return {
-          message: errorMsg,
-          toolResult: { success: false, filePath: cleanPath, message: errorMsg },
-        };
-      }
-
-      if (typeof content !== "string") {
-        const errorMsg = `${mode} 模式需要提供 content`;
-        return {
-          message: errorMsg,
-          toolResult: { success: false, filePath: cleanPath, message: errorMsg },
-        };
-      }
-
-      let originalContent: string | undefined;
-      const existingResult = await sandbox.runCommand(
+      const existsResult = await sandbox.runCommand(
         `test -f ${shellQuote(cleanPath)} && echo "exists" || echo "not_found"`,
       );
-      if (existingResult?.includes("exists")) {
-        originalContent = (await sandbox.runCommand(`cat ${shellQuote(cleanPath)}`)) || "";
+      const fileExists = !!existsResult?.includes("exists");
+      const originalContent = fileExists
+        ? (await sandbox.runCommand(`cat ${shellQuote(cleanPath)}`)) || ""
+        : undefined;
+
+      if (operation.kind === "linePatch" || operation.kind === "searchReplace") {
+        if (originalContent === undefined) {
+          const errorMsg =
+            operation.kind === "linePatch"
+              ? `文件不存在: ${cleanPath}。按行修改只能用于已有文件；新建文件时不要传 startLine 和 endLine`
+              : `文件不存在: ${cleanPath}。精确替换只能用于已有文件；新建文件请改用整文件写入`;
+          return createToolResult(
+            { success: false, filePath: cleanPath, message: errorMsg },
+            { transportMessage: errorMsg },
+          );
+        }
+
+        const { updatedContent, error: patchError } =
+          operation.kind === "linePatch"
+            ? applyLinePatch(originalContent, operation)
+            : applySearchReplace(originalContent, operation);
+        if (updatedContent === undefined) {
+          return createToolResult(
+            {
+              success: false,
+              filePath: cleanPath,
+              message: patchError || "按行修改失败",
+            },
+            {
+              transportMessage: patchError || "按行修改失败",
+            },
+          );
+        }
+
+        const base64Content = escapeShellContent(updatedContent);
+        await sandbox.runCommand(
+          `printf '%s' ${shellQuote(base64Content)} | base64 -d > ${shellQuote(cleanPath)}`,
+        );
+
+        const linesWritten =
+          operation.kind === "linePatch"
+            ? operation.content.split("\n").length
+            : operation.newString.split("\n").length;
+        const successMsg =
+          operation.kind === "linePatch"
+            ? `成功修改文件 ${cleanPath} 的第 ${operation.startLine}-${operation.endLine} 行（共 ${linesWritten} 行）`
+            : `成功精确替换文件 ${cleanPath} 中唯一命中的文本片段（共 ${linesWritten} 行）`;
+        const diagnostics = await runConfiguredEditFileDiagnostics({
+          taskId: context.taskId,
+          parentId: context.parentId,
+          sandbox,
+          filePath: cleanPath,
+          beforeContent: originalContent,
+          afterContent: updatedContent,
+          signal: context.signal,
+        });
+        logger.info(`[EditFile] ${successMsg}`);
+
+        return createToolResult(
+          {
+            success: true,
+            filePath: cleanPath,
+            message: successMsg,
+            linesWritten,
+            ...(diagnostics ? { diagnostics } : {}),
+          },
+          {
+            transportMessage: buildEditFileTransportMessage(successMsg, diagnostics),
+            continuationSummary: buildEditFileTransportMessage(successMsg, diagnostics),
+            websocketData: buildEditFileWebsocketData(originalContent, updatedContent),
+          },
+        );
       }
 
-      const base64Content = escapeShellContent(content);
-      // 使用更兼容的方式写入文件
-      const writeCommand = `printf '%s' ${shellQuote(base64Content)} | base64 -d > ${shellQuote(cleanPath)}`;
-      await sandbox.runCommand(writeCommand);
+      const base64Content = escapeShellContent(operation.content);
+      await sandbox.runCommand(
+        `printf '%s' ${shellQuote(base64Content)} | base64 -d > ${shellQuote(cleanPath)}`,
+      );
 
-      // 检查写入是否成功
       const checkResult = await sandbox.runCommand(
         `test -f ${shellQuote(cleanPath)} && echo "exists" || echo "not_found"`,
       );
@@ -450,28 +558,40 @@ export const EditFile = createTool({
         throw new Error(`文件创建失败，检查结果: ${checkResult}`);
       }
 
-      const linesWritten = content.split("\n").length;
-      const modeText = mode === "create" ? "创建" : "写入";
-      const successMsg = `成功${modeText}文件: ${cleanPath}（共 ${linesWritten} 行）`;
+      const linesWritten = operation.content.split("\n").length;
+      const successMsg = `成功写入文件: ${cleanPath}（共 ${linesWritten} 行）`;
+      const diagnostics = await runConfiguredEditFileDiagnostics({
+        taskId: context.taskId,
+        parentId: context.parentId,
+        sandbox,
+        filePath: cleanPath,
+        beforeContent: originalContent,
+        afterContent: operation.content,
+        signal: context.signal,
+      });
       logger.info(`[EditFile] ${successMsg}`);
 
-      return {
-        message: successMsg,
-        toolResult: {
+      return createToolResult(
+        {
           success: true,
           filePath: cleanPath,
           message: successMsg,
           linesWritten,
+          ...(diagnostics ? { diagnostics } : {}),
         },
-        websocketData: buildEditFileWebsocketData(originalContent, content),
-      };
+        {
+          transportMessage: buildEditFileTransportMessage(successMsg, diagnostics),
+          continuationSummary: buildEditFileTransportMessage(successMsg, diagnostics),
+          websocketData: buildEditFileWebsocketData(originalContent, operation.content),
+        },
+      );
     } catch (error) {
       const errorMsg = `编辑文件失败: ${error instanceof Error ? error.message : String(error)}`;
       logger.error(`[EditFile] ${errorMsg}`);
-      return {
-        message: errorMsg,
-        toolResult: { success: false, filePath: cleanPath, message: errorMsg },
-      };
+      return createToolResult(
+        { success: false, filePath: cleanPath, message: errorMsg },
+        { transportMessage: errorMsg },
+      );
     }
   },
 });

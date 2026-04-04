@@ -34,14 +34,14 @@ export const DefaultAskFollowupQuestionRenderer: React.FC<AskFollowupQuestionRen
 
   return (
     <div className="mb-4">
-      <div className="chat chat-start">
-        <div className="chat-bubble bg-[#f7f7f7] border border-[#ececec] text-neutral-900 rounded-xl px-4 py-3 shadow-none max-w-[85%] break-words overflow-hidden">
-          <div className="text-sm leading-relaxed whitespace-pre-wrap">{message.question}</div>
+      <div className="max-w-[85%] px-1 text-neutral-900">
+        <div className="px-1 py-1 text-sm leading-relaxed whitespace-pre-wrap">
+          {message.question}
         </div>
       </div>
 
       {message.sugestions && message.sugestions.length > 0 && (
-        <div className="flex flex-wrap gap-2 mt-2">
+        <div className="mt-2 flex flex-wrap gap-2 px-3">
           {message.sugestions.map((suggestion) => {
             const isSelected = selectedOption === suggestion;
             const isOtherSelected = selectedOption !== null && !isSelected;

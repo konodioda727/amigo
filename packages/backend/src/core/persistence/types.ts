@@ -8,7 +8,7 @@ import type {
   USER_SEND_MESSAGE_NAME,
   WebSocketMessage,
 } from "@amigo-llm/types";
-import type { ResolvedModelConfig } from "../model/contextConfig";
+import type { ModelConfigSnapshot } from "../model/contextConfig";
 
 export interface ConversationPersistenceRecord {
   taskId: string;
@@ -17,7 +17,7 @@ export interface ConversationPersistenceRecord {
   initialSystemPrompt?: string;
   toolNames: string[];
   context: unknown;
-  modelConfigSnapshot?: ResolvedModelConfig;
+  modelConfigSnapshot?: ModelConfigSnapshot;
   autoApproveToolNames: string[];
   pendingToolCall: PendingToolCall | null;
   subTasks: Record<string, SubTaskStatus>;

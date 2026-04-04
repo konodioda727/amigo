@@ -9,6 +9,13 @@ export const TaskStatusMapUpdatedMessageSchema = z.object({
     autoApproveToolNames: z.array(z.string()).optional(),
     contextUsage: z.any().optional(),
     context: z.any().optional(),
+    documents: z
+      .object({
+        requirements: z.string().optional(),
+        design: z.string().optional(),
+        taskList: z.string().optional(),
+      })
+      .optional(),
   }),
 });
 
@@ -18,4 +25,9 @@ export type TaskStatusMapUpdatedData = {
   autoApproveToolNames?: string[];
   contextUsage?: ContextUsageStatus;
   context?: unknown;
+  documents?: {
+    requirements?: string;
+    design?: string;
+    taskList?: string;
+  };
 };

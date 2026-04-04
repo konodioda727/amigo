@@ -1,4 +1,3 @@
-import { Terminal } from "lucide-react";
 import type React from "react";
 import type { ToolMessageRendererProps } from "../../../types/renderers";
 import { ToolAccordion } from "./ToolAccordion";
@@ -11,7 +10,6 @@ export const DefaultBashRenderer: React.FC<ToolMessageRendererProps<"bash">> = (
 
   return (
     <ToolAccordion
-      icon={<Terminal size={14} />}
       title={`执行命令: ${command}`}
       isLoading={isLoading}
       hasError={hasError}

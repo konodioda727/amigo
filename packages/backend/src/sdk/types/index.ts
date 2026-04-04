@@ -6,6 +6,7 @@
  */
 
 import path from "node:path";
+import type { ToolCompletionBehavior } from "@amigo-llm/types";
 import { z } from "zod";
 
 // Re-export existing types from @amigo-llm/types package for convenience
@@ -51,11 +52,13 @@ export interface CustomToolDefinition {
   name: string;
   description: string;
   whenToUse?: string;
+  completionBehavior?: ToolCompletionBehavior;
   params: CustomToolParam[];
   invoke: (context: CustomToolInvokeContext) => Promise<{
     message: string;
     toolResult: unknown;
     websocketData?: unknown;
+    error?: string;
   }>;
 }
 

@@ -14,6 +14,7 @@
  *   .registerTool(defineTool({
  *     name: "my_tool",
  *     description: "My custom tool",
+ *     completionBehavior: "idle",
  *     params: [{ name: "input", optional: false, description: "Input text" }],
  *     invoke: async ({ params }) => ({
  *       message: "Done",
@@ -25,6 +26,7 @@
  *
  * Note:
  * - `registerTool()` 已接入运行时执行链。
+ * - 自定义工具可通过 `completionBehavior: "idle"` 在执行后结束当前回合并等待用户下一次输入。
  * - `registerMessage()` 会在运行时对未匹配内置消息的入站消息做 schema 校验，并在校验通过后调用 `handler`。
  * - 内置 WebSocket 消息（如 `createTask`、`userSendMessage`）仍走内置 resolver。
  */
@@ -32,9 +34,15 @@
 // Builder API
 export { AmigoServerBuilder } from "../core/builder";
 export { ValidationError } from "../core/config";
-export { listAvailableModels, MODEL_PROVIDERS, resolveModelConfig } from "../core/model";
+export {
+  listAvailableModels,
+  MODEL_PROVIDERS,
+  resolveModelConfig,
+  resolveModelConfigFromConfigs,
+} from "../core/model";
 export type {
   ModelConfig,
+  ModelConfigSnapshot,
   ModelContextConfig,
   ModelSelection,
   ModelThinkType,

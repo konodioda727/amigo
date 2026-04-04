@@ -48,15 +48,6 @@ function applyDependencyContinuationPrompt(
 }
 
 function resumeConversation(taskId: string, prompt: string, reason: string): void {
-  resumeConversationWithMode(taskId, prompt, reason, true);
-}
-
-function resumeConversationWithMode(
-  taskId: string,
-  prompt: string,
-  reason: string,
-  allowActiveLoopInjection: boolean,
-): void {
   const conversation = conversationRepository.load(taskId);
   if (!conversation) {
     logger.warn(`[DependencyWorkflow] 未找到会话，跳过续跑 task=${taskId} reason=${reason}`);
@@ -74,15 +65,12 @@ function resumeConversationWithMode(
     conversation,
     reason,
     run: async (currentConversation) => {
-      applyDependencyContinuationPrompt(currentConversation, prompt);
       const executor = taskOrchestrator.getExecutor(currentConversation.id);
       await executor.execute(currentConversation);
     },
-    injectBeforeNextTurn: allowActiveLoopInjection
-      ? (currentConversation) => {
-          applyDependencyContinuationPrompt(currentConversation, prompt);
-        }
-      : undefined,
+    injectBeforeNextTurn: (currentConversation) => {
+      applyDependencyContinuationPrompt(currentConversation, prompt);
+    },
   });
   void flushConversationContinuationsIfIdle(conversation);
 }
@@ -204,11 +192,10 @@ export function queueDependencyCompletionNotification(params: {
         getDependencyInstallJobKey(params.sandboxTaskId, params.workingDir),
       );
       if (!dependencyPromise) {
-        resumeConversationWithMode(
+        resumeConversation(
           params.context.taskId,
           "依赖安装后台任务失败。未找到运行中的依赖安装任务。请直接告知用户安装状态异常，并提示他们查看日志；如果当前没有其他明确可执行动作，不要再调用工具。",
           "installDependenciesNotification 缺少可等待的依赖安装任务",
-          false,
         );
         return;
       }
@@ -216,20 +203,18 @@ export function queueDependencyCompletionNotification(params: {
       await dependencyPromise;
       const latestStatus = params.sandbox.getDependencyInstallStatus(params.workingDir);
       if (latestStatus.status === "success" || latestStatus.status === "not_required") {
-        resumeConversationWithMode(
+        resumeConversation(
           params.context.taskId,
           "依赖安装后台任务已完成。只有在当前没有其他等待自动继续的执行动作时，才直接告知用户依赖安装已经完成，并说明后续可以继续执行检查、构建或启动 dev server；如果此时上下文里已经有等待恢复的 runChecks、updateDevServer 或其他后续动作，优先立即继续那些动作，不要先单独输出一条通知消息。",
           "installDependenciesNotification 后台完成提示",
-          false,
         );
         return;
       }
 
-      resumeConversationWithMode(
+      resumeConversation(
         params.context.taskId,
         `依赖安装后台任务失败。\n错误信息：${latestStatus.error || "依赖安装未成功完成"}\n请直接告知用户安装失败，并提示他们查看日志与错误信息；如果当前没有其他明确可执行动作，不要再调用工具。`,
         "installDependenciesNotification 因依赖安装失败需要人工处理",
-        false,
       );
     },
   });

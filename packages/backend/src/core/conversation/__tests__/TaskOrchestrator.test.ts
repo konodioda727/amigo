@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import { logger } from "@/utils/logger";
+import { conversationRepository } from "../ConversationRepository";
 import { resolveObservedSubTaskStatus, taskOrchestrator } from "../TaskOrchestrator";
 
 // Mock logger
@@ -34,6 +35,7 @@ describe("TaskOrchestrator Interrupt Logic", () => {
   beforeEach(() => {
     // Reset mocks
     (logger.info as any).mockClear();
+    (conversationRepository.getAll as any).mockReturnValue([]);
   });
 
   it("should not interrupt if status is aborted", () => {
@@ -65,7 +67,7 @@ describe("TaskOrchestrator Interrupt Logic", () => {
 
     taskOrchestrator.interrupt(conversation);
 
-    expect(logger.info).toHaveBeenCalledWith("会话状态为 idle，无需打断。");
+    expect(logger.info).toHaveBeenCalledWith("会话状态为 idle，且没有运行中的子任务，无需打断。");
   });
 
   it("should not interrupt if status is completed", () => {
@@ -81,7 +83,42 @@ describe("TaskOrchestrator Interrupt Logic", () => {
 
     taskOrchestrator.interrupt(conversation);
 
-    expect(logger.info).toHaveBeenCalledWith("会话状态为 completed，无需打断。");
+    expect(logger.info).toHaveBeenCalledWith(
+      "会话状态为 completed，且没有运行中的子任务，无需打断。",
+    );
+  });
+
+  it("should interrupt running children even if parent is idle", () => {
+    const child = {
+      id: "child-running",
+      parentId: "parent-idle",
+      status: "streaming",
+      isAborted: false,
+      userInput: "work",
+      memory: {
+        addMessage: mock(),
+        addWebsocketMessage: mock(),
+      },
+    } as any;
+    (conversationRepository.getAll as any).mockReturnValue([child]);
+
+    const conversation = {
+      id: "parent-idle",
+      status: "idle",
+      isAborted: false,
+      userInput: "",
+      memory: {
+        addMessage: mock(),
+        addWebsocketMessage: mock(),
+      },
+    } as any;
+
+    taskOrchestrator.interrupt(conversation);
+
+    expect(conversation.isAborted).toBe(true);
+    expect(conversation.status).toBe("aborted");
+    expect(child.isAborted).toBe(true);
+    expect(child.status).toBe("aborted");
   });
 
   it("should set aborted flag when interrupting waiting_tool_confirmation", () => {

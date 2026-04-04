@@ -9,7 +9,7 @@ import { useWebSocketContext } from "../context/WebSocketContext";
 import type { UseSendMessageReturn } from "../types/hooks";
 
 const getConfirmOptimisticStatus = (toolName?: string): "idle" | "streaming" =>
-  toolName === "completeTask" ? "idle" : "streaming";
+  toolName === "completeTask" || toolName === "completionResult" ? "idle" : "streaming";
 
 /**
  * Hook to send messages to the WebSocket server.

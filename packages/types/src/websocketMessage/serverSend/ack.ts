@@ -5,7 +5,7 @@ export const AckMessageSchema = z.object({
   data: z.object({
     taskId: z.string(),
     targetMessage: z.any(),
-    status: z.enum(['pending', 'acked', 'failed'])
+    status: z.enum(["pending", "acked", "failed"]),
   }),
 });
 

@@ -21,12 +21,16 @@ export const DefaultMessageRenderer: React.FC<CommonMessageRendererProps> = ({ m
   };
 
   return (
-    <div className="chat chat-start group">
-      <div className="chat-bubble bg-[#f7f7f7] border border-[#ececec] text-neutral-900 rounded-xl px-4 py-3 shadow-none max-w-[85%] break-words overflow-hidden">
+    <div className="group -mb-5 max-w-[85%] text-neutral-900">
+      <div className="break-words overflow-hidden px-1">
         <Streamdown>{messageContent}</Streamdown>
       </div>
-      <div className="chat-footer opacity-50 mt-1 flex gap-2 items-center min-h-[24px]">
-        {message.updateTime && <span>{new Date(message.updateTime).toLocaleTimeString()}</span>}
+      <div className=" flex min-h-[20px] items-center gap-2 px-1 text-xs text-neutral-500">
+        {message.updateTime && (
+          <span className="opacity-0 transition-opacity duration-200 group-hover:opacity-50">
+            {new Date(message.updateTime).toLocaleTimeString()}
+          </span>
+        )}
         {message.message && (
           <button
             onClick={handleCopy}

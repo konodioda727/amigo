@@ -1,6 +1,10 @@
 import type { Sandbox } from "@/core/sandbox";
 import { logger } from "@/utils/logger";
 import { createTool } from "./base";
+import { createToolResult } from "./result";
+
+const OUTPUT_PREVIEW_HEAD_CHARS = 2_000;
+const OUTPUT_PREVIEW_TAIL_CHARS = 1_000;
 
 function normalizeWorkingDir(input: string | undefined): string {
   const trimmed = input?.trim() || "";
@@ -12,6 +16,19 @@ function normalizeWorkingDir(input: string | undefined): string {
   return normalized === "sandbox" ? "" : normalized;
 }
 
+function buildOutputPreview(output: string): string {
+  if (output.length <= OUTPUT_PREVIEW_HEAD_CHARS + OUTPUT_PREVIEW_TAIL_CHARS) {
+    return output;
+  }
+
+  const omittedChars = output.length - OUTPUT_PREVIEW_HEAD_CHARS - OUTPUT_PREVIEW_TAIL_CHARS;
+  return [
+    output.slice(0, OUTPUT_PREVIEW_HEAD_CHARS),
+    `\n...(${omittedChars} chars truncated)...\n`,
+    output.slice(-OUTPUT_PREVIEW_TAIL_CHARS),
+  ].join("");
+}
+
 /**
  * Bash 工具
  * 用于在沙箱中执行 bash 命令
@@ -21,6 +38,13 @@ export const Bash = createTool({
   description: "在沙箱中执行 bash 命令。用于运行脚本、查看目录结构、执行程序等。",
   whenToUse:
     "需要在沙箱里执行命令（运行脚本、查看目录/环境、快速诊断）时使用。优先短命令并明确 workingDir。",
+  historyProfile: {
+    progressKind: "execute",
+    getResourceKeys: ({ params }) =>
+      typeof params.command === "string" && params.command.trim()
+        ? [`command:${params.command.trim()}`]
+        : [],
+  },
 
   params: [
     {
@@ -43,10 +67,10 @@ export const Bash = createTool({
 
     if (!command || command.trim() === "") {
       const errorMsg = "命令不能为空";
-      return {
-        message: errorMsg,
-        toolResult: { success: false, output: "", message: errorMsg },
-      };
+      return createToolResult(
+        { success: false, output: "", message: errorMsg },
+        { transportMessage: errorMsg },
+      );
     }
 
     try {
@@ -58,10 +82,10 @@ export const Bash = createTool({
 
       if (!sandbox || !sandbox.isRunning()) {
         const errorMsg = "沙箱未运行，无法执行命令";
-        return {
-          message: errorMsg,
-          toolResult: { success: false, output: "", message: errorMsg },
-        };
+        return createToolResult(
+          { success: false, output: "", message: errorMsg },
+          { transportMessage: errorMsg },
+        );
       }
 
       let fullCommand = command;
@@ -120,33 +144,34 @@ echo EXIT_CODE:$?`;
         logger.warn(`[Bash] Could not find EXIT_CODE line in output`);
       }
 
-      const success = exitCode === 0;
-      const statusText = success ? "成功" : "失败";
+      const success = true;
+      const statusText = "已完成";
 
       // Include output in the message for the AI
-      const outputPreview =
-        output.length > 500 ? `${output.substring(0, 500)}...(truncated)` : output;
+      const outputPreview = buildOutputPreview(output);
       const resultMsg = `命令执行${statusText}${workingDir ? `（工作目录: ${workingDir}）` : ""}\n退出码: ${exitCode}${output ? `\n输出:\n${outputPreview}` : ""}`;
 
       logger.info(`[Bash] ${statusText}: ${command}, exitCode: ${exitCode}`);
 
-      return {
-        message: resultMsg,
-        toolResult: {
+      return createToolResult(
+        {
           success,
           output,
           exitCode,
           message: resultMsg,
         },
-      };
+        {
+          transportMessage: resultMsg,
+        },
+      );
     } catch (error) {
       const errorMsg = `执行命令失败: ${error instanceof Error ? error.message : String(error)}`;
       logger.error(`[Bash] ${errorMsg}`);
       logger.error(`[Bash] Full error:`, error);
-      return {
-        message: errorMsg,
-        toolResult: { success: false, output: "", message: errorMsg },
-      };
+      return createToolResult(
+        { success: false, output: "", message: errorMsg },
+        { transportMessage: errorMsg },
+      );
     }
   },
 });

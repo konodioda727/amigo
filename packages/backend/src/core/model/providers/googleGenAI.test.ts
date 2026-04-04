@@ -210,4 +210,72 @@ describe("GoogleGenAIProvider", () => {
       },
     ]);
   });
+
+  it("should fall back to transcript text for historical tool interactions", async () => {
+    const fetchMock = mock(async (_input: string | Request | URL, init?: RequestInit) => {
+      const payload = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      expect(payload.input).toEqual([
+        {
+          role: "model",
+          content: JSON.stringify(
+            [
+              {
+                kind: "assistant_tool_call",
+                toolCallId: "call-readme",
+                toolName: "readFile",
+                arguments: { absolutePath: "/repo/README.md" },
+              },
+            ],
+            null,
+            2,
+          ),
+        },
+        {
+          role: "user",
+          content:
+            '{"toolName":"readFile","result":{"absolutePath":"/repo/README.md","content":"# README"}}',
+        },
+      ]);
+
+      return new Response(buildSseStream([]), {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    });
+
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+
+    const provider = new GoogleGenAIProvider({
+      model: "gemini-3-flash-preview",
+      apiKey: "test-key",
+      temperature: 0.2,
+    });
+
+    const stream = await provider.stream([
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          {
+            id: "call-readme",
+            name: "readFile",
+            arguments: { absolutePath: "/repo/README.md" },
+          },
+        ],
+      },
+      {
+        role: "tool",
+        toolCallId: "call-readme",
+        toolName: "readFile",
+        content:
+          '{"toolName":"readFile","result":{"absolutePath":"/repo/README.md","content":"# README"}}',
+      },
+    ]);
+
+    for await (const _event of stream) {
+      // drain
+    }
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

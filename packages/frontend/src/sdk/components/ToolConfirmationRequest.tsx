@@ -113,7 +113,6 @@ const getFriendlyToolLabel = (toolName: string): string => {
     createTaskDocs: "写入任务文档",
     editFile: "修改文件",
     executeTaskList: "执行任务清单",
-    getTaskListProgress: "查看任务进度",
     readFile: "读取文件",
     readSkillBundle: "查看技能",
     readTaskDocs: "读取任务文档",

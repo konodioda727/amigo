@@ -39,11 +39,6 @@ const buildNodeProps = (
   style: ComputedStyle,
 ): DesignNode["props"] | undefined => {
   const props: Record<string, unknown> = {};
-  const componentRef = normalizeWhitespace(element.attributes["data-component-ref"] || "");
-  const componentInstanceId = normalizeWhitespace(
-    element.attributes["data-component-instance"] || "",
-  );
-  const assetRef = normalizeWhitespace(element.attributes["data-asset-ref"] || "");
   const controlType = normalizeWhitespace(element.attributes["data-control-type"] || "");
   const placeholder = normalizeWhitespace(element.attributes["data-placeholder"] || "");
   const value = element.attributes["data-value"] || "";
@@ -53,9 +48,6 @@ const buildNodeProps = (
   const href = element.attributes["data-href"];
   const alt = element.attributes.alt;
 
-  if (componentRef) props.componentRef = componentRef;
-  if (componentInstanceId) props.componentInstanceId = componentInstanceId;
-  if (assetRef) props.assetRef = assetRef;
   if (controlType) props.controlType = controlType;
   if (placeholder) props.placeholder = placeholder;
   if (value) props.value = value;
@@ -330,16 +322,8 @@ const buildBoxOnlyProps = (
   style: ComputedStyle,
 ): DesignNode["props"] | undefined => {
   const props: Record<string, unknown> = {};
-  const componentRef = normalizeWhitespace(element.attributes["data-component-ref"] || "");
-  const componentInstanceId = normalizeWhitespace(
-    element.attributes["data-component-instance"] || "",
-  );
-  const assetRef = normalizeWhitespace(element.attributes["data-asset-ref"] || "");
   const href = element.attributes["data-href"];
   const alt = element.attributes.alt;
-  if (componentRef) props.componentRef = componentRef;
-  if (componentInstanceId) props.componentInstanceId = componentInstanceId;
-  if (assetRef) props.assetRef = assetRef;
   if (href) props.href = href;
   if (alt) props.alt = alt;
   if (style.minWidth) {

@@ -16,7 +16,7 @@ export type MessageResolvers<T extends SERVER_SEND_MESSAGE_NAME> = (props: {
   setMessages: React.Dispatch<React.SetStateAction<WebSocketMessage<any>[]>>;
 }) => void;
 
-export interface MessageType<T extends WebSocketMessage<any>["type"]> {
+export interface MessageType<T extends string> {
   type: T;
   updateTime: number;
 }
@@ -88,6 +88,17 @@ export interface AlertDisplayType extends MessageType<"alert"> {
   };
 }
 
+export interface ReadSummaryDisplayType extends MessageType<"readSummary"> {
+  text: string;
+  fileCount: number;
+  searchCount: number;
+  resourceCount: number;
+  toolCount: number;
+  files: string[];
+  searches: string[];
+  resources: string[];
+}
+
 export type DisplayMessageType =
   | FrontendCommonMessageType
   | FrontendThinkMessageType
@@ -96,7 +107,8 @@ export type DisplayMessageType =
   | UserSendMessageDisplayType
   | InterruptDisplayType
   | ErrorDisplayType
-  | AlertDisplayType;
+  | AlertDisplayType
+  | ReadSummaryDisplayType;
 
 /**
  * 展示消息类型名称

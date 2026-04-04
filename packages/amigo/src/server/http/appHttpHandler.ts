@@ -4,6 +4,7 @@ import { getAuthenticatedUserId, handleAuthRequest } from "../auth/betterAuth";
 import type { AutomationScheduler } from "../automations/automationScheduler";
 import type { AutomationStore } from "../automations/automationStore";
 import type { PreviewHostConfig } from "../config/previewHost";
+import type { FeishuBridge } from "../integrations/feishu/bridge";
 import type { SkillHubMarketClient } from "../skills/skillHubMarket";
 import type { SkillStore } from "../skills/skillStore";
 import {
@@ -14,14 +15,22 @@ import {
   upsertAutomationController,
 } from "./controllers/automationController";
 import {
-  getDesignAssetController,
-  listDesignAssetsController,
-  upsertDesignAssetController,
-} from "./controllers/designAssetController";
+  chooseLayoutOptionController,
+  chooseThemeOptionController,
+  getDesignSessionController,
+  getFinalDesignDraftController,
+  getLatestDraftCritiqueController,
+  getLatestDraftRenderImageController,
+  getLayoutOptionsController,
+  getThemeOptionsController,
+  previewFinalDesignDraftController,
+  previewLayoutOptionController,
+  previewModuleDraftController,
+} from "./controllers/designDraftController";
 import {
-  getDesignDocController,
-  listDesignDocsController,
-} from "./controllers/designDocController";
+  getFeishuIntegrationController,
+  upsertFeishuIntegrationController,
+} from "./controllers/feishuIntegrationController";
 import {
   bootstrapGithubController,
   cancelGithubBootstrapController,
@@ -31,15 +40,13 @@ import {
   upsertUserModelConfigsController,
 } from "./controllers/modelConfigController";
 import {
+  listNotificationChannelsController,
+  upsertNotificationChannelsController,
+} from "./controllers/notificationChannelController";
+import {
   createOssPolicyController,
   deleteOssObjectController,
 } from "./controllers/ossUploadController";
-import {
-  getPenpotBindingController,
-  importPenpotController,
-  syncPenpotController,
-  updatePenpotBindingController,
-} from "./controllers/penpotController";
 import {
   deleteSkillController,
   getSkillController,
@@ -74,6 +81,7 @@ interface CreateAmigoHttpHandlerOptions {
   skillHubMarketClient: SkillHubMarketClient;
   automationStore: AutomationStore;
   automationScheduler: AutomationScheduler;
+  feishuBridge: FeishuBridge;
 }
 
 const TASK_EDITOR_OPEN_FILE_PATH_PATTERN = /^\/api\/tasks\/([^/]+)\/editor\/open-file\/?$/;
@@ -119,48 +127,58 @@ const normalizeEditorOpenFilePath = (filePath: string): string => {
 const routes: AppHttpRoute[] = [
   {
     method: "GET",
-    pattern: /^\/api\/tasks\/([^/]+)\/design-docs\/?$/,
-    controller: listDesignDocsController,
+    pattern: /^\/api\/tasks\/([^/]+)\/design-session\/?$/,
+    controller: getDesignSessionController,
   },
   {
     method: "GET",
-    pattern: /^\/api\/tasks\/([^/]+)\/design-assets\/?$/,
-    controller: listDesignAssetsController,
+    pattern: /^\/api\/tasks\/([^/]+)\/layout-options\/?$/,
+    controller: getLayoutOptionsController,
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/tasks\/([^/]+)\/layout-options\/selection\/?$/,
+    controller: chooseLayoutOptionController,
   },
   {
     method: "GET",
-    pattern: /^\/api\/tasks\/([^/]+)\/design-assets\/([^/]+)\/?$/,
-    controller: getDesignAssetController,
-  },
-  {
-    method: "POST",
-    pattern: /^\/api\/tasks\/([^/]+)\/design-assets\/?$/,
-    controller: upsertDesignAssetController,
+    pattern: /^\/api\/tasks\/([^/]+)\/layout-options\/([^/]+)\/preview\/?$/,
+    controller: previewLayoutOptionController,
   },
   {
     method: "GET",
-    pattern: /^\/api\/tasks\/([^/]+)\/design-docs\/([^/]+)\/?$/,
-    controller: getDesignDocController,
+    pattern: /^\/api\/tasks\/([^/]+)\/theme-options\/?$/,
+    controller: getThemeOptionsController,
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/tasks\/([^/]+)\/theme-options\/selection\/?$/,
+    controller: chooseThemeOptionController,
   },
   {
     method: "GET",
-    pattern: /^\/api\/tasks\/([^/]+)\/penpot\/([^/]+)\/?$/,
-    controller: getPenpotBindingController,
+    pattern: /^\/api\/tasks\/([^/]+)\/final-design-drafts\/([^/]+)\/preview\/?$/,
+    controller: previewFinalDesignDraftController,
   },
   {
-    method: "POST",
-    pattern: /^\/api\/tasks\/([^/]+)\/penpot\/([^/]+)\/?$/,
-    controller: updatePenpotBindingController,
+    method: "GET",
+    pattern: /^\/api\/tasks\/([^/]+)\/final-design-drafts\/([^/]+)\/modules\/([^/]+)\/preview\/?$/,
+    controller: previewModuleDraftController,
   },
   {
-    method: "POST",
-    pattern: /^\/api\/tasks\/([^/]+)\/penpot\/([^/]+)\/sync\/?$/,
-    controller: syncPenpotController,
+    method: "GET",
+    pattern: /^\/api\/tasks\/([^/]+)\/final-design-drafts\/([^/]+)\/critique\/?$/,
+    controller: getLatestDraftCritiqueController,
   },
   {
-    method: "POST",
-    pattern: /^\/api\/tasks\/([^/]+)\/penpot\/([^/]+)\/import\/?$/,
-    controller: importPenpotController,
+    method: "GET",
+    pattern: /^\/api\/tasks\/([^/]+)\/final-design-drafts\/([^/]+)\/render\.png\/?$/,
+    controller: getLatestDraftRenderImageController,
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/tasks\/([^/]+)\/final-design-drafts\/([^/]+)\/?$/,
+    controller: getFinalDesignDraftController,
   },
   {
     method: "POST",
@@ -344,6 +362,26 @@ export const createAmigoHttpHandler = (
       method: "POST",
       pattern: /^\/api\/model-configs\/?$/,
       controller: (req, _match, userId) => upsertUserModelConfigsController(req, userId || ""),
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/integrations\/feishu\/?$/,
+      controller: () => getFeishuIntegrationController(),
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/integrations\/feishu\/?$/,
+      controller: (req) => upsertFeishuIntegrationController(req, options.feishuBridge),
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/notification-channels\/?$/,
+      controller: (_req, _match, userId) => listNotificationChannelsController(userId || ""),
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/notification-channels\/?$/,
+      controller: (req, _match, userId) => upsertNotificationChannelsController(req, userId || ""),
     },
     {
       method: "GET",

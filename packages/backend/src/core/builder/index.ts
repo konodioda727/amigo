@@ -9,7 +9,12 @@ import type { ZodObject, ZodRawShape } from "zod";
 import type { LoggerConfig } from "@/utils/logger";
 import { type ServerConfig, ServerConfigSchema } from "../config";
 import type { LlmFactory } from "../model";
-import type { ModelConfig, ModelContextConfig } from "../model/contextConfig";
+import type {
+  ModelConfig,
+  ModelContextConfig,
+  ModelSelection,
+  ResolvedModelConfig,
+} from "../model/contextConfig";
 import type { ConversationPersistenceProvider } from "../persistence/types";
 import { MessageRegistry, ToolRegistry } from "../registry";
 import type { SandboxManager } from "../sandbox";
@@ -61,6 +66,10 @@ export class AmigoServerBuilder {
   ) => void | Promise<void>;
   private _createTaskConfigResolver?: CreateTaskConfigResolver;
   private _skillProvider?: SkillProvider;
+  private _userModelConfigResolver?: (payload: {
+    userId?: string;
+    selection: string | ModelSelection;
+  }) => ResolvedModelConfig | null;
 
   /**
    * 设置服务器端口
@@ -250,6 +259,16 @@ export class AmigoServerBuilder {
     return this;
   }
 
+  userModelConfigResolver(
+    resolver: (payload: {
+      userId?: string;
+      selection: string | ModelSelection;
+    }) => ResolvedModelConfig | null,
+  ): this {
+    this._userModelConfigResolver = resolver;
+    return this;
+  }
+
   skills(options: { provider: SkillProvider }): this {
     this._skillProvider = options.provider;
     if (!this._toolRegistry.has(READ_SKILL_BUNDLE_TOOL_NAME)) {
@@ -324,6 +343,7 @@ export class AmigoServerBuilder {
       onConversationCreate,
       onConversationMessage: this._onConversationMessage,
       createTaskConfigResolver,
+      userModelConfigResolver: this._userModelConfigResolver,
     });
   }
 }

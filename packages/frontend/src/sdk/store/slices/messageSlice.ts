@@ -24,7 +24,7 @@ const checkAndExtractDoc = (
       const parsed = JSON.parse((message.data as any).message || "{}");
       if (parsed.toolName === "createTaskDocs") {
         const params = parsed.params;
-        if (params && params.content) {
+        if (params?.content) {
           // Use phase from params if available, otherwise try to infer or default
           const phase = params.phase as DocType | undefined;
           store.setDocContent(params.content, params.taskName || params.title, phase);
@@ -159,7 +159,7 @@ const findLatestDocs = (messages: WebSocketMessage<any>[]): DocsResult => {
         const parsed = JSON.parse((msg.data as any).message || "{}");
         if (parsed.toolName === "createTaskDocs") {
           const params = parsed.params;
-          if (params && params.content) {
+          if (params?.content) {
             const phase = (params.phase as DocType) || "taskList";
             if (["requirements", "design", "taskList"].includes(phase)) {
               docs[phase] = {
@@ -170,7 +170,7 @@ const findLatestDocs = (messages: WebSocketMessage<any>[]): DocsResult => {
             }
           }
         }
-      } catch (e) {
+      } catch (_e) {
         // ignore
       }
     }
@@ -373,13 +373,8 @@ export const createMessageSlice: StateCreator<WebSocketStore, [], [], MessageSli
       });
 
       const foundDocs = findLatestDocs(messages);
-
-      (Object.keys(foundDocs.docs) as DocType[]).forEach((phase) => {
-        const doc = foundDocs.docs[phase];
-        if (doc) {
-          get().setDocContent(doc.content, doc.title, phase);
-        }
-      });
+      get().cacheTaskDocuments(taskId, foundDocs.docs);
+      get().hydrateDocStateForTask(taskId);
 
       if (foundDocs.lastEdited) {
         get().setActiveDoc(foundDocs.lastEdited);

@@ -5,6 +5,7 @@ import {
   queueDependencyCompletionNotification,
   startDependencyInstallJob,
 } from "./dependencyWorkflow";
+import { createToolResult } from "./result";
 import {
   getDependencyStatusForToolResult,
   normalizeSandboxToolWorkingDir,
@@ -61,15 +62,28 @@ export const InstallDependencies = createTool({
           : "项目依赖已就绪。";
 
       return {
-        message,
-        toolResult: {
-          status: "completed",
-          workingDir,
-          packageManager: currentStatus.packageManager,
-          installCommand: currentStatus.installCommand || "",
-          logPath: currentStatus.logPath,
-          dependencyStatus,
-          async: false,
+        transport: {
+          message,
+          result: {
+            status: "completed",
+            workingDir,
+            packageManager: currentStatus.packageManager,
+            installCommand: currentStatus.installCommand || "",
+            logPath: currentStatus.logPath,
+            dependencyStatus,
+            async: false,
+          },
+        },
+        continuation: {
+          result: {
+            status: "completed",
+            workingDir,
+            packageManager: currentStatus.packageManager,
+            installCommand: currentStatus.installCommand || "",
+            logPath: currentStatus.logPath,
+            dependencyStatus,
+            async: false,
+          },
         },
       };
     }
@@ -99,9 +113,8 @@ export const InstallDependencies = createTool({
       ? "已开始后台安装依赖，可先继续修改代码。"
       : "依赖已在后台安装中，可先继续修改代码。";
 
-    return {
-      message,
-      toolResult: {
+    return createToolResult(
+      {
         status: started ? "started" : "already_running",
         workingDir,
         packageManager: installStatus.packageManager || "custom",
@@ -112,6 +125,9 @@ export const InstallDependencies = createTool({
         startedAt: job?.startedAt || "",
         async: true,
       },
-    };
+      {
+        transportMessage: message,
+      },
+    );
   },
 });

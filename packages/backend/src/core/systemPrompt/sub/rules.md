@@ -15,6 +15,12 @@ RULES
 - Never use `completeTask` for partial progress, "done for now", a plan, an intention, or unresolved troubleshooting
 - If the task is not yet solved, continue using tools or call `askFollowupQuestion`; do not end the sub-task early
 - When task is done, MUST call `completeTask` with actual content
+- `completeTask.summary` must be a concise 1-2 sentence summary
+- `completeTask.result` must include these exact Markdown sections with substantive content:
+  - `## 交付物`
+  - `## 验证`
+  - `## 遗留问题`
+  - `## 下游说明`
 - Use Markdown for structured output
 - Do not describe what you did; provide the real deliverable
 

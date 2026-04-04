@@ -26,12 +26,13 @@ export const CompleteTask = createTool({
     {
       name: "summary",
       optional: false,
-      description: "任务完成摘要，简短描述完成了什么（1-2句话）",
+      description: "任务完成摘要，简短描述完成了什么（1-2句话，供父任务自动验收与通知使用）",
     },
     {
       name: "result",
       optional: false,
-      description: "任务完成的详细结果，使用 Markdown 格式输出完整内容",
+      description:
+        "任务完成的详细结果，使用 Markdown 格式输出完整内容，并且必须包含 `## 交付物`、`## 验证`、`## 遗留问题`、`## 下游说明` 四个二级标题",
     },
     {
       name: "achievements",
@@ -45,7 +46,7 @@ export const CompleteTask = createTool({
     },
   ],
   async invoke({ params, context }) {
-    const { summary, result, achievements, usage } = params;
+    const { result } = params;
     const activeConversationStatuses = new Set([
       "streaming",
       "tool_executing",

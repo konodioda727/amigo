@@ -3,6 +3,7 @@ import path from "node:path";
 import { getTaskId, parseChecklist } from "@/core/templates/checklistParser";
 import { logger } from "@/utils/logger";
 import { createTool } from "../base";
+import { createToolResult } from "../result";
 import { DOC_TYPE_TO_FILENAME, ensureDirectoryExists, getTaskDocsPath } from "./utils";
 
 const TASK_LIST_LINE_EXAMPLE =
@@ -90,62 +91,70 @@ export const CreateTaskDocs = createTool({
 
     if (!taskId) {
       const errorMsg = "taskId 不能为空";
-      return {
-        message: errorMsg,
-        toolResult: {
+      return createToolResult(
+        {
           success: false,
           phase,
           content,
           filePath: "",
           message: errorMsg,
         },
-      };
+        {
+          transportMessage: errorMsg,
+        },
+      );
     }
 
     // 验证 phase 参数
     if (!["requirements", "design", "taskList"].includes(phase)) {
       const errorMsg = `无效的文档类型: ${phase}。支持的类型：requirements、design、taskList`;
-      return {
-        message: errorMsg,
-        toolResult: {
+      return createToolResult(
+        {
           success: false,
           phase,
           content,
           filePath: "",
           message: errorMsg,
         },
-      };
+        {
+          transportMessage: errorMsg,
+        },
+      );
     }
 
     if (phase === "taskList") {
       const formatError = validateTaskListContent(content);
       if (formatError) {
-        return {
-          message: formatError,
-          toolResult: {
+        return createToolResult(
+          {
             success: false,
             phase,
             content,
             filePath: "",
             message: formatError,
           },
-        };
+          {
+            transportMessage: formatError,
+          },
+        );
       }
     }
 
     // 构建文件路径
     if (!fileName) {
       const errorMsg = `无法获取文档文件名: ${phase}`;
-      return {
-        message: errorMsg,
-        toolResult: {
+      return createToolResult(
+        {
           success: false,
           phase,
           content,
           filePath: "",
           message: errorMsg,
         },
-      };
+        {
+          transportMessage: errorMsg,
+        },
+      );
     }
     const taskDocsPath = getTaskDocsPath(taskId as string);
     const filePath = path.join(taskDocsPath, fileName);
@@ -160,30 +169,34 @@ export const CreateTaskDocs = createTool({
       const successMsg = `成功创建文档: ${fileName}`;
       logger.info(`[CreateTaskDocs] ${successMsg}`);
 
-      return {
-        message: successMsg,
-        toolResult: {
+      return createToolResult(
+        {
           success: true,
           phase,
           content,
           filePath,
           message: successMsg,
         },
-      };
+        {
+          transportMessage: successMsg,
+        },
+      );
     } catch (error) {
       const errorMsg = `创建文档失败: ${error instanceof Error ? error.message : String(error)}`;
       logger.error(`[CreateTaskDocs] ${errorMsg}`);
 
-      return {
-        message: errorMsg,
-        toolResult: {
+      return createToolResult(
+        {
           success: false,
           phase,
           content,
           filePath,
           message: errorMsg,
         },
-      };
+        {
+          transportMessage: errorMsg,
+        },
+      );
     }
   },
 });

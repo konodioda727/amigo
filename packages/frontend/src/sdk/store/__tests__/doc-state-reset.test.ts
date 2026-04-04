@@ -1,6 +1,7 @@
 import "../../provider/__tests__/setup";
 import { describe, expect, test } from "bun:test";
 import { createWebSocketStore } from "../createWebSocketStore";
+import { handleTaskStatusMapUpdated } from "../messageHandlers/taskStatusMapUpdatedHandler";
 
 describe("doc state reset on conversation changes", () => {
   test("clears previous docs immediately when switching conversations", () => {
@@ -46,5 +47,35 @@ describe("doc state reset on conversation changes", () => {
     expect(docState.documents.requirements.content).toBeNull();
     expect(docState.documents.design.content).toBeNull();
     expect(docState.documents.taskList.content).toBeNull();
+  });
+
+  test("hydrates cached docs after a new conversation taskId arrives", () => {
+    const store = createWebSocketStore({
+      url: "ws://localhost:10013",
+      autoConnect: false,
+    });
+
+    handleTaskStatusMapUpdated(
+      {
+        type: "taskStatusMapUpdated",
+        data: {
+          taskId: "task-race",
+          subTasks: {},
+          documents: {
+            taskList: "- [ ] implement module drafts",
+          },
+        },
+      } as any,
+      store.getState() as any,
+    );
+
+    expect(store.getState().docState.documents.taskList.content).toBeNull();
+
+    store.getState().setCurrentTaskIdsForNewConversation("task-race");
+
+    const { docState } = store.getState();
+    expect(docState.isOpen).toBe(true);
+    expect(docState.activeDoc).toBe("taskList");
+    expect(docState.documents.taskList.content).toBe("- [ ] implement module drafts");
   });
 });

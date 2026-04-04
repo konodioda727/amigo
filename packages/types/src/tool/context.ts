@@ -12,9 +12,16 @@ export interface ToolExecutionContext {
   /** 获取当前会话的 sandbox（懒加载） */
   getSandbox: () => Promise<unknown>;
   /** 根据名称获取其他工具 */
-  getToolByName: (name: string) => ToolInterface<any> | undefined;
+  getToolByName: (name: string) => ToolInterface<string> | undefined;
   /** AbortSignal */
   signal?: AbortSignal;
   /** 发送消息回调 */
   postMessage?: (msg: string | object) => void;
+  /** 发送结构化工具进度，复用当前 tool call 的传输通道 */
+  postToolUpdate?: (update: {
+    message?: string;
+    websocketData?: unknown;
+    result?: unknown;
+    error?: string;
+  }) => void;
 }

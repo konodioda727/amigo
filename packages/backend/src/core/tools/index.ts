@@ -16,12 +16,8 @@ import { CompleteTask } from "./completeTask";
 import { EditFile } from "./editFile";
 import { InstallDependencies } from "./installDependencies";
 import { ReadFile } from "./readFile";
-import {
-  CreateTaskDocs,
-  ExecuteTaskList,
-  GetTaskListProgress,
-  ReadTaskDocs,
-} from "./taskDocs/index";
+import { ReviewSubTask } from "./reviewSubTask";
+import { CreateTaskDocs, ExecuteTaskList, ReadTaskDocs } from "./taskDocs/index";
 import { UpdateDevServer } from "./updateDevServer";
 
 type GenericTool = ToolInterface<any>;
@@ -129,10 +125,10 @@ export class ToolService {
         params: normalizedParams as never,
         context,
       })) as Awaited<ReturnType<typeof tool.invoke>> & { websocketData?: unknown };
-      const { toolResult, message, websocketData } = invokeResult;
+      const { toolResult, message, websocketData, error } = invokeResult;
       logger.debug("[ToolService] 工具调用完成:", toolName, normalizedParams, toolResult);
 
-      return { message, toolResult, params: normalizedParams, websocketData };
+      return { message, toolResult, params: normalizedParams, websocketData, error };
     } catch (err) {
       const errorMsg = `工具执行错误: ${err instanceof Error ? err.message : String(err)}`;
       logger.error("[ToolService] 工具执行异常:", err);
@@ -394,7 +390,7 @@ export class ToolService {
   }
 }
 
-const SHARED_BASIC_TOOLS: GenericTool[] = [
+const _SHARED_BASIC_TOOLS: GenericTool[] = [
   BrowserSearch,
   EditFile,
   ReadFile,
@@ -408,6 +404,7 @@ const SHARED_BASIC_TOOLS: GenericTool[] = [
 export const DEFAULT_MAIN_BASIC_TOOLS: GenericTool[] = [
   AskFollowupQuestions,
   CompleteTask,
+  ReviewSubTask,
   BrowserSearch,
   EditFile,
   ReadFile,
@@ -416,7 +413,6 @@ export const DEFAULT_MAIN_BASIC_TOOLS: GenericTool[] = [
   CreateTaskDocs,
   ReadTaskDocs,
   ExecuteTaskList,
-  GetTaskListProgress,
   UpdateDevServer,
 ];
 
@@ -446,6 +442,7 @@ export const CUSTOMED_TOOLS: GenericTool[] = [];
 export {
   AskFollowupQuestions,
   CompleteTask,
+  ReviewSubTask,
   BrowserSearch,
   EditFile,
   ReadFile,
@@ -453,7 +450,6 @@ export {
   InstallDependencies,
   CreateTaskDocs,
   ReadTaskDocs,
-  GetTaskListProgress,
   ExecuteTaskList,
   UpdateDevServer,
 };

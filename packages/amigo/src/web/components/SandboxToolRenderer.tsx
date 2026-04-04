@@ -8,20 +8,18 @@ import {
   useWebSocketContext,
 } from "@amigo-llm/frontend";
 import type { ToolNames } from "@amigo-llm/types";
-import {
-  CheckCircle2,
-  Download,
-  FileEdit,
-  FileText,
-  Play,
-  SquareArrowOutUpRight,
-} from "lucide-react";
+import { SquareArrowOutUpRight } from "lucide-react";
 import type React from "react";
 import {
   getSandboxEditorUrl,
   getSandboxOpenFileUrl,
   getSandboxPreviewUrl,
 } from "../utils/sandboxEditor";
+import { DesignDraftToolRenderer } from "./toolRenderers/DesignDraftToolRenderer";
+import { DesignSessionToolRenderer } from "./toolRenderers/DesignSessionToolRenderer";
+import { LayoutOptionsToolRenderer } from "./toolRenderers/LayoutOptionsToolRenderer";
+import { ModuleDraftToolRenderer } from "./toolRenderers/ModuleDraftToolRenderer";
+import { ThemeOptionsToolRenderer } from "./toolRenderers/ThemeOptionsToolRenderer";
 
 const dependencyStatusLabelMap: Record<string, string> = {
   pending: "等待安装",
@@ -57,6 +55,24 @@ const readStringArray = (value: unknown): string[] => {
   }
 
   return value.filter((item): item is string => typeof item === "string");
+};
+
+const readBusinessToolError = (toolOutput: unknown): string | undefined => {
+  const output = asRecord(toolOutput);
+  if (!output || output.success !== false) {
+    return undefined;
+  }
+
+  const validationErrors = readStringArray(output.validationErrors);
+  if (validationErrors.length > 0) {
+    return validationErrors[0];
+  }
+
+  if (typeof output.message === "string" && output.message.trim()) {
+    return output.message.trim();
+  }
+
+  return "工具执行失败";
 };
 
 const RunChecksToolBody: React.FC<{
@@ -237,7 +253,22 @@ const OpenPreviewIconLink: React.FC<{
 );
 
 export const SandboxToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> = (props) => {
-  const { message } = props;
+  const businessError = readBusinessToolError(props.message.toolOutput);
+  const message =
+    businessError && !props.message.hasError
+      ? {
+          ...props.message,
+          hasError: true,
+          error: businessError,
+        }
+      : props.message;
+  const normalizedProps =
+    message === props.message
+      ? props
+      : {
+          ...props,
+          message,
+        };
   const { mainTaskId, currentTaskId } = useTasks();
   const { config } = useWebSocketContext();
   const sandboxId = mainTaskId || currentTaskId;
@@ -259,7 +290,6 @@ export const SandboxToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
 
     return (
       <ToolAccordion
-        icon={<FileEdit size={14} />}
         title={`编辑文件: ${filePath}`}
         action={action}
         isLoading={isLoading}
@@ -278,16 +308,24 @@ export const SandboxToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
 
   if (toolName === "readFile") {
     const params = (message.params ?? {}) as Record<string, unknown>;
-    const filePath = typeof params.filePath === "string" ? params.filePath : "";
+    const filePaths = Array.isArray(params.filePaths)
+      ? params.filePaths.filter((filePath): filePath is string => typeof filePath === "string")
+      : [];
+    const singleFilePath = filePaths.length === 1 ? filePaths[0] : "";
     const action =
-      !message.partial && filePath ? (
-        <OpenEditorIconLink editorUrl={editorUrl} openFileUrl={openFileUrl} filePath={filePath} />
+      !message.partial && singleFilePath ? (
+        <OpenEditorIconLink
+          editorUrl={editorUrl}
+          openFileUrl={openFileUrl}
+          filePath={singleFilePath}
+        />
       ) : undefined;
+    const title =
+      filePaths.length === 1 ? `读取文件: ${singleFilePath}` : `读取文件: ${filePaths.length} 个`;
 
     return (
       <ToolAccordion
-        icon={<FileText size={14} />}
-        title={`读取文件: ${filePath}`}
+        title={title}
         action={action}
         isLoading={isLoading}
         hasError={message.hasError}
@@ -339,7 +377,6 @@ export const SandboxToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
 
     return (
       <ToolAccordion
-        icon={<Play size={14} />}
         title="更新开发预览"
         action={action}
         isLoading={message.partial === true}
@@ -405,7 +442,6 @@ export const SandboxToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
 
     return (
       <ToolAccordion
-        icon={<Download size={14} />}
         title="安装项目依赖"
         isLoading={message.partial === true}
         hasError={message.hasError}
@@ -455,7 +491,6 @@ export const SandboxToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
 
     return (
       <ToolAccordion
-        icon={<CheckCircle2 size={14} />}
         title={title}
         isLoading={isLoading}
         hasError={message.hasError}
@@ -469,5 +504,29 @@ export const SandboxToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
     );
   }
 
-  return <DefaultToolRenderer {...props} />;
+  if (toolName === "readDesignSession" || toolName === "upsertDesignSession") {
+    return <DesignSessionToolRenderer {...normalizedProps} />;
+  }
+
+  if (toolName === "readLayoutOptions" || toolName === "upsertLayoutOptions") {
+    return <LayoutOptionsToolRenderer {...normalizedProps} />;
+  }
+
+  if (toolName === "readThemeOptions" || toolName === "upsertThemeOptions") {
+    return <ThemeOptionsToolRenderer {...normalizedProps} />;
+  }
+
+  if (toolName === "readModuleDrafts" || toolName === "upsertModuleDrafts") {
+    return <ModuleDraftToolRenderer {...normalizedProps} />;
+  }
+
+  if (
+    toolName === "readFinalDesignDraft" ||
+    toolName === "orchestrateFinalDesignDraft" ||
+    toolName === "readDraftCritique"
+  ) {
+    return <DesignDraftToolRenderer {...normalizedProps} />;
+  }
+
+  return <DefaultToolRenderer {...normalizedProps} />;
 };

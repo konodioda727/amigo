@@ -7,7 +7,7 @@ import type {
   WebSocketMessage,
 } from "@amigo-llm/types";
 import type { RowDataPacket } from "mysql2/promise";
-import type { ResolvedModelConfig } from "../../../../backend/src/core/model/contextConfig";
+import type { ModelConfigSnapshot } from "../../../../backend/src/core/model/contextConfig";
 import type {
   ConversationPersistenceProvider,
   ConversationPersistenceRecord,
@@ -312,7 +312,7 @@ export class MysqlConversationPersistenceProvider implements ConversationPersist
           : {}),
         toolNames: parseJsonColumn(state?.tool_names_json, []),
         context: parseJsonColumn(row.context_json, {}),
-        modelConfigSnapshot: parseJsonColumn<ResolvedModelConfig | undefined>(
+        modelConfigSnapshot: parseJsonColumn<ModelConfigSnapshot | undefined>(
           state?.model_config_json,
           undefined,
         ),

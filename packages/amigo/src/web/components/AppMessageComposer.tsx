@@ -17,13 +17,16 @@ import {
   type SkillSummary,
   type UserModelConfigSettings,
 } from "@/utils/serverAdmin";
-import { openSettingsModal } from "@/utils/settingsModal";
+import { openSettingsModal, subscribeSettingsUpdated } from "@/utils/settingsModal";
 import { toast } from "@/utils/toast";
 import { GithubBootstrapModal } from "./GithubBootstrapModal";
 
 interface AppMessageComposerProps {
   taskId?: string;
 }
+
+export const canSwitchTaskModel = (taskId: string | undefined, taskStatus: string): boolean =>
+  !taskId || taskStatus !== "streaming";
 
 export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }) => {
   const { config } = useWebSocketContext();
@@ -48,12 +51,14 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
     (effectiveTaskId && taskContextUsageMaps[effectiveTaskId]) ||
     (mainTaskId ? taskContextUsageMaps[mainTaskId] : undefined);
   const currentTaskStatus = (effectiveTaskId && tasks[effectiveTaskId]?.status) || "idle";
-  const canSwitchModel =
-    !effectiveTaskId || ["idle", "completed", "aborted"].includes(currentTaskStatus);
+  const canSwitchModel = canSwitchTaskModel(effectiveTaskId, currentTaskStatus);
   const availableModels = useMemo(
     () =>
       modelSettings
-        ? flattenModelConfigs(modelSettings.modelConfigs).filter((item) => item.apiKey.trim())
+        ? flattenModelConfigs(modelSettings.modelConfigs).filter((item) => {
+            const config = modelSettings.modelConfigs[item.configId];
+            return !!(config?.hasApiKey || config?.apiKey.trim());
+          })
         : [],
     [modelSettings],
   );
@@ -109,8 +114,12 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
     };
 
     void Promise.all([loadSkills(), loadModelSettings()]);
+    const unsubscribe = subscribeSettingsUpdated(() => {
+      void loadModelSettings();
+    });
     return () => {
       cancelled = true;
+      unsubscribe();
     };
   }, [config.url]);
 
@@ -164,7 +173,14 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
       <MessageInput
         taskId={taskId}
         createTaskContext={createTaskContext}
-        modelConfigSnapshot={canSwitchModel ? selectedModel || undefined : undefined}
+        modelConfigSnapshot={
+          canSwitchModel && selectedModel
+            ? {
+                configId: selectedModel.configId,
+                model: selectedModel.model,
+              }
+            : undefined
+        }
         onSend={() => {
           if (!effectiveTaskId && pendingBootstrap) {
             clearPendingBootstrap();
@@ -321,7 +337,7 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
                 </span>
               ) : null}
               {!canSwitchModel && (
-                <span className="text-[11px] text-gray-400">运行中时不可切换</span>
+                <span className="text-[11px] text-gray-400">生成中时不可切换</span>
               )}
               {currentTaskContextUsage && (
                 <ContextUsageRing contextUsage={currentTaskContextUsage} />

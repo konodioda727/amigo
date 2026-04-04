@@ -1,39 +1,24 @@
 import type { ExecutableDesignDoc } from "../designDocSchema";
-import {
-  buildComponentRegistry,
-  buildImageRegistry,
-  extractInlineComponentDefinitions,
-  extractInlineComponentDefinitionsFromMarkup,
-  resolveComponentUses,
-  resolveImageAssets,
-} from "./assets";
+import { assertNoLegacyAssetSyntax } from "./assets";
 import { DEFAULT_PAGE_MIN_HEIGHT, DEFAULT_PAGE_WIDTH } from "./constants";
 import { compileSection } from "./output";
-import { parseMarkup, validateDesignComponentAssetMarkup } from "./parser";
+import { parseMarkup } from "./parser";
 import { computeStyle } from "./styles";
-import type {
-  CompileContext,
-  ComponentAssetDefinition,
-  ImageAssetDefinition,
-  MarkupElement,
-} from "./types";
+import type { CompileContext, MarkupElement } from "./types";
 import { parseLength, parseNumber, resolveLength } from "./utils";
 
-export { validateDesignComponentAssetMarkup };
 export { serializeDesignDocToMarkup } from "./serialize";
-export type { ComponentAssetDefinition, ImageAssetDefinition } from "./types";
-export { extractInlineComponentDefinitions };
-export { extractInlineComponentDefinitionsFromMarkup };
 
 export const compileDesignDocFromMarkup = (
   markupText: string,
-  options?: {
-    components?: ComponentAssetDefinition[];
-    images?: ImageAssetDefinition[];
-  },
 ): { document: ExecutableDesignDoc | null; errors: string[] } => {
   if (!markupText.trim()) {
     return { document: null, errors: ["markupText 不能为空"] };
+  }
+
+  const syntaxErrors = assertNoLegacyAssetSyntax(markupText);
+  if (syntaxErrors.length > 0) {
+    return { document: null, errors: syntaxErrors };
   }
 
   const parsed = parseMarkup(markupText, "page");
@@ -41,16 +26,7 @@ export const compileDesignDocFromMarkup = (
     return { document: null, errors: parsed.errors };
   }
 
-  const extracted = extractInlineComponentDefinitions(parsed.root);
-  const componentRegistry = buildComponentRegistry([
-    ...(options?.components || []),
-    ...extracted.components,
-  ]);
-  const imageRegistry = buildImageRegistry(options?.images);
-  const root = resolveImageAssets(
-    resolveComponentUses(extracted.root, componentRegistry),
-    imageRegistry,
-  );
+  const root = parsed.root;
   const pageStyle = computeStyle(root.attributes);
   const pageWidth = Math.round(
     resolveLength(parseLength(root.attributes.width), DEFAULT_PAGE_WIDTH, DEFAULT_PAGE_WIDTH),
@@ -104,18 +80,19 @@ export const compileDesignSectionFromMarkup = ({
   pageWidth,
   startY = 0,
   reservedIds,
-  components,
-  images,
 }: {
   markupText: string;
   pageWidth: number;
   startY?: number;
   reservedIds?: Iterable<string>;
-  components?: ComponentAssetDefinition[];
-  images?: ImageAssetDefinition[];
 }): { section: import("../designDocSchema").DesignDocSection | null; errors: string[] } => {
   if (!markupText.trim()) {
     return { section: null, errors: ["markupText 不能为空"] };
+  }
+
+  const syntaxErrors = assertNoLegacyAssetSyntax(`<page>${markupText}</page>`);
+  if (syntaxErrors.length > 0) {
+    return { section: null, errors: syntaxErrors };
   }
 
   const parsed = parseMarkup(markupText, "section");
@@ -128,15 +105,8 @@ export const compileDesignSectionFromMarkup = ({
   };
 
   try {
-    const componentRegistry = buildComponentRegistry(components);
-    const imageRegistry = buildImageRegistry(images);
     return {
-      section: compileSection(
-        resolveImageAssets(resolveComponentUses(parsed.root, componentRegistry), imageRegistry),
-        pageWidth,
-        startY,
-        context,
-      ),
+      section: compileSection(parsed.root, pageWidth, startY, context),
       errors: [],
     };
   } catch (error) {
@@ -151,14 +121,10 @@ export const compileDesignDocSectionsFromMarkup = ({
   markupText,
   pageWidth,
   reservedIds,
-  components,
-  images,
 }: {
   markupText: string;
   pageWidth: number;
   reservedIds?: Iterable<string>;
-  components?: ComponentAssetDefinition[];
-  images?: ImageAssetDefinition[];
 }): {
   sections: import("../designDocSchema").DesignDocSection[] | null;
   root: MarkupElement | null;
@@ -168,22 +134,18 @@ export const compileDesignDocSectionsFromMarkup = ({
     return { sections: null, root: null, errors: ["markupText 不能为空"] };
   }
 
+  const syntaxErrors = assertNoLegacyAssetSyntax(markupText);
+  if (syntaxErrors.length > 0) {
+    return { sections: null, root: null, errors: syntaxErrors };
+  }
+
   const parsed = parseMarkup(markupText, "page");
   if (!parsed.root || parsed.errors.length > 0) {
     return { sections: null, root: null, errors: parsed.errors };
   }
 
   try {
-    const extracted = extractInlineComponentDefinitions(parsed.root);
-    const componentRegistry = buildComponentRegistry([
-      ...(components || []),
-      ...extracted.components,
-    ]);
-    const imageRegistry = buildImageRegistry(images);
-    const root = resolveImageAssets(
-      resolveComponentUses(extracted.root, componentRegistry),
-      imageRegistry,
-    );
+    const root = parsed.root;
     const sections = root.children.filter((child) => child.tagName === "section");
     if (sections.length === 0) {
       return { sections: null, root: null, errors: ["<page> 下至少需要一个 <section>"] };

@@ -39,6 +39,12 @@ export interface ResolvedModelConfig {
   minMessagesToCompress?: number;
 }
 
+export interface ModelConfigSnapshot {
+  configId: string;
+  model: string;
+  provider?: ModelProvider;
+}
+
 export type ModelContextConfig = ModelConfig & { contextWindow: number };
 export type ResolvedModelContextConfig = ResolvedModelConfig & { contextWindow: number };
 
@@ -127,6 +133,39 @@ const normalizeSelection = (selection: string | ModelSelection): ModelSelection 
   return selection;
 };
 
+export const resolveModelConfigFromConfigs = (
+  selection: string | ModelSelection,
+  configs: Record<string, ModelConfig> | Record<string, ModelContextConfig> | undefined,
+): ResolvedModelConfig | null => {
+  if (!configs) {
+    return null;
+  }
+
+  const normalizedSelection = normalizeSelection(selection);
+  const normalizedModel = normalizeModelName(normalizedSelection.model);
+  const normalizedConfigId = normalizedSelection.configId
+    ? normalizeConfigId(normalizedSelection.configId)
+    : null;
+
+  for (const [configId, config] of Object.entries(configs)) {
+    for (const modelConfig of config.models || []) {
+      const resolved = buildResolvedModelConfig(configId, config, modelConfig);
+      if (!resolved) {
+        continue;
+      }
+      if (normalizeModelName(resolved.model) !== normalizedModel) {
+        continue;
+      }
+      if (normalizedConfigId && normalizeConfigId(resolved.configId) !== normalizedConfigId) {
+        continue;
+      }
+      return resolved;
+    }
+  }
+
+  return null;
+};
+
 export const listAvailableModels = (
   configs = getGlobalState("modelConfigs") ?? getGlobalState("modelContextConfigs"),
 ): ResolvedModelConfig[] => {
@@ -150,23 +189,10 @@ export const listAvailableModels = (
 export const resolveModelConfig = (
   selection: string | ModelSelection,
 ): ResolvedModelConfig | null => {
-  const normalizedSelection = normalizeSelection(selection);
-  const normalizedModel = normalizeModelName(normalizedSelection.model);
-  const normalizedConfigId = normalizedSelection.configId
-    ? normalizeConfigId(normalizedSelection.configId)
-    : null;
-
-  for (const config of listAvailableModels()) {
-    if (normalizeModelName(config.model) !== normalizedModel) {
-      continue;
-    }
-    if (normalizedConfigId && normalizeConfigId(config.configId) !== normalizedConfigId) {
-      continue;
-    }
-    return config;
-  }
-
-  return null;
+  return resolveModelConfigFromConfigs(
+    selection,
+    getGlobalState("modelConfigs") ?? getGlobalState("modelContextConfigs"),
+  );
 };
 
 export const resolveModelContextConfig = (

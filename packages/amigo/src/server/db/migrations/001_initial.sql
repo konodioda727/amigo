@@ -168,22 +168,6 @@ CREATE TABLE IF NOT EXISTS documents (
   CONSTRAINT fk_documents_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS design_assets (
-  id CHAR(36) NOT NULL,
-  owner_conversation_id CHAR(36) NULL,
-  user_id CHAR(36) NOT NULL,
-  asset_key VARCHAR(255) NOT NULL,
-  metadata_json JSON NOT NULL,
-  content_json JSON NOT NULL,
-  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-  PRIMARY KEY (id),
-  UNIQUE KEY uq_design_assets_user_asset_key (user_id, asset_key),
-  KEY idx_design_assets_owner_conversation_id (owner_conversation_id),
-  CONSTRAINT fk_design_assets_owner_conversation_id FOREIGN KEY (owner_conversation_id) REFERENCES conversations (id) ON DELETE CASCADE,
-  CONSTRAINT fk_design_assets_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
 CREATE TABLE IF NOT EXISTS skills (
   id CHAR(36) NOT NULL,
   user_id CHAR(36) NOT NULL,

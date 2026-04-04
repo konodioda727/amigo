@@ -152,6 +152,13 @@ export const userModelConfigsTable = mysqlTable("user_model_configs", {
   updatedAt: datetime("updated_at", { mode: "string", fsp: 3 }).notNull(),
 });
 
+export const appSettingsTable = mysqlTable("app_settings", {
+  key: varchar("key", { length: 191 }).notNull().primaryKey(),
+  settingsJson: json("settings_json").$type<Record<string, unknown>>().notNull(),
+  createdAt: datetime("created_at", { mode: "string", fsp: 3 }).notNull(),
+  updatedAt: datetime("updated_at", { mode: "string", fsp: 3 }).notNull(),
+});
+
 export const conversationsTable = mysqlTable("conversations", {
   id: char("id", { length: 36 }).notNull().primaryKey(),
   userId: char("user_id", { length: 36 }).notNull(),
@@ -255,23 +262,6 @@ export const documentsTable = mysqlTable(
       table.docScope,
       table.docKey,
     ),
-  }),
-);
-
-export const designAssetsTable = mysqlTable(
-  "design_assets",
-  {
-    id: char("id", { length: 36 }).notNull().primaryKey(),
-    ownerConversationId: char("owner_conversation_id", { length: 36 }),
-    userId: char("user_id", { length: 36 }).notNull(),
-    assetKey: varchar("asset_key", { length: 255 }).notNull(),
-    metadataJson: json("metadata_json").$type<Record<string, unknown>>().notNull(),
-    contentJson: json("content_json").$type<Record<string, unknown>>().notNull(),
-    createdAt: datetime("created_at", { mode: "string", fsp: 3 }).notNull(),
-    updatedAt: datetime("updated_at", { mode: "string", fsp: 3 }).notNull(),
-  },
-  (table) => ({
-    userAssetUnique: unique("uq_design_assets_user_asset_key").on(table.userId, table.assetKey),
   }),
 );
 

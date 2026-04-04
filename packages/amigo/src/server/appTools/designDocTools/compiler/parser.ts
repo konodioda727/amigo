@@ -127,45 +127,9 @@ const cloneMarkupElement = (element: MarkupElement): MarkupElement => ({
   textContent: element.textContent,
 });
 
-const hasBoxLikeStyles = (attributes: Record<string, string>) => {
-  const style = computeStyle(attributes);
-  return (
-    style.display !== undefined ||
-    style.width !== undefined ||
-    style.minWidth !== undefined ||
-    style.maxWidth !== undefined ||
-    style.height !== undefined ||
-    style.minHeight !== undefined ||
-    style.maxHeight !== undefined ||
-    style.padding !== undefined ||
-    style.margin !== undefined ||
-    style.gap !== undefined ||
-    style.rowGap !== undefined ||
-    style.columnGap !== undefined ||
-    style.backgroundColor !== undefined ||
-    style.backgroundImageUrl !== undefined ||
-    style.borderRadius !== undefined ||
-    style.borderColor !== undefined ||
-    style.borderWidth !== undefined ||
-    style.shadow !== undefined ||
-    style.flex !== undefined ||
-    style.flexDirection !== undefined ||
-    style.justifyContent !== undefined ||
-    style.alignItems !== undefined ||
-    style.flexWrap !== undefined ||
-    style.position !== undefined ||
-    style.top !== undefined ||
-    style.right !== undefined ||
-    style.bottom !== undefined ||
-    style.left !== undefined ||
-    style.overflow !== undefined
-  );
-};
-
 const shouldRepresentAsText = (
   rawTagName: string,
   tagName: MarkupTag,
-  attributes: Record<string, string>,
   childElements: Element[],
   textContent: string,
 ) => {
@@ -196,8 +160,8 @@ const toMarkupElement = (node: Element): MarkupElement => {
   }
 
   const rawAttributes = Object.fromEntries(
-    Object.entries(node.attribs || {}).map(([key, value]) => [key.toLowerCase(), value]),
-  );
+    Object.entries(node.attribs || {}).map(([key, value]) => [key.toLowerCase(), String(value)]),
+  ) as Record<string, string>;
 
   if (rawTagName === "a" && typeof rawAttributes.href === "string") {
     rawAttributes["data-href"] = rawAttributes.href;
@@ -218,7 +182,7 @@ const toMarkupElement = (node: Element): MarkupElement => {
       ? collectPreformattedTextContent(node.children || [])
       : collectTextContent(node.children || []);
 
-  if (shouldRepresentAsText(rawTagName, tagName, rawAttributes, childElements, textContent)) {
+  if (shouldRepresentAsText(rawTagName, tagName, childElements, textContent)) {
     return {
       tagName: "text",
       attributes: rawAttributes,
@@ -229,11 +193,8 @@ const toMarkupElement = (node: Element): MarkupElement => {
 
   const shouldKeepChildren =
     tagName === "page" ||
-    tagName === "components" ||
     tagName === "section" ||
     tagName === "div" ||
-    tagName === "component" ||
-    tagName === "use" ||
     tagName === "textarea" ||
     tagName === "input" ||
     tagName === "select";
@@ -433,15 +394,6 @@ export const parseMarkup = (
       errors: [error instanceof Error ? error.message : String(error)],
     };
   }
-};
-
-export const validateDesignComponentAssetMarkup = (markupText: string): string[] => {
-  if (!markupText.trim()) {
-    return ["markupText 不能为空"];
-  }
-
-  const parsed = parseMarkup(markupText, "component");
-  return parsed.root && parsed.errors.length === 0 ? [] : parsed.errors;
 };
 
 export const cloneElementTree = cloneMarkupElement;

@@ -1,5 +1,8 @@
 import { conversationRepository } from "@/core/conversation/ConversationRepository";
-import { extractCompletedSubTaskResult } from "@/core/conversation/subTaskResult";
+import {
+  extractCompletedSubTaskPayload,
+  formatCompletedSubTaskPayload,
+} from "@/core/conversation/subTaskResult";
 
 const DEPENDENCY_RESULT_CHAR_LIMIT = 3000;
 
@@ -53,8 +56,11 @@ export const buildDependencyResultContext = ({
       return `### Task ${dependencyId}\n未能加载该依赖任务的 completeTask 内容。`;
     }
 
-    const dependencyResult = extractCompletedSubTaskResult(dependencyConversation);
-    if (!dependencyResult?.trim()) {
+    const dependencyPayload = extractCompletedSubTaskPayload(dependencyConversation);
+    const dependencyResult = dependencyPayload
+      ? formatCompletedSubTaskPayload(dependencyPayload)
+      : "";
+    if (!dependencyResult.trim()) {
       return `### Task ${dependencyId}\n未提取到有效的 completeTask 内容。`;
     }
 

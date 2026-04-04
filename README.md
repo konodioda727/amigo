@@ -179,6 +179,7 @@ app.server.start();
 - backend 不解析 `MYSQL_HOST`、`MYSQL_PORT` 这类数据库配置
 - backend 只要求应用注入 `conversationPersistenceProvider`
 - 数据库实现、连接池、migration 都属于应用层
+- 自定义工具可通过 `completionBehavior: "idle"` 声明“执行后结束当前回合并等待用户”
 
 ## Frontend SDK
 

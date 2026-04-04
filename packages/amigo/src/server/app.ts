@@ -7,7 +7,6 @@ import {
   getGlobalState,
   type LoggerConfig,
   logger,
-  MODEL_PROVIDERS,
   type ModelConfig,
   type SandboxOptions,
   SandboxRegistry,
@@ -16,7 +15,6 @@ import {
 } from "@amigo-llm/backend";
 import dotenv from "dotenv";
 import { getUserCodingAgentTools } from "./appTools/codingAgentTools";
-import type { PenpotSyncConfig } from "./appTools/designDocTools/penpotSync/types";
 import { AutomationScheduler } from "./automations/automationScheduler";
 import { type AutomationDefinition, AutomationStore } from "./automations/automationStore";
 import type { PreviewHostConfig } from "./config/previewHost";
@@ -29,6 +27,7 @@ import {
 import { createAmigoHttpHandler } from "./http/appHttpHandler";
 import { ConversationChannelRouter } from "./integrations/channels/router";
 import { createFeishuBridge, type FeishuBridge } from "./integrations/feishu/bridge";
+import { resolveUserScopedModelConfig, warmUserModelConfigStore } from "./modelConfigs/store";
 import { AMIGO_APP_SYSTEM_PROMPT_APPENDIX } from "./prompts/amigoAppPrompt";
 import { AmigoAppServer } from "./runtime/appServer";
 import { SkillHubMarketClient } from "./skills/skillHubMarket";
@@ -45,7 +44,6 @@ export interface AmigoAppOptions {
   sandboxConfig?: SandboxOptions;
   previewHostConfig?: PreviewHostConfig;
   ossConfig?: OssUploadConfig | null;
-  penpotConfig?: Partial<PenpotSyncConfig> | null;
 }
 
 export interface AmigoApp {
@@ -77,6 +75,7 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 
 export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<AmigoApp> {
   requireMysqlConfigured();
+  await warmUserModelConfigStore();
   const port = options.port ?? 10013;
   const cachePath = options.cachePath || path.resolve(process.cwd(), ".amigo");
   const sandboxManager = new SandboxRegistry(resolveSandboxConfig(options.sandboxConfig));
@@ -119,7 +118,6 @@ export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<Ami
   };
   configureAppRuntimeConfig({
     ossUploadConfig: options.ossConfig,
-    penpotConfig: options.penpotConfig,
   });
   // const arkConfig: ModelConfig = {
   //   provider: MODEL_PROVIDERS.OPENAI_COMPATIBLE,
@@ -166,11 +164,8 @@ export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<Ami
       type: "main",
       ...(sourceTaskId ? { parentId: sourceTaskId } : {}),
       customPrompt: taskConfig?.customPrompt,
+      context: taskConfig?.context,
     });
-
-    if (taskConfig?.context !== undefined) {
-      conversation.memory.setContext(taskConfig.context);
-    }
 
     taskOrchestrator.setUserInput(conversation, automation.prompt);
 
@@ -216,6 +211,7 @@ export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<Ami
   const runtimeServer = builder
     .appendSystemPrompt(AMIGO_APP_SYSTEM_PROMPT_APPENDIX)
     .modelConfigs(modelConfigs)
+    .userModelConfigResolver(resolveUserScopedModelConfig)
     .sandboxManager(sandboxManager)
     .skills({ provider: skillStore })
     .addAutoApproveTools([
@@ -250,6 +246,7 @@ export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<Ami
     skillHubMarketClient,
     automationStore,
     automationScheduler,
+    feishuBridge,
   });
   const server = new AmigoAppServer({
     port,

@@ -7,6 +7,7 @@ import type {
   WebSocketMessage,
 } from "@amigo-llm/types";
 import type { DisplayMessageType } from "../messages/types";
+import type { DocState, DocType, TaskDocSnapshot } from "../store/slices/docSlice";
 
 /**
  * Connection status
@@ -95,6 +96,8 @@ export interface WebSocketStore {
   mainTaskId: string;
   activeTaskId: string | null;
   taskHistories: Array<{ taskId: string; title: string; updatedAt: string }>;
+  docState: DocState;
+  taskDocSnapshots: Record<string, TaskDocSnapshot>;
 
   // Mention state
   followupQueue: string[];
@@ -127,6 +130,16 @@ export interface WebSocketStore {
   handleSessionHistories: (
     histories: Array<{ taskId: string; title: string; updatedAt: string }>,
   ) => void;
+  resetDocState: () => void;
+  setDocState: (state: Partial<DocState>) => void;
+  setDocContent: (content: string, title?: string, type?: DocType) => void;
+  setActiveDoc: (type: DocType) => void;
+  updateDocContent: (type: DocType, content: string) => void;
+  cacheTaskDocuments: (
+    taskId: string,
+    documents: Partial<Record<DocType, string | { content: string; title: string | null } | null>>,
+  ) => void;
+  hydrateDocStateForTask: (taskId: string) => void;
 
   // Message methods
   updateUserMessageStatus: (

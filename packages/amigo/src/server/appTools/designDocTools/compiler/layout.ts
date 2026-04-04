@@ -228,10 +228,7 @@ const justifyMap: Record<string, Justify> = {
 
 const applyYogaStyle = (yogaNode: YogaNode, element: MarkupElement, style: ComputedStyle) => {
   const isContainer =
-    element.tagName === "page" ||
-    element.tagName === "section" ||
-    element.tagName === "div" ||
-    element.tagName === "component";
+    element.tagName === "page" || element.tagName === "section" || element.tagName === "div";
 
   if (isContainer) {
     yogaNode.setDisplay(Display.Flex);

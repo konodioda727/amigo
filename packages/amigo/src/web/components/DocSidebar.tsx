@@ -41,6 +41,16 @@ const TASK_ID_PATTERN = /\bTask\s+(\d+(?:\.\d+)*)\s*[:：]?/i;
 const TASK_ID_TAG_PATTERN = /\[id:\s*([\d.]+)\s*\]/i;
 const STATUS_TRANSITION_HOLD_MS = 900;
 
+export const getTaskListStatusMap = (
+  taskStatusMaps: Record<string, Record<string, SubTaskStatus> | undefined>,
+  mainTaskId: string | null | undefined,
+): Record<string, SubTaskStatus> => {
+  if (!mainTaskId) {
+    return {};
+  }
+  return taskStatusMaps[mainTaskId] ?? {};
+};
+
 const normalizeTaskDescription = (description: string): string =>
   description
     .replace(IN_PROGRESS_SUFFIX_PATTERN, "")
@@ -268,7 +278,7 @@ const DocSidebar: React.FC = () => {
                 <div className="p-4">
                   <TaskListContent
                     content={currentDoc.content || ""}
-                    statusMap={mainTaskId ? taskStatusMaps[mainTaskId] : {}}
+                    statusMap={getTaskListStatusMap(taskStatusMaps, mainTaskId)}
                     currentTaskId={currentTaskId}
                     onTaskClick={(taskId) => taskId && switchTask(taskId)}
                   />
@@ -301,10 +311,10 @@ const DocSidebar: React.FC = () => {
 
 const TaskListContent: React.FC<{
   content: string;
-  statusMap: Record<string, SubTaskStatus>;
+  statusMap?: Record<string, SubTaskStatus>;
   currentTaskId: string | null;
   onTaskClick: (taskId: string | undefined) => void;
-}> = ({ content, statusMap, currentTaskId, onTaskClick }) => {
+}> = ({ content, statusMap = {}, currentTaskId, onTaskClick }) => {
   const transitionTimersRef = useRef<Record<string, number>>({});
   const [displayedStatuses, setDisplayedStatuses] = useState<Record<string, TaskSidebarStatus>>({});
 
@@ -325,7 +335,7 @@ const TaskListContent: React.FC<{
 
       for (const key of lookupKeys) {
         if (!key) continue;
-        if (statusMap[key]) {
+        if (statusMap?.[key]) {
           return statusMap[key];
         }
       }

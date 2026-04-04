@@ -38,7 +38,7 @@ describe("ConversationExecutor waiting_tool_confirmation", () => {
     const handleStreamCompletion = mock(async (conversation: any) => {
       conversation.userInput = "";
       conversation.status = "idle";
-      return false;
+      return { shouldContinue: false };
     });
     const addMessage = mock();
 
@@ -97,6 +97,9 @@ describe("ConversationExecutor waiting_tool_confirmation", () => {
         type: "tool",
         updateTime: 1,
       },
+      toolService: {
+        getToolFromName: mock(() => undefined),
+      },
       memory: {
         addMessage: mock(),
       },
@@ -128,7 +131,7 @@ describe("ConversationExecutor waiting_tool_confirmation", () => {
     const handleStreamCompletion = mock(async (conversation: any) => {
       conversation.userInput = "";
       conversation.status = "idle";
-      return false;
+      return { shouldContinue: false };
     });
 
     (executor as any).streamHandler.handleStream = handleStream;
@@ -151,14 +154,6 @@ describe("ConversationExecutor waiting_tool_confirmation", () => {
       conversation,
       reason: "dependency notification",
       run: async () => {
-        throw new Error("notification continuation should wait for idle");
-      },
-    });
-
-    enqueueConversationContinuation({
-      conversation,
-      reason: "dependency ready",
-      run: async () => {
         throw new Error("idle run should not be used in active loop test");
       },
       injectBeforeNextTurn: (currentConversation) => {
@@ -178,5 +173,56 @@ describe("ConversationExecutor waiting_tool_confirmation", () => {
     expect(handleStreamCompletion).toHaveBeenCalledTimes(1);
     expect(addMessage).toHaveBeenCalledTimes(1);
     expect(conversation.userInput).toBe("");
+  });
+
+  it("passes no-tool retry hints only to the next model request", async () => {
+    const executor = new ConversationExecutor();
+    const handleStream = mock(async () => "message");
+    const handleStreamCompletion = mock()
+      .mockResolvedValueOnce({
+        shouldContinue: true,
+        nextTurnMessages: [
+          {
+            role: "system",
+            content: "上一条回复没有调用任何工具。",
+            type: "message",
+            partial: false,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        shouldContinue: false,
+      });
+
+    (executor as any).streamHandler.handleStream = handleStream;
+    (executor as any).completionHandler.handleStreamCompletion = handleStreamCompletion;
+
+    const conversation = {
+      id: "main-task-ephemeral-retry",
+      type: "main",
+      status: "idle",
+      isAborted: false,
+      userInput: "继续",
+      pendingToolCall: null,
+      memory: {
+        addMessage: mock(),
+      },
+    } as any;
+
+    await executor.execute(conversation);
+
+    expect(handleStream).toHaveBeenCalledTimes(2);
+    expect(handleStream.mock.calls[0]?.[2]).toEqual([]);
+    expect(handleStream.mock.calls[1]?.[2]).toEqual([
+      expect.objectContaining({
+        role: "system",
+        content: "上一条回复没有调用任何工具。",
+      }),
+    ]);
+    expect(conversation.memory.addMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: "上一条回复没有调用任何工具。",
+      }),
+    );
   });
 });

@@ -1,4 +1,3 @@
-import { CheckCircle2 } from "lucide-react";
 import type React from "react";
 import { Streamdown } from "streamdown";
 import type { ToolMessageRendererProps } from "../../../types/renderers";
@@ -64,13 +63,7 @@ export const DefaultCompleteTaskRenderer: React.FC<ToolMessageRendererProps<"com
   const isLoading = partial === true;
 
   return (
-    <ToolAccordion
-      icon={<CheckCircle2 size={14} />}
-      title="完成任务"
-      isLoading={isLoading}
-      hasError={hasError}
-      error={error}
-    >
+    <ToolAccordion title="完成任务" isLoading={isLoading} hasError={hasError} error={error}>
       {(isCompleted || hasPreview) && (
         <div className="text-sm">
           <CompleteTaskResultBody message={message} isLatest={false} />

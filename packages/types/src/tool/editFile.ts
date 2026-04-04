@@ -1,5 +1,27 @@
 import { z } from "zod";
 
+export const EditFileDiagnosticSchema = z.object({
+  source: z.enum(["typescript", "python"]).describe("诊断来源"),
+  severity: z.enum(["error", "warning"]).describe("诊断级别"),
+  filePath: z.string().describe("诊断关联文件"),
+  line: z.number().int().positive().describe("1-based 行号"),
+  column: z.number().int().positive().optional().describe("1-based 列号"),
+  endLine: z.number().int().positive().optional().describe("结束行号"),
+  endColumn: z.number().int().positive().optional().describe("结束列号"),
+  code: z.string().optional().describe("可选诊断代码"),
+  message: z.string().describe("诊断消息"),
+});
+
+export const EditFileDiagnosticsSchema = z.object({
+  language: z.enum(["typescript", "python"]).describe("检测语言"),
+  status: z
+    .enum(["clean", "error", "tool_unavailable"])
+    .describe("检测状态：无错误、有错误、工具不可用"),
+  summary: z.string().describe("诊断摘要"),
+  errorCount: z.number().int().nonnegative().describe("错误总数"),
+  diagnostics: z.array(EditFileDiagnosticSchema).describe("结构化诊断列表"),
+});
+
 /**
  * EditFile 工具 Schema
  * 用于在沙箱中创建或修改文件
@@ -9,20 +31,28 @@ export const EditFileSchema = z.object({
   params: z
     .object({
       filePath: z.string().describe("文件路径（支持相对于沙箱工作目录的路径或绝对路径）"),
-      content: z.string().optional().describe("文件内容（create/overwrite 或行号 patch 时使用）"),
-      mode: z
-        .enum(["create", "overwrite", "patch"])
-        .default("overwrite")
-        .describe("操作模式：create=仅创建新文件，overwrite=覆盖写入，patch=修改指定行"),
-      startLine: z.number().optional().describe("patch 模式下的起始行号（从 1 开始）"),
-      endLine: z.number().optional().describe("patch 模式下的结束行号（包含）"),
-      search: z.string().optional().describe("patch 模式可选：按字符串搜索替换的 search 文本"),
-      replace: z.string().optional().describe("patch 模式可选：按字符串搜索替换的 replace 文本"),
-      replaceAll: z.boolean().optional().describe("patch 模式可选：是否替换所有匹配（默认 false）"),
-      failIfNoMatch: z
-        .boolean()
+      content: z
+        .string()
         .optional()
-        .describe("patch 模式可选：无匹配时是否报错（默认 true）"),
+        .describe(
+          "整文件写入时必填；按行修改时需与 startLine、endLine、expectedOriginalContent 一起提供",
+        ),
+      startLine: z
+        .number()
+        .optional()
+        .describe("可选：起始行号（从 1 开始）。仅作为局部修改的定位提示"),
+      endLine: z.number().optional().describe("可选：结束行号（包含）。仅作为局部修改的定位提示"),
+      expectedOriginalContent: z
+        .string()
+        .optional()
+        .describe(
+          "按行修改时必填：startLine-endLine 当前应匹配的原文片段，必须与最新文件内容完全一致",
+        ),
+      oldString: z
+        .string()
+        .optional()
+        .describe("可选：精确替换模式下要匹配的唯一原文片段，必须与文件内容完全一致"),
+      newString: z.string().optional().describe("可选：与 oldString 配对使用，表示替换后的新文本"),
     })
     .describe("编辑文件的参数"),
   result: z
@@ -31,7 +61,7 @@ export const EditFileSchema = z.object({
       filePath: z.string().describe("操作的文件路径"),
       message: z.string().describe("操作结果消息"),
       linesWritten: z.number().optional().describe("写入的行数"),
-      replacements: z.number().optional().describe("字符串替换模式下的替换次数"),
+      diagnostics: EditFileDiagnosticsSchema.optional().describe("可选：编辑后的语法诊断结果"),
     })
     .describe("编辑文件的结果"),
 });
@@ -40,6 +70,10 @@ export const EditFileSchema = z.object({
  * EditFile 参数类型
  */
 export type EditFileParams = z.infer<typeof EditFileSchema>["params"];
+
+export type EditFileDiagnostic = z.infer<typeof EditFileDiagnosticSchema>;
+
+export type EditFileDiagnostics = z.infer<typeof EditFileDiagnosticsSchema>;
 
 /**
  * EditFile 结果类型

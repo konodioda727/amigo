@@ -27,6 +27,7 @@
     "htmlparser2": "^10.1.0",
     "lucide-react": "^0.544.0",
     "mysql2": "^3.20.0",
+    "playwright-core": "^1.54.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hot-toast": "^2.6.0",

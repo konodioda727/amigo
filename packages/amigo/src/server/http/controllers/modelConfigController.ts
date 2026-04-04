@@ -1,7 +1,10 @@
-import { getGlobalState, type ModelConfig, type ModelSelection } from "@amigo-llm/backend";
-import type { RowDataPacket } from "mysql2/promise";
+import { getGlobalState, type ModelSelection } from "@amigo-llm/backend";
 import { z } from "zod";
-import { ensureMysqlSchemaUpToDate, mysqlExecute, mysqlQuery, parseJsonColumn } from "../../db";
+import type { PublicModelConfig, UserModelConfigUpsertInput } from "../../modelConfigs/store";
+import {
+  readPublicUserModelConfigSettings,
+  upsertUserModelConfigSettings,
+} from "../../modelConfigs/store";
 import { parseJsonBody } from "../shared/request";
 import { errorResponse, jsonResponse } from "../shared/response";
 
@@ -11,9 +14,11 @@ const ProviderModelConfigSchema = z.object({
   thinkType: z.string().trim().min(1).optional(),
 });
 
-const ModelConfigSchema: z.ZodType<ModelConfig> = z.object({
+const PublicModelConfigSchema: z.ZodType<PublicModelConfig> = z.object({
   provider: z.string().trim().min(1),
-  apiKey: z.string().trim().min(1),
+  apiKey: z.literal(""),
+  hasApiKey: z.boolean(),
+  sourceConfigId: z.string().trim().min(1),
   baseURL: z.string().trim().min(1).optional(),
   models: z.array(ProviderModelConfigSchema).min(1),
   compressionThreshold: z.number().positive().max(1).optional(),
@@ -22,14 +27,27 @@ const ModelConfigSchema: z.ZodType<ModelConfig> = z.object({
   minMessagesToCompress: z.number().int().positive().optional(),
 });
 
+const ModelConfigUpsertSchema: z.ZodType<UserModelConfigUpsertInput["modelConfigs"][string]> =
+  z.object({
+    provider: z.string().trim().min(1),
+    apiKey: z.string().trim().optional(),
+    sourceConfigId: z.string().trim().min(1).optional(),
+    baseURL: z.string().trim().min(1).optional(),
+    models: z.array(ProviderModelConfigSchema).min(1),
+    compressionThreshold: z.number().positive().max(1).optional(),
+    targetRatio: z.number().positive().max(1).optional(),
+    preserveRecentMessages: z.number().int().positive().optional(),
+    minMessagesToCompress: z.number().int().positive().optional(),
+  });
+
 const ModelSelectionSchema: z.ZodType<ModelSelection> = z.object({
   configId: z.string().trim().min(1).optional(),
   model: z.string().trim().min(1),
 });
 
-const UserModelConfigSettingsSchema = z
+const PublicUserModelConfigSettingsSchema = z
   .object({
-    modelConfigs: z.record(z.string().trim().min(1), ModelConfigSchema),
+    modelConfigs: z.record(z.string().trim().min(1), PublicModelConfigSchema),
     defaultModel: ModelSelectionSchema.nullish(),
   })
   .superRefine((value, ctx) => {
@@ -60,24 +78,69 @@ const UserModelConfigSettingsSchema = z
     }
   });
 
-type UserModelConfigSettings = z.infer<typeof UserModelConfigSettingsSchema>;
+const UserModelConfigUpsertSchema: z.ZodType<UserModelConfigUpsertInput> = z
+  .object({
+    modelConfigs: z.record(z.string().trim().min(1), ModelConfigUpsertSchema),
+    defaultModel: ModelSelectionSchema.nullish(),
+  })
+  .superRefine((value, ctx) => {
+    const defaultModel = value.defaultModel;
+    if (!defaultModel) {
+      return;
+    }
 
-type UserModelConfigRow = RowDataPacket & {
-  settings_json: unknown;
-};
+    const configId = defaultModel.configId?.trim() || "";
+    if (!configId || !value.modelConfigs[configId]) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["defaultModel", "configId"],
+        message: "defaultModel.configId 不存在",
+      });
+      return;
+    }
 
-const sanitizeDefaultModelConfigs = (modelConfigs: Record<string, ModelConfig>) =>
+    const matchedModel = value.modelConfigs[configId].models.some(
+      (item) => item.name.trim() === defaultModel.model.trim(),
+    );
+    if (!matchedModel) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["defaultModel", "model"],
+        message: "defaultModel.model 不存在",
+      });
+    }
+  });
+
+type PublicUserModelConfigSettings = z.infer<typeof PublicUserModelConfigSettingsSchema>;
+
+const sanitizeDefaultModelConfigs = (
+  modelConfigs: Record<
+    string,
+    {
+      provider: string;
+      baseURL?: string;
+      models: PublicModelConfig["models"];
+      compressionThreshold?: number;
+      targetRatio?: number;
+      preserveRecentMessages?: number;
+      minMessagesToCompress?: number;
+      apiKey: string;
+    }
+  >,
+) =>
   Object.fromEntries(
     Object.entries(modelConfigs).map(([configId, config]) => [
       configId,
       {
         ...config,
         apiKey: "",
+        hasApiKey: !!config.apiKey.trim(),
+        sourceConfigId: configId,
       },
     ]),
   );
 
-const getDefaultSettings = (): UserModelConfigSettings => {
+const getDefaultSettings = (): PublicUserModelConfigSettings => {
   const defaultConfigs = getGlobalState("modelConfigs") || {};
   return {
     modelConfigs: sanitizeDefaultModelConfigs(defaultConfigs),
@@ -85,30 +148,9 @@ const getDefaultSettings = (): UserModelConfigSettings => {
   };
 };
 
-const readUserModelConfigSettings = async (
-  userId: string,
-): Promise<UserModelConfigSettings | null> => {
-  await ensureMysqlSchemaUpToDate();
-  const rows = await mysqlQuery<UserModelConfigRow>(
-    "SELECT settings_json FROM user_model_configs WHERE user_id = ? LIMIT 1",
-    [userId],
-  );
-  const rawSettings = rows[0]?.settings_json;
-  if (!rawSettings) {
-    return null;
-  }
-
-  const parsed = UserModelConfigSettingsSchema.safeParse(parseJsonColumn(rawSettings, {}));
-  if (!parsed.success) {
-    return null;
-  }
-
-  return parsed.data;
-};
-
 export const getUserModelConfigsController = async (userId: string) => {
   try {
-    const userSettings = await readUserModelConfigSettings(userId);
+    const userSettings = await readPublicUserModelConfigSettings(userId);
     const settings = userSettings || getDefaultSettings();
     return jsonResponse({
       hasUserConfig: !!userSettings,
@@ -127,23 +169,16 @@ export const upsertUserModelConfigsController = async (req: Request, userId: str
   try {
     const settings = await parseJsonBody(
       req,
-      UserModelConfigSettingsSchema,
+      UserModelConfigUpsertSchema,
       "INVALID_MODEL_CONFIGS_REQUEST",
     );
-    await ensureMysqlSchemaUpToDate();
-    await mysqlExecute(
-      `
-        INSERT INTO user_model_configs (user_id, settings_json, created_at, updated_at)
-        VALUES (?, CAST(? AS JSON), CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
-        ON DUPLICATE KEY UPDATE
-          settings_json = VALUES(settings_json),
-          updated_at = CURRENT_TIMESTAMP(3)
-      `,
-      [userId, JSON.stringify(settings)],
-    );
+    const saved = await upsertUserModelConfigSettings(userId, {
+      ...settings,
+      defaultModel: settings.defaultModel || null,
+    });
     return jsonResponse({
       hasUserConfig: true,
-      ...settings,
+      ...saved,
     });
   } catch (error) {
     return errorResponse(error, {

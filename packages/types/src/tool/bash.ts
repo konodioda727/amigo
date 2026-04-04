@@ -14,7 +14,7 @@ export const BashSchema = z.object({
     .describe("执行 bash 命令的参数"),
   result: z
     .object({
-      success: z.boolean().describe("命令是否执行成功"),
+      success: z.boolean().describe("工具是否成功执行并返回结果"),
       output: z.string().describe("命令输出"),
       exitCode: z.number().optional().describe("命令退出码"),
       message: z.string().describe("操作结果消息"),

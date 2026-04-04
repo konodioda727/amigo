@@ -7,7 +7,7 @@ interface ConversationContinuation {
   id: string;
   reason: string;
   run: (conversation: Conversation) => Promise<void> | void;
-  injectBeforeNextTurn?: (conversation: Conversation) => Promise<void> | void;
+  injectBeforeNextTurn: (conversation: Conversation) => Promise<void> | void;
 }
 
 const queuedContinuations = new Map<string, ConversationContinuation[]>();
@@ -18,7 +18,7 @@ export function enqueueConversationContinuation(params: {
   conversation: Conversation;
   reason: string;
   run: (conversation: Conversation) => Promise<void> | void;
-  injectBeforeNextTurn?: (conversation: Conversation) => Promise<void> | void;
+  injectBeforeNextTurn: (conversation: Conversation) => Promise<void> | void;
 }): string {
   const continuation: ConversationContinuation = {
     id: createContinuationId(),
@@ -67,11 +67,6 @@ export async function flushConversationContinuationsBeforeNextTurn(
     const continuation = queue.shift();
     if (!continuation) {
       break;
-    }
-
-    if (!continuation.injectBeforeNextTurn) {
-      remaining.push(continuation);
-      continue;
     }
 
     logger.info(
@@ -143,6 +138,7 @@ export async function flushConversationContinuationsIfIdle(
     );
     try {
       emitAutoResumeAck(conversation);
+      await continuation.injectBeforeNextTurn(conversation);
       await continuation.run(conversation);
     } catch (error) {
       logger.error(

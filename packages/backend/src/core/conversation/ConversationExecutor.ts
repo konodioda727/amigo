@@ -1,3 +1,4 @@
+import type { ChatMessage } from "@amigo-llm/types";
 import pWaitFor from "p-wait-for";
 import { logger } from "@/utils/logger";
 import { flushConversationContinuationsBeforeNextTurn } from "./asyncContinuations";
@@ -89,16 +90,16 @@ export class ConversationExecutor {
       return;
     }
 
-    const shouldContinue = await this.completionHandler.handleStreamCompletion(
+    const completion = await this.completionHandler.handleStreamCompletion(
       conversation,
       pending.toolName,
       this.toolExecutor.getLastToolHadError(),
       this.toolExecutor.getLastToolError(),
     );
 
-    if (shouldContinue && !conversation.isAborted) {
+    if (completion.shouldContinue && !conversation.isAborted) {
       logger.info(logs.onContinue);
-      return this.executeLoop(conversation);
+      return this.executeLoop(conversation, completion.nextTurnMessages);
     }
 
     logger.info(logs.onStop);
@@ -161,7 +162,10 @@ export class ConversationExecutor {
   /**
    * 执行主循环
    */
-  private async executeLoop(conversation: Conversation): Promise<void> {
+  private async executeLoop(
+    conversation: Conversation,
+    ephemeralMessages: ChatMessage[] = [],
+  ): Promise<void> {
     if (conversation.isAborted) {
       logger.info("检测到中断状态，停止执行循环");
       return;
@@ -180,14 +184,18 @@ export class ConversationExecutor {
     this.currentAbortController = controller;
 
     try {
-      const currentTool = await this.streamHandler.handleStream(conversation, controller);
+      const currentTool = await this.streamHandler.handleStream(
+        conversation,
+        controller,
+        ephemeralMessages,
+      );
 
       if (currentTool === "interrupt" || conversation.isAborted) {
         logger.info(`[ConversationExecutor] 检测到中断，停止执行循环`);
         return;
       }
 
-      const shouldContinue = await this.completionHandler.handleStreamCompletion(
+      const completion = await this.completionHandler.handleStreamCompletion(
         conversation,
         currentTool,
         this.toolExecutor.getLastToolHadError(),
@@ -195,12 +203,12 @@ export class ConversationExecutor {
       );
 
       logger.info(
-        `[ConversationExecutor] handleStreamCompletion 返回: ${shouldContinue}, currentTool: ${currentTool}, hadError: ${this.toolExecutor.getLastToolHadError()}, isAborted: ${conversation.isAborted}`,
+        `[ConversationExecutor] handleStreamCompletion 返回: ${completion.shouldContinue}, currentTool: ${currentTool}, hadError: ${this.toolExecutor.getLastToolHadError()}, isAborted: ${conversation.isAborted}`,
       );
 
-      if (shouldContinue && !conversation.isAborted) {
+      if (completion.shouldContinue && !conversation.isAborted) {
         logger.info(`[ConversationExecutor] 继续执行循环`);
-        return this.executeLoop(conversation);
+        return this.executeLoop(conversation, completion.nextTurnMessages);
       } else {
         logger.info(`[ConversationExecutor] 停止执行循环`);
       }

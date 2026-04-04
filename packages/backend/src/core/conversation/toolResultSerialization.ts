@@ -120,6 +120,16 @@ const stripTransientResultFields = (result: unknown): unknown => {
   return memorySafeResult;
 };
 
+const stripTopLevelMessageField = (result: unknown): unknown => {
+  const record = asRecord(result);
+  if (!record || !("message" in record)) {
+    return result;
+  }
+
+  const { message: _message, ...rest } = record;
+  return rest;
+};
+
 export const normalizeToolResultForMemory = (toolName: string, result: unknown): unknown => {
   const memorySafeResult = stripTransientResultFields(result);
   if (toolName === "browserSearch") {
@@ -129,6 +139,83 @@ export const normalizeToolResultForMemory = (toolName: string, result: unknown):
     return compactReadDesignDocResult(memorySafeResult);
   }
   return memorySafeResult;
+};
+
+export const summarizeToolResultStatusForMemory = (
+  toolName: string,
+  result: unknown,
+): string | null => {
+  const record = asRecord(result);
+  if (!record) {
+    return null;
+  }
+
+  if (toolName === "bash" && typeof record.exitCode === "number") {
+    return `命令已执行（退出码: ${record.exitCode}）`;
+  }
+
+  if (typeof record.success === "boolean") {
+    return record.success ? "执行成功" : "执行失败";
+  }
+
+  if (typeof record.status === "string") {
+    const normalized = record.status.trim().toLowerCase();
+    if (!normalized) {
+      return null;
+    }
+
+    if (["started", "already_running", "running"].includes(normalized)) {
+      return "正在执行";
+    }
+    if (["completed", "success", "passed", "not_required"].includes(normalized)) {
+      return "执行成功";
+    }
+    if (["failed", "error", "timeout", "blocked"].includes(normalized)) {
+      return "执行失败";
+    }
+  }
+
+  if (typeof record.overallStatus === "string") {
+    const normalized = record.overallStatus.trim().toLowerCase();
+    if (!normalized) {
+      return null;
+    }
+
+    if (["running"].includes(normalized)) {
+      return "正在执行";
+    }
+    if (["passed", "success", "completed"].includes(normalized)) {
+      return "执行成功";
+    }
+    if (["failed", "error", "timeout", "blocked", "partial"].includes(normalized)) {
+      return "执行失败";
+    }
+  }
+
+  return null;
+};
+
+export const normalizeToolResultForContinuationMemory = (
+  toolName: string,
+  result: unknown,
+): unknown => normalizeToolResultForMemory(toolName, stripTopLevelMessageField(result));
+
+export const shouldIncludeToolMessageInContinuationMemory = (
+  result: unknown,
+  message: string,
+): boolean => {
+  const normalizedMessage = message.trim();
+  if (!normalizedMessage) {
+    return false;
+  }
+
+  const record = asRecord(stripTransientResultFields(result));
+  if (!record) {
+    return true;
+  }
+
+  const { message: _message, ...rest } = record;
+  return Object.keys(rest).length === 0;
 };
 
 export const buildAssistantMemoryToolContent = (
@@ -184,6 +271,29 @@ export const serializeToolResultForMemory = (toolName: string, result: unknown):
     return `${serialized.slice(0, maxLength)}\n...（已截断，共 ${serialized.length} 字符）`;
   } catch (error) {
     logger.warn("[ToolExecutor] 序列化工具结果失败，将使用字符串兜底:", error);
+    return String(result);
+  }
+};
+
+export const serializeToolResultForContinuationMemory = (
+  toolName: string,
+  result: unknown,
+): string => {
+  try {
+    const normalized = normalizeToolResultForContinuationMemory(toolName, result);
+    const serialized = JSON.stringify(normalized, null, 2);
+    const maxLength =
+      toolName === "browserSearch"
+        ? 60_000
+        : toolName === "readDesignDoc" || toolName === "readFile" || toolName === "readSkillBundle"
+          ? 120_000
+          : 20_000;
+    if (serialized.length <= maxLength) {
+      return serialized;
+    }
+    return `${serialized.slice(0, maxLength)}\n...（已截断，共 ${serialized.length} 字符）`;
+  } catch (error) {
+    logger.warn("[ToolExecutor] 序列化 continuation 工具结果失败，将使用字符串兜底:", error);
     return String(result);
   }
 };

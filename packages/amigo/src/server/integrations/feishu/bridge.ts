@@ -6,7 +6,11 @@ import {
 } from "@amigo-llm/backend";
 import type { ConversationMessageHookPayload, CreateTaskConfig } from "@amigo-llm/backend/sdk";
 import * as Lark from "@larksuiteoapi/node-sdk";
-import { findOrCreateExternalIdentityUser, upsertNotificationChannel } from "../../db";
+import {
+  findOrCreateExternalIdentityUser,
+  getFeishuAppCredentials,
+  upsertNotificationChannel,
+} from "../../db";
 import type { ConversationChannelProvider } from "../channels/router";
 import { FeishuDeliveryStore } from "./deliveryStore";
 import { FeishuSessionStore } from "./sessionStore";
@@ -188,63 +192,88 @@ const mergeTaskContext = (current: unknown, next: FeishuTaskContext): unknown =>
 
 export class FeishuBridge implements ConversationChannelProvider {
   readonly name = "feishu";
-  private readonly appId = (process.env.FEISHU_APP_ID || "").trim();
-  private readonly appSecret = (process.env.FEISHU_APP_SECRET || "").trim();
   private readonly ackReactionType =
     (process.env.FEISHU_ACK_REACTION_TYPE || "OK").trim().toUpperCase() || "OK";
   private readonly requireGroupMention =
     (process.env.FEISHU_GROUP_MODE || "").trim().toLowerCase() !== "all";
   private readonly deliveryStore: FeishuDeliveryStore;
   private readonly sessionStore: FeishuSessionStore;
-  private readonly wsClient?: Lark.WSClient;
+  private wsClient: Lark.WSClient | null = null;
   private readonly processedInbound = new Map<string, number>();
   private readonly processedOutbound = new Map<string, number>();
+  private credentials: { appId: string; appSecret: string } | null = null;
   private authState: FeishuAuthState | null = null;
+  private started = false;
+  private wsStarted = false;
 
   constructor(private readonly options: FeishuBridgeOptions) {
     this.deliveryStore = new FeishuDeliveryStore(options.cachePath);
     this.sessionStore = new FeishuSessionStore(options.cachePath);
-    if (this.isEnabled()) {
-      this.wsClient = new Lark.WSClient({
-        appId: this.appId,
-        appSecret: this.appSecret,
-        loggerLevel: Lark.LoggerLevel.info,
-      });
-    }
   }
 
   isEnabled(): boolean {
-    return !!this.appId && !!this.appSecret;
+    return !!this.credentials?.appId && !!this.credentials?.appSecret;
   }
 
   async init(): Promise<void> {
     await Promise.all([this.deliveryStore.init(), this.sessionStore.init()]);
+    await this.reloadCredentials();
   }
 
   start(): void {
-    if (!this.wsClient) {
-      logger.info("[FeishuBridge] 未配置 FEISHU_APP_ID/FEISHU_APP_SECRET，跳过飞书集成");
+    this.started = true;
+    void this.reloadCredentials();
+  }
+
+  async reloadCredentials(): Promise<void> {
+    const previousCredentials = this.credentials;
+    this.credentials = await getFeishuAppCredentials();
+    this.authState = null;
+
+    if (!this.credentials) {
+      this.wsClient = null;
+      this.wsStarted = false;
+      if (this.started) {
+        logger.info("[FeishuBridge] 未配置飞书 AK/SK，跳过飞书集成");
+      }
       return;
     }
 
-    void this.wsClient
-      .start({
+    if (!this.wsClient) {
+      this.wsClient = new Lark.WSClient({
+        appId: this.credentials.appId,
+        appSecret: this.credentials.appSecret,
+        loggerLevel: Lark.LoggerLevel.info,
+      });
+    } else if (
+      previousCredentials &&
+      (previousCredentials.appId !== this.credentials.appId ||
+        previousCredentials.appSecret !== this.credentials.appSecret)
+    ) {
+      logger.info("[FeishuBridge] 飞书凭证已更新，重启服务后长连接会使用新配置");
+    }
+
+    if (!this.started || this.wsStarted || !this.wsClient) {
+      return;
+    }
+
+    try {
+      await this.wsClient.start({
         eventDispatcher: new Lark.EventDispatcher({}).register({
           "im.message.receive_v1": async (data: FeishuReceiveEvent) => {
             await this.handleIncomingEvent(data);
           },
         }),
-      })
-      .then(() => {
-        logger.info("[FeishuBridge] 飞书长连接已启动");
-      })
-      .catch((error) => {
-        logger.error(
-          `[FeishuBridge] 飞书长连接启动失败: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
       });
+      this.wsStarted = true;
+      logger.info("[FeishuBridge] 飞书长连接已启动");
+    } catch (error) {
+      logger.error(
+        `[FeishuBridge] 飞书长连接启动失败: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   supportsContext(context: unknown): boolean {
@@ -344,20 +373,22 @@ export class FeishuBridge implements ConversationChannelProvider {
         })
       : undefined;
 
+    const initialConversationContext = mergeTaskContext(resolvedTaskConfig?.context, feishuContext);
+
     if (!conversation) {
       conversation = conversationRepository.create({
         type: "main",
         customPrompt: resolvedTaskConfig?.customPrompt,
+        context: initialConversationContext,
       });
       if (shouldReuseConversation) {
         this.sessionStore.set(sessionKey, conversation.id, userId || undefined);
       }
     }
 
-    if (resolvedTaskConfig?.context !== undefined && isNewConversation) {
-      conversation.memory.setContext(resolvedTaskConfig.context);
+    if (!isNewConversation) {
+      conversation.memory.setContext(mergeTaskContext(conversation.memory.context, feishuContext));
     }
-    conversation.memory.setContext(mergeTaskContext(conversation.memory.context, feishuContext));
 
     if (isNewConversation) {
       const onConversationCreate = getGlobalState("onConversationCreate");
@@ -843,6 +874,10 @@ export class FeishuBridge implements ConversationChannelProvider {
   }
 
   private async getTenantAccessToken(): Promise<string> {
+    if (!this.credentials) {
+      throw new Error("飞书 AK/SK 未配置");
+    }
+
     const now = Date.now();
     if (this.authState && this.authState.expiresAt - now > 5 * 60 * 1000) {
       return this.authState.accessToken;
@@ -856,8 +891,8 @@ export class FeishuBridge implements ConversationChannelProvider {
           "content-type": "application/json; charset=utf-8",
         },
         body: JSON.stringify({
-          app_id: this.appId,
-          app_secret: this.appSecret,
+          app_id: this.credentials.appId,
+          app_secret: this.credentials.appSecret,
         }),
       },
     );

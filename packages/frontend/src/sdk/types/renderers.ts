@@ -9,6 +9,7 @@ import type {
   FrontendThinkMessageType,
   FrontendToolMessageType,
   InterruptDisplayType,
+  ReadSummaryDisplayType,
   UserSendMessageDisplayType,
 } from "../messages/types";
 
@@ -33,6 +34,7 @@ export type AskFollowupQuestionRendererProps = MessageRendererProps<AskFollowupQ
 export type InterruptRendererProps = MessageRendererProps<InterruptDisplayType>;
 export type ErrorRendererProps = MessageRendererProps<ErrorDisplayType>;
 export type AlertRendererProps = MessageRendererProps<AlertDisplayType>;
+export type ReadSummaryRendererProps = MessageRendererProps<ReadSummaryDisplayType>;
 
 /**
  * Renderer function type
@@ -53,4 +55,5 @@ export interface MessageRendererMap {
   interrupt: MessageRenderer<InterruptDisplayType>;
   error: MessageRenderer<ErrorDisplayType>;
   alert: MessageRenderer<AlertDisplayType>;
+  readSummary: MessageRenderer<ReadSummaryDisplayType>;
 }

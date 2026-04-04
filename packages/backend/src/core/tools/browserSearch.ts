@@ -1,5 +1,6 @@
 import { logger } from "@/utils/logger";
 import { createTool } from "./base";
+import { createToolResult } from "./result";
 
 type SearchResult = {
   title: string;
@@ -233,6 +234,13 @@ export const BrowserSearch = createTool({
   description: "使用 Google 搜索信息，并自动抓取搜索结果页面正文（纯 HTTP，无浏览器回退）。",
   whenToUse:
     "需要获取互联网实时信息并抓取搜索结果页正文时使用。仅支持 query 搜索，不用于直接访问单个 URL。",
+  historyProfile: {
+    progressKind: "search",
+    getResourceKeys: ({ params }) =>
+      typeof params.query === "string" && params.query.trim()
+        ? [`search:${params.query.trim()}`]
+        : [],
+  },
 
   params: [
     {
@@ -466,15 +474,17 @@ export const BrowserSearch = createTool({
 
       if (searchResults.length === 0) {
         const emptyContent = `搜索 "${keyword}" 未找到可抓取的结果。`;
-        return {
-          message: `Google 搜索完成，但没有可抓取的搜索结果。关键词: ${keyword}`,
-          toolResult: {
+        return createToolResult(
+          {
             content: emptyContent,
             url: searchUrl,
             title: `搜索结果 - ${keyword}`,
             results: [],
           },
-        };
+          {
+            transportMessage: `Google 搜索完成，但没有可抓取的搜索结果。关键词: ${keyword}`,
+          },
+        );
       }
 
       const fetchedResults = new Array<FetchedSearchResult>(searchResults.length);
@@ -499,25 +509,29 @@ export const BrowserSearch = createTool({
         }),
       );
 
-      return {
-        message: "网页搜索并抓取完成。",
-        toolResult: {
+      return createToolResult(
+        {
           content: "抓取网页内容完成。\n",
           url: searchUrl,
           title: `Google 搜索并抓取 - ${keyword}`,
           results: fetchedResults.filter(Boolean),
         },
-      };
+        {
+          transportMessage: "网页搜索并抓取完成。",
+        },
+      );
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error(`[BrowserSearch] 执行失败: ${errorMessage}`);
 
-      return {
-        message: `浏览器搜索失败: ${errorMessage}`,
-        toolResult: {
+      return createToolResult(
+        {
           content: `错误: ${errorMessage}`,
         },
-      };
+        {
+          transportMessage: `浏览器搜索失败: ${errorMessage}`,
+        },
+      );
     }
   },
 });

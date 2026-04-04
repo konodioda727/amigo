@@ -10,6 +10,19 @@ export { ConversationExecutor } from "./ConversationExecutor";
 export { ConversationRepository, conversationRepository } from "./ConversationRepository";
 export { StreamHandler } from "./StreamHandler";
 export {
+  runSubTaskCompletionValidation,
+  runSubTaskWaitReviewEvaluation,
+} from "./subTaskPolicies";
+export type {
+  SubTaskCompletionValidationHookPayload,
+  SubTaskPolicyPayload,
+  SubTaskValidationResult,
+  SubTaskWaitReviewEvaluationHookPayload,
+  SubTaskWaitReviewEvaluationResult,
+  ToolParamExtensionsConfig,
+} from "./subTaskPolicyTypes";
+export { extractToolExecutionRecordsFromMessages } from "./subTaskResult";
+export {
   SubTaskInterruptedError,
   type SubTaskParams,
   TaskOrchestrator,

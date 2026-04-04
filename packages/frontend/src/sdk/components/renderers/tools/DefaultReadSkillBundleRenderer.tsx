@@ -1,4 +1,3 @@
-import { BookOpenText } from "lucide-react";
 import type React from "react";
 import type { ToolMessageRendererProps } from "../../../types/renderers";
 import { ToolAccordion } from "./ToolAccordion";
@@ -32,7 +31,6 @@ export const DefaultReadSkillBundleRenderer: React.FC<ToolMessageRendererProps<a
 
   return (
     <ToolAccordion
-      icon={<BookOpenText size={14} />}
       title={`正在查看【${skillLabel}】技能`}
       isLoading={isLoading}
       hasError={hasError}

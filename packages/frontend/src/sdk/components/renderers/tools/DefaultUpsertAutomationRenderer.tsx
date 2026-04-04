@@ -1,4 +1,3 @@
-import { Clock3 } from "lucide-react";
 import type React from "react";
 import type { ToolMessageRendererProps } from "../../../types/renderers";
 import { ToolAccordion } from "./ToolAccordion";
@@ -60,7 +59,6 @@ export const DefaultUpsertAutomationRenderer: React.FC<ToolMessageRendererProps<
 
   return (
     <ToolAccordion
-      icon={<Clock3 size={14} />}
       title={`${action}自动化【${automationName}】`}
       isLoading={isLoading}
       hasError={hasError}

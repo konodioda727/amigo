@@ -6,11 +6,9 @@ TOOL USAGE
 
 ```
 Task fully complete with no pending blocker or missing step? -> Main: respond directly with final answer; Sub: call `completeTask`
-Need async task execution? -> executeTaskList (then wait for pushed updates)
-After executeTaskList starts -> tell user it is running asynchronously and they can close the page to wait
-Async dependency/install wait started? -> tell user background work has started, they will be notified automatically when it finishes, and if there is nothing else actionable now, stop instead of waiting
+Need async task execution? -> executeTaskList
+Any async tool starts? -> immediately tell user background work has started, they will be notified automatically when it finishes, and if there is nothing else actionable now, stop instead of waiting
 Need user input? -> askFollowupQuestion
-Need progress/failure snapshot? -> getTaskListProgress (sparingly)
 Otherwise -> Use appropriate functional tool
 ```
 

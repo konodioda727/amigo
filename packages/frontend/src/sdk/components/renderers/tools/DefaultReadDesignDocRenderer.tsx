@@ -1,4 +1,3 @@
-import { NotebookText } from "lucide-react";
 import type React from "react";
 import { ToolAccordion } from "./ToolAccordion";
 
@@ -14,11 +13,6 @@ interface ReadDesignDocToolOutput {
     minHeight?: number;
     sectionCount?: number;
     updatedAt?: string;
-  };
-  penpotBinding?: {
-    fileId: string;
-    penpotPageId: string;
-    fileUrl: string;
   };
   validationErrors?: string[];
 }
@@ -52,7 +46,6 @@ export const DefaultReadDesignDocRenderer: React.FC<ReadDesignDocRendererProps> 
 
   return (
     <ToolAccordion
-      icon={<NotebookText size={14} />}
       title={`读取设计稿: ${pageId || "设计稿索引"}`}
       isLoading={isLoading}
       hasError={hasError}
@@ -66,11 +59,6 @@ export const DefaultReadDesignDocRenderer: React.FC<ReadDesignDocRendererProps> 
         ) : null}
         {isCompleted && !validationPassed ? (
           <div className="text-rose-600">Schema 校验未通过</div>
-        ) : null}
-        {toolOutput?.penpotBinding ? (
-          <div className="text-neutral-500">
-            Penpot page: {toolOutput.penpotBinding.penpotPageId}
-          </div>
         ) : null}
       </div>
     </ToolAccordion>

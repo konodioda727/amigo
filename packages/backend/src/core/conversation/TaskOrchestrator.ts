@@ -1,22 +1,31 @@
 import type { ToolInterface, UserMessageAttachment } from "@amigo-llm/types";
 import pWaitFor from "p-wait-for";
 import { logger } from "@/utils/logger";
-import { getLlm } from "../model";
 import { clearConversationContinuations } from "./asyncContinuations";
 import type { Conversation } from "./Conversation";
 import { ConversationExecutor } from "./ConversationExecutor";
 import { conversationRepository } from "./ConversationRepository";
-import { extractCompletedSubTaskResult } from "./subTaskResult";
+import {
+  extractCompletedSubTaskResult,
+  extractPendingCompleteTaskPayload,
+  formatCompletedSubTaskPayload,
+} from "./subTaskResult";
 import { broadcaster } from "./WebSocketBroadcaster";
 
 export interface SubTaskParams {
   subPrompt: string;
   target: string;
   parentId: string;
-  // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
   tools: ToolInterface<any>[];
+  attachments?: UserMessageAttachment[];
   taskDescription?: string; // 可选：用于 SubTaskManager 记录状态
   subTaskId?: string; // 可选：复用已有子任务会话
+}
+
+export interface SubTaskRunResult {
+  subTaskId: string;
+  result: string;
+  status: "completed" | "wait_review";
 }
 
 export class SubTaskInterruptedError extends Error {
@@ -87,8 +96,8 @@ export class TaskOrchestrator {
   /**
    * 创建并运行子任务
    */
-  async runSubTask(params: SubTaskParams): Promise<{ subTaskId: string; result: string }> {
-    const { subPrompt, parentId, tools, target, taskDescription, subTaskId } = params;
+  async runSubTask(params: SubTaskParams): Promise<SubTaskRunResult> {
+    const { subPrompt, parentId, tools, target, attachments, taskDescription, subTaskId } = params;
 
     // 获取父会话
     const parentConversation = conversationRepository.get(parentId);
@@ -108,6 +117,8 @@ export class TaskOrchestrator {
         customPrompt: subPrompt,
         tools,
         llm: parentConversation.llm,
+        context: parentConversation.memory.context,
+        modelConfigSnapshot: parentConversation.memory.modelConfigSnapshot,
       });
       isNewConversation = true;
     } else {
@@ -132,7 +143,7 @@ export class TaskOrchestrator {
     // 设置用户输入并启动执行（复用会话时发送 resume）
     let shouldExecute = false;
     if (isNewConversation) {
-      this.setUserInput(subConversation, target);
+      this.setUserInput(subConversation, target, attachments);
       shouldExecute = true;
     } else if (["idle", "aborted", "error"].includes(subConversation.status)) {
       this.resume(subConversation);
@@ -194,6 +205,10 @@ export class TaskOrchestrator {
           throw new Error(`子会话 ${subConversation.id} 已停止，当前状态: ${currentStatus}`);
         }
 
+        if (currentStatus === "waiting_tool_confirmation" && pendingToolName === "completeTask") {
+          return true;
+        }
+
         return currentStatus === "completed";
       },
       {
@@ -201,10 +216,19 @@ export class TaskOrchestrator {
       },
     );
 
-    logger.info(`子会话 ${subConversation.id} 已完成。`);
+    const isWaitReview =
+      subConversation.status === "waiting_tool_confirmation" &&
+      subConversation.pendingToolCall?.toolName === "completeTask";
 
-    // 如果提供了 taskDescription，更新状态为完成
-    if (taskDescription) {
+    logger.info(`子会话 ${subConversation.id} 已${isWaitReview ? "进入待审核" : "完成"}。`);
+
+    // 如果提供了 taskDescription，更新状态为完成或待审核
+    if (taskDescription && isWaitReview) {
+      parentConversation.updateSubTaskStatus(taskDescription, {
+        status: "wait_review",
+        subTaskId: subConversation.id,
+      });
+    } else if (taskDescription) {
       parentConversation.updateSubTaskStatus(taskDescription, {
         status: "completed",
         completedAt: new Date().toISOString(),
@@ -217,7 +241,10 @@ export class TaskOrchestrator {
     // 获取结果并返回子任务 ID
     return {
       subTaskId: subConversation.id,
-      result: this.getSubTaskResult(subConversation),
+      result: isWaitReview
+        ? this.getPendingReviewResult(subConversation)
+        : this.getSubTaskResult(subConversation),
+      status: isWaitReview ? "wait_review" : "completed",
     };
   }
 
@@ -377,6 +404,15 @@ export class TaskOrchestrator {
       throw new Error(`子会话 ${conversation.id} 没有返回最终消息`);
     }
     return lastMessage.content;
+  }
+
+  private getPendingReviewResult(conversation: Conversation): string {
+    const payload = extractPendingCompleteTaskPayload(conversation);
+    if (payload) {
+      return formatCompletedSubTaskPayload(payload);
+    }
+
+    return "子任务已提交 completeTask 待主任务审阅。";
   }
 }
 

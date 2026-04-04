@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { StorageType } from "@amigo-llm/types";
 import { setGlobalState } from "@/globalState";
 
 const conversationGet = mock(() => undefined);
 const conversationLoad = mock(() => undefined);
+const persistenceLoad = mock((_taskId: string): Record<string, unknown> | null => null);
+let tempCacheRoot = "";
 
 mock.module("@/core/conversation", () => ({
   conversationRepository: {
@@ -15,21 +16,22 @@ mock.module("@/core/conversation", () => ({
   },
 }));
 
+mock.module("@/core/persistence", () => ({
+  getConversationPersistenceProvider: () => ({
+    load: persistenceLoad,
+  }),
+}));
+
 import { getGithubSandboxBindingForTask } from "./bootstrap";
 
 describe("getGithubSandboxBindingForTask", () => {
-  let tempStorageRoot = "";
-  let tempCacheRoot = "";
-
   beforeEach(() => {
-    tempStorageRoot = mkdtempSync(path.join(os.tmpdir(), "amigo-github-storage-"));
     tempCacheRoot = mkdtempSync(path.join(os.tmpdir(), "amigo-github-cache-"));
-    setGlobalState("globalStoragePath", tempStorageRoot);
     setGlobalState("globalCachePath", tempCacheRoot);
+    persistenceLoad.mockReset();
   });
 
   afterEach(() => {
-    rmSync(tempStorageRoot, { recursive: true, force: true });
     rmSync(tempCacheRoot, { recursive: true, force: true });
   });
 
@@ -37,7 +39,6 @@ describe("getGithubSandboxBindingForTask", () => {
     const taskId = "task-1";
     const repoUrl = "https://github.com/example/amigo.git";
     const commitSha = "0123456789abcdef0123456789abcdef01234567";
-    const taskRoot = path.join(tempStorageRoot, taskId);
     const mirrorPath = path.join(
       tempCacheRoot,
       "github-bootstrap",
@@ -45,29 +46,26 @@ describe("getGithubSandboxBindingForTask", () => {
       `${Bun.hash(repoUrl.trim().toLowerCase()).toString(16)}.git`,
     );
 
-    mkdirSync(taskRoot, { recursive: true });
-    writeFileSync(
-      path.join(taskRoot, `${StorageType.TASK_STATUS}.json`),
-      JSON.stringify(
-        {
-          taskId,
-          conversationStatus: "idle",
-          toolNames: [],
-          context: {
-            repoUrl,
-            branch: "main",
-            commitSha,
-          },
-        },
-        null,
-        2,
-      ),
-      "utf-8",
+    persistenceLoad.mockImplementation((loadedTaskId: string) =>
+      loadedTaskId === taskId
+        ? {
+            taskId,
+            conversationStatus: "idle",
+            toolNames: [],
+            context: {
+              repoUrl,
+              branch: "main",
+              commitSha,
+            },
+          }
+        : null,
     );
+    mkdirSync(path.dirname(mirrorPath), { recursive: true });
     mkdirSync(mirrorPath, { recursive: true });
 
     const binding = await getGithubSandboxBindingForTask(taskId);
 
+    expect(persistenceLoad).toHaveBeenCalledWith(taskId);
     expect(binding).toEqual({
       mirrorPath,
       branch: "main",

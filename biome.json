@@ -16,6 +16,13 @@
         "useButtonType": "off",
         "useKeyWithClickEvents": "off",
         "noStaticElementInteractions": "off"
+      },
+      "style": {
+        "noNonNullAssertion": "off"
+      },
+      "suspicious": {
+        "noExplicitAny": "off",
+        "noTemplateCurlyInString": "off"
       }
     }
   },

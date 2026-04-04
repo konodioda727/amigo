@@ -218,6 +218,7 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
     // Clear doc state immediately when switching conversations.
     // It will be repopulated by handleTaskHistory if the target conversation has docs.
     get().resetDocState();
+    get().hydrateDocStateForTask(taskId);
 
     if (socket && socket.readyState === WebSocket.OPEN && taskId) {
       socket.send(
@@ -240,6 +241,7 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
     }
 
     get().registerTask(taskId);
+    get().hydrateDocStateForTask(taskId);
   },
 
   setTaskStatusMap: (taskId: string, subTasks: Record<string, any>) => {

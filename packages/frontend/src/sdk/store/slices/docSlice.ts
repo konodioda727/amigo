@@ -9,6 +9,15 @@ export interface DocState {
   documents: Record<DocType, { content: string | null; title: string | null }>;
 }
 
+export interface TaskDocSnapshotEntry {
+  content: string;
+  title: string | null;
+}
+
+export type TaskDocSnapshot = Partial<Record<DocType, TaskDocSnapshotEntry>>;
+
+const DOC_PHASES: DocType[] = ["requirements", "design", "taskList"];
+
 export const createEmptyDocuments = (): DocState["documents"] => ({
   requirements: { content: null, title: "Requirements" },
   design: { content: null, title: "Design" },
@@ -23,6 +32,7 @@ export const createInitialDocState = (): DocState => ({
 
 export interface DocSlice {
   docState: DocState;
+  taskDocSnapshots: Record<string, TaskDocSnapshot>;
   setDocState: (state: Partial<DocState>) => void;
   resetDocState: () => void;
   toggleDoc: () => void;
@@ -31,10 +41,16 @@ export interface DocSlice {
   setDocContent: (content: string, title?: string, type?: DocType) => void;
   setActiveDoc: (type: DocType) => void;
   updateDocContent: (type: DocType, content: string) => void;
+  cacheTaskDocuments: (
+    taskId: string,
+    documents: Partial<Record<DocType, string | TaskDocSnapshotEntry | null | undefined>>,
+  ) => void;
+  hydrateDocStateForTask: (taskId: string) => void;
 }
 
 export const createDocSlice: StateCreator<WebSocketStore, [], [], DocSlice> = (set, get) => ({
   docState: createInitialDocState(),
+  taskDocSnapshots: {},
 
   setDocState: (state) => {
     set({
@@ -125,6 +141,97 @@ export const createDocSlice: StateCreator<WebSocketStore, [], [], DocSlice> = (s
             content,
           },
         },
+      },
+    });
+  },
+
+  cacheTaskDocuments: (taskId, documents) => {
+    if (!taskId.trim()) {
+      return;
+    }
+
+    const currentSnapshots = get().taskDocSnapshots;
+    const existingSnapshot = currentSnapshots[taskId] || {};
+    const nextSnapshot: TaskDocSnapshot = { ...existingSnapshot };
+    let hasUpdates = false;
+
+    for (const phase of DOC_PHASES) {
+      const rawValue = documents[phase];
+      if (!rawValue) {
+        continue;
+      }
+
+      const normalizedEntry =
+        typeof rawValue === "string"
+          ? { content: rawValue, title: existingSnapshot[phase]?.title || null }
+          : typeof rawValue.content === "string"
+            ? {
+                content: rawValue.content,
+                title: rawValue.title ?? existingSnapshot[phase]?.title ?? null,
+              }
+            : null;
+      if (!normalizedEntry) {
+        continue;
+      }
+
+      const previousEntry = existingSnapshot[phase];
+      if (
+        previousEntry?.content === normalizedEntry.content &&
+        previousEntry?.title === normalizedEntry.title
+      ) {
+        continue;
+      }
+
+      nextSnapshot[phase] = normalizedEntry;
+      hasUpdates = true;
+    }
+
+    if (!hasUpdates) {
+      return;
+    }
+
+    set({
+      taskDocSnapshots: {
+        ...currentSnapshots,
+        [taskId]: nextSnapshot,
+      },
+    });
+  },
+
+  hydrateDocStateForTask: (taskId) => {
+    const snapshot = get().taskDocSnapshots[taskId];
+    if (!snapshot) {
+      return;
+    }
+
+    const documents = createEmptyDocuments();
+    let activeDoc: DocType = "taskList";
+    let hasAnyContent = false;
+
+    for (const phase of DOC_PHASES) {
+      const entry = snapshot[phase];
+      if (!entry?.content) {
+        continue;
+      }
+
+      documents[phase] = {
+        content: entry.content,
+        title: entry.title || documents[phase].title,
+      };
+      activeDoc = phase;
+      hasAnyContent = true;
+    }
+
+    if (!hasAnyContent) {
+      return;
+    }
+
+    set({
+      docState: {
+        ...get().docState,
+        isOpen: true,
+        activeDoc,
+        documents,
       },
     });
   },

@@ -1,5 +1,4 @@
 import type { ToolNames } from "@amigo-llm/types";
-import { Settings } from "lucide-react";
 import type React from "react";
 import type { ToolMessageRendererProps } from "../../types/renderers";
 import { DefaultBashRenderer } from "./tools/DefaultBashRenderer";
@@ -9,10 +8,7 @@ import { DefaultCreateDesignDocRenderer } from "./tools/DefaultCreateDesignDocRe
 import { DefaultCreateTaskDocsRenderer } from "./tools/DefaultCreateTaskDocsRenderer";
 import { DefaultEditFileRenderer } from "./tools/DefaultEditFileRenderer";
 import { DefaultExecuteTaskListRenderer } from "./tools/DefaultExecuteTaskListRenderer";
-import { DefaultGetTaskListProgressRenderer } from "./tools/DefaultGetTaskListProgressRenderer";
-import { DefaultListDesignAssetsRenderer } from "./tools/DefaultListDesignAssetsRenderer";
 import { DefaultListDesignDocsRenderer } from "./tools/DefaultListDesignDocsRenderer";
-import { DefaultReadDesignAssetRenderer } from "./tools/DefaultReadDesignAssetRenderer";
 import { DefaultReadDesignDocRenderer } from "./tools/DefaultReadDesignDocRenderer";
 import { DefaultReadFileRenderer } from "./tools/DefaultReadFileRenderer";
 import { DefaultReadSkillBundleRenderer } from "./tools/DefaultReadSkillBundleRenderer";
@@ -38,9 +34,6 @@ const toolRendererMap: {
     ToolMessageRendererProps<"executeTaskList">
   >,
   completeTask: DefaultCompleteTaskRenderer as React.FC<ToolMessageRendererProps<"completeTask">>,
-  getTaskListProgress: DefaultGetTaskListProgressRenderer as React.FC<
-    ToolMessageRendererProps<"getTaskListProgress">
-  >,
 };
 
 /**
@@ -54,7 +47,6 @@ const GenericToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> = ({ me
 
   return (
     <ToolAccordion
-      icon={<Settings size={14} />}
       title={`执行: ${toolName}`}
       isLoading={isLoading}
       hasError={hasError}
@@ -102,22 +94,6 @@ export const DefaultToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
     return (
       <DefaultListDesignDocsRenderer
         {...(props as unknown as React.ComponentProps<typeof DefaultListDesignDocsRenderer>)}
-      />
-    );
-  }
-
-  if (message.toolName === "listDesignAssets") {
-    return (
-      <DefaultListDesignAssetsRenderer
-        {...(props as unknown as React.ComponentProps<typeof DefaultListDesignAssetsRenderer>)}
-      />
-    );
-  }
-
-  if (message.toolName === "readDesignAsset") {
-    return (
-      <DefaultReadDesignAssetRenderer
-        {...(props as unknown as React.ComponentProps<typeof DefaultReadDesignAssetRenderer>)}
       />
     );
   }

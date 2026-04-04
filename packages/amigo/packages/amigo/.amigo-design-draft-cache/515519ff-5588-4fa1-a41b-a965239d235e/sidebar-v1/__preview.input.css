@@ -1,0 +1,16 @@
+@import "../../../../frontend/src/styles/tokens.css";
+@import "../../../node_modules/tailwindcss/index.css";
+@source "../../../../../.amigo/storage/515519ff-5588-4fa1-a41b-a965239d235e/designDrafts/drafts/sidebar-v1/source.html";
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+#amigo-design-draft-root {
+  min-height: 100vh;
+}

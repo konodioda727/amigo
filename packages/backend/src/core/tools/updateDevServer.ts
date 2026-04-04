@@ -2,6 +2,7 @@ import type { Sandbox } from "@/core/sandbox";
 import { logger } from "@/utils/logger";
 import { createTool } from "./base";
 import { queueToolRetryAfterDependencies } from "./dependencyWorkflow";
+import { createToolResult } from "./result";
 import {
   getDependencyStatusForToolResult,
   normalizeSandboxToolWorkingDir,
@@ -80,9 +81,8 @@ export const UpdateDevServer = createTool({
         `[updateDevServer] 等待依赖 task=${sandboxTaskId} status=${status} waitingJob=${waitingJob.job.id}`,
       );
 
-      return {
-        message,
-        toolResult: {
+      return createToolResult(
+        {
           status,
           port: null,
           workingDir,
@@ -91,7 +91,10 @@ export const UpdateDevServer = createTool({
           dependencyStatus,
           jobId: waitingJob.job.id,
         },
-      };
+        {
+          transportMessage: message,
+        },
+      );
     }
 
     if (installStatus.status === "idle") {
@@ -115,9 +118,8 @@ export const UpdateDevServer = createTool({
     const logPath = sandbox.getPreviewLogPath();
     const dependencyStatus = getDependencyStatusForToolResult(installStatus.status);
 
-    return {
-      message: `开发预览已启动，可通过 Preview 打开（端口 ${previewHostPort || 0}）。`,
-      toolResult: {
+    return createToolResult(
+      {
         status: "completed",
         port: previewHostPort,
         workingDir,
@@ -125,6 +127,9 @@ export const UpdateDevServer = createTool({
         logPath,
         dependencyStatus,
       },
-    };
+      {
+        transportMessage: `开发预览已启动，可通过 Preview 打开（端口 ${previewHostPort || 0}）。`,
+      },
+    );
   },
 });

@@ -4,7 +4,12 @@ import { setGlobalState } from "@/globalState";
 import { configureLogger, type LoggerConfig } from "@/utils/logger";
 import type { ServerConfig } from "../config";
 import { type LlmFactory, setLlmFactory } from "../model";
-import type { ModelConfig, ModelContextConfig } from "../model/contextConfig";
+import type {
+  ModelConfig,
+  ModelContextConfig,
+  ModelSelection,
+  ResolvedModelConfig,
+} from "../model/contextConfig";
 import type { ConversationPersistenceProvider } from "../persistence/types";
 import type { MessageRegistry, ToolRegistry } from "../registry";
 import type { SandboxManager } from "../sandbox";
@@ -75,6 +80,11 @@ export interface AmigoServerOptions {
   onConversationMessage?: (payload: ConversationMessageHookPayload) => void | Promise<void>;
   /** 在 createTask 真正创建会话前解析自定义 prompt / 工具白名单 / 初始上下文 */
   createTaskConfigResolver?: CreateTaskConfigResolver;
+  /** 应用层可注入的按用户解析模型配置方法 */
+  userModelConfigResolver?: (payload: {
+    userId?: string;
+    selection: string | ModelSelection;
+  }) => ResolvedModelConfig | null;
 }
 
 /**
@@ -124,6 +134,7 @@ class AmigoServer {
     setGlobalState("onConversationCreate", options.onConversationCreate);
     setGlobalState("onConversationMessage", options.onConversationMessage);
     setGlobalState("createTaskConfigResolver", options.createTaskConfigResolver);
+    setGlobalState("userModelConfigResolver", options.userModelConfigResolver);
   }
 
   get toolRegistry(): ToolRegistry | undefined {

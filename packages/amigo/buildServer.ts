@@ -9,7 +9,9 @@ const require = createRequire(import.meta.url);
 const distDir = path.resolve("dist");
 const serverOutdir = path.join(distDir, "server");
 const dataOutdir = path.join(distDir, "data");
+const scriptsOutdir = path.join(serverOutdir, "scripts");
 const backendPromptRoot = path.resolve("..", "backend", "src", "core", "systemPrompt");
+const screenshotHelperScriptPath = path.resolve("scripts", "capture-preview-screenshot.mjs");
 
 if (existsSync(serverOutdir)) {
   await rm(serverOutdir, { recursive: true, force: true });
@@ -46,3 +48,7 @@ await cp(path.join(backendPromptRoot, "shared"), path.join(serverOutdir, "shared
   recursive: true,
 });
 await cp(path.join(backendPromptRoot, "sub"), path.join(serverOutdir, "sub"), { recursive: true });
+await mkdir(scriptsOutdir, { recursive: true });
+if (existsSync(screenshotHelperScriptPath)) {
+  await cp(screenshotHelperScriptPath, path.join(scriptsOutdir, "capture-preview-screenshot.mjs"));
+}

@@ -51,6 +51,39 @@ export const getAttachmentKind = (file: File): UserMessageAttachment["kind"] => 
   return "file";
 };
 
+const isImageFile = (file: File): boolean => file.type.startsWith("image/");
+
+const dedupeFiles = (files: File[]): File[] => {
+  const seen = new Set<string>();
+  return files.filter((file) => {
+    const key = `${file.name}:${file.size}:${file.type}:${file.lastModified}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+};
+
+export const extractImageFilesFromDataTransfer = (
+  dataTransfer: Pick<DataTransfer, "files" | "items"> | null | undefined,
+): File[] => {
+  if (!dataTransfer) {
+    return [];
+  }
+
+  const itemFiles = Array.from(dataTransfer.items || [])
+    .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => !!file);
+
+  if (itemFiles.length > 0) {
+    return dedupeFiles(itemFiles);
+  }
+
+  return dedupeFiles(Array.from(dataTransfer.files || []).filter((file) => isImageFile(file)));
+};
+
 export const formatFileSize = (size: number): string => {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
@@ -145,6 +178,7 @@ export const toUploadedUserMessageAttachments = (
 export const requestOssPolicy = async (wsUrl: string, file: File): Promise<OssPolicyResponse> => {
   const response = await fetch(`${getHttpBaseUrlFromWebSocketUrl(wsUrl)}/api/uploads/oss/policy`, {
     method: "POST",
+    credentials: "include",
     headers: {
       "content-type": "application/json",
     },
@@ -231,6 +265,7 @@ export const uploadFileToAliyunOssWithProgress = (
 export const deleteOssObjectViaServer = async (wsUrl: string, objectKey: string): Promise<void> => {
   const response = await fetch(`${getHttpBaseUrlFromWebSocketUrl(wsUrl)}/api/uploads/oss/delete`, {
     method: "POST",
+    credentials: "include",
     headers: {
       "content-type": "application/json",
     },

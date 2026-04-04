@@ -1,4 +1,3 @@
-import { FileEdit } from "lucide-react";
 import type React from "react";
 import type { ToolMessageRendererProps } from "../../../types/renderers";
 import { ToolAccordion } from "./ToolAccordion";
@@ -135,7 +134,6 @@ export const DefaultEditFileRenderer: React.FC<ToolMessageRendererProps<"editFil
 
   return (
     <ToolAccordion
-      icon={<FileEdit size={14} />}
       title={`编辑文件: ${params.filePath}`}
       isLoading={isLoading}
       hasError={hasError}

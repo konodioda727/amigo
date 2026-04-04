@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { logger } from "@/utils/logger";
 import { createTool } from "../base";
+import { createToolResult } from "../result";
 import { DOC_TYPE_TO_FILENAME, getTaskDocsPath } from "./utils";
 
 /**
@@ -27,28 +28,32 @@ export const ReadTaskDocs = createTool({
 
     if (!taskId) {
       const errorMsg = "taskId 不能为空";
-      return {
-        message: errorMsg,
-        toolResult: {
+      return createToolResult(
+        {
           success: false,
           documents: {},
           message: errorMsg,
         },
-      };
+        {
+          transportMessage: errorMsg,
+        },
+      );
     }
 
     // 验证 phase 参数
     const validPhases = ["requirements", "design", "taskList", "all"];
     if (!validPhases.includes(phase)) {
       const errorMsg = `无效的文档类型: ${phase}。支持的类型：requirements、design、taskList、all`;
-      return {
-        message: errorMsg,
-        toolResult: {
+      return createToolResult(
+        {
           success: false,
           documents: {},
           message: errorMsg,
         },
-      };
+        {
+          transportMessage: errorMsg,
+        },
+      );
     }
 
     const taskDocsPath = getTaskDocsPath(taskId as string);
@@ -92,39 +97,45 @@ export const ReadTaskDocs = createTool({
       if (foundDocs.length === 0) {
         const notFoundMsg = "未找到任何文档";
         logger.info(`[ReadTaskDocs] ${notFoundMsg}`);
-        return {
-          message: notFoundMsg,
-          toolResult: {
+        return createToolResult(
+          {
             success: false,
             documents: {},
             message: notFoundMsg,
           },
-        };
+          {
+            transportMessage: notFoundMsg,
+          },
+        );
       }
 
       const successMsg = `成功读取 ${foundDocs.length} 个文档: ${foundDocs.join(", ")}`;
       logger.info(`[ReadTaskDocs] ${successMsg}`);
 
-      return {
-        message: successMsg,
-        toolResult: {
+      return createToolResult(
+        {
           success: true,
           documents,
           message: successMsg,
         },
-      };
+        {
+          transportMessage: successMsg,
+        },
+      );
     } catch (error) {
       const errorMsg = `读取文档失败: ${error instanceof Error ? error.message : String(error)}`;
       logger.error(`[ReadTaskDocs] ${errorMsg}`);
 
-      return {
-        message: errorMsg,
-        toolResult: {
+      return createToolResult(
+        {
           success: false,
           documents: {},
           message: errorMsg,
         },
-      };
+        {
+          transportMessage: errorMsg,
+        },
+      );
     }
   },
 });

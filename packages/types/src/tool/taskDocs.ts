@@ -78,35 +78,6 @@ export type ReadTaskDocsParams = z.infer<typeof ReadTaskDocsSchema>["params"];
 export type ReadTaskDocsResult = z.infer<typeof ReadTaskDocsSchema>["result"];
 
 /**
- * 任务进度统计 Schema
- */
-export const TaskProgressSchema = z.object({
-  total: z.number().describe("总任务数"),
-  completed: z.number().describe("已完成任务数"),
-  remaining: z.number().describe("剩余任务数"),
-  percentage: z.number().describe("完成百分比"),
-});
-
-/**
- * GetTaskListProgress 工具 Schema
- * 用于获取当前任务的 taskList.md 进度统计
- */
-export const GetTaskListProgressSchema = z.object({
-  name: z.literal("getTaskListProgress"),
-  params: z.object({}).describe("获取任务进度的参数（无需参数）"),
-  result: z
-    .object({
-      success: z.boolean().describe("操作是否成功"),
-      message: z.string().describe("操作结果消息"),
-      progress: TaskProgressSchema.optional().describe("进度统计"),
-      isAllCompleted: z.boolean().optional().describe("是否所有任务都已完成"),
-      pendingTasks: z.array(z.string()).optional().describe("待完成任务列表"),
-      completedTasks: z.array(z.string()).optional().describe("已完成任务列表"),
-    })
-    .describe("获取任务进度的结果"),
-});
-
-/**
  * ExecuteTaskList 工具 Schema
  * 用于执行当前任务的 taskList.md 中的任务
  */
@@ -141,16 +112,6 @@ export const ExecuteTaskListSchema = z.object({
 });
 
 /**
- * GetTaskListProgress 参数类型
- */
-export type GetTaskListProgressParams = z.infer<typeof GetTaskListProgressSchema>["params"];
-
-/**
- * GetTaskListProgress 结果类型
- */
-export type GetTaskListProgressResult = z.infer<typeof GetTaskListProgressSchema>["result"];
-
-/**
  * ExecuteTaskList 参数类型
  */
 export type ExecuteTaskListParams = z.infer<typeof ExecuteTaskListSchema>["params"];
@@ -159,8 +120,3 @@ export type ExecuteTaskListParams = z.infer<typeof ExecuteTaskListSchema>["param
  * ExecuteTaskList 结果类型
  */
 export type ExecuteTaskListResult = z.infer<typeof ExecuteTaskListSchema>["result"];
-
-/**
- * 任务进度类型
- */
-export type TaskProgress = z.infer<typeof TaskProgressSchema>;

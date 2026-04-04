@@ -5,6 +5,7 @@ export const AskFollowupQuestions = createTool({
   description: "询问用户后续问题以获取必要信息",
   whenToUse:
     "仅在缺少关键决策或必要参数，且无法通过现有工具自行获取时使用。不要用于无意义确认、任务收尾或满意度询问。",
+  completionBehavior: "idle",
   params: [
     {
       name: "question",

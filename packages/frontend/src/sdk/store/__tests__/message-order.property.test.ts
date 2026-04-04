@@ -185,6 +185,7 @@ describe("Property 5: Message Processing Order", () => {
           "interrupt",
           "error",
           "alert",
+          "readSummary",
         ]);
 
         for (const type of outputTypes) {
@@ -386,8 +387,13 @@ describe("Property 5: Message Processing Order", () => {
           message: JSON.stringify({
             toolName: "readFile",
             toolCallId: "readFile:0",
-            params: { filePath: "/tmp/a.ts" },
-            result: { success: true, filePath: "/tmp/a.ts", content: "a", message: "ok" },
+            params: { filePaths: ["/tmp/a.ts"] },
+            result: {
+              success: true,
+              filePaths: ["/tmp/a.ts"],
+              files: [{ success: true, filePath: "/tmp/a.ts", content: "a", message: "ok" }],
+              message: "ok",
+            },
           }),
           partial: false,
           updateTime: 1000,
@@ -400,8 +406,13 @@ describe("Property 5: Message Processing Order", () => {
           message: JSON.stringify({
             toolName: "readFile",
             toolCallId: "readFile:0",
-            params: { filePath: "/tmp/b.ts" },
-            result: { success: true, filePath: "/tmp/b.ts", content: "b", message: "ok" },
+            params: { filePaths: ["/tmp/b.ts"] },
+            result: {
+              success: true,
+              filePaths: ["/tmp/b.ts"],
+              files: [{ success: true, filePath: "/tmp/b.ts", content: "b", message: "ok" }],
+              message: "ok",
+            },
           }),
           partial: false,
           updateTime: 1001,
@@ -411,22 +422,118 @@ describe("Property 5: Message Processing Order", () => {
     ];
 
     const combined = combineMessages(messages as any);
-    const toolMessages = combined.filter((message) => message.type === "tool");
-
-    expect(toolMessages).toHaveLength(2);
-    expect(toolMessages[0]).toMatchObject({
-      type: "tool",
-      toolName: "readFile",
-      toolCallId: "readFile:0",
-      updateTime: 1000,
-      params: { filePath: "/tmp/a.ts" },
+    expect(combined).toHaveLength(1);
+    expect(combined[0]).toMatchObject({
+      type: "readSummary",
+      fileCount: 2,
+      searchCount: 0,
+      resourceCount: 0,
+      toolCount: 2,
+      text: "已浏览 2 个文件",
     });
-    expect(toolMessages[1]).toMatchObject({
+  });
+
+  test("Think messages are hidden from display output", () => {
+    const combined = combineMessages([
+      {
+        type: "think",
+        data: {
+          message: "internal reasoning",
+          partial: false,
+          updateTime: 1000,
+          taskId: "task-1",
+        },
+      },
+      {
+        type: "message",
+        data: {
+          message: "visible answer",
+          partial: false,
+          updateTime: 1001,
+          taskId: "task-1",
+        },
+      },
+    ] as any);
+
+    expect(combined).toHaveLength(1);
+    expect(combined[0]).toMatchObject({
+      type: "message",
+      message: "visible answer",
+    });
+  });
+
+  test("Contiguous read tools are aggregated into one summary", () => {
+    const combined = combineMessages([
+      {
+        type: "tool",
+        data: {
+          message: JSON.stringify({
+            toolName: "readFile",
+            toolCallId: "readFile:0",
+            params: { filePaths: ["/tmp/a.ts", "/tmp/b.ts"] },
+            result: {
+              success: true,
+              filePaths: ["/tmp/a.ts", "/tmp/b.ts"],
+              files: [
+                { success: true, filePath: "/tmp/a.ts", content: "a", message: "ok" },
+                { success: true, filePath: "/tmp/b.ts", content: "b", message: "ok" },
+              ],
+              message: "ok",
+            },
+          }),
+          partial: false,
+          updateTime: 1000,
+          taskId: "task-1",
+        },
+      },
+      {
+        type: "tool",
+        data: {
+          message: JSON.stringify({
+            toolName: "browserSearch",
+            toolCallId: "browserSearch:0",
+            params: { query: "hello" },
+            result: {
+              success: true,
+              content: "hello",
+              results: [],
+              message: "ok",
+            },
+          }),
+          partial: false,
+          updateTime: 1001,
+          taskId: "task-1",
+        },
+      },
+      {
+        type: "tool",
+        data: {
+          message: JSON.stringify({
+            toolName: "editFile",
+            toolCallId: "editFile:0",
+            params: { filePath: "/tmp/a.ts", mode: "replace", content: "updated" },
+            result: { success: true, message: "updated" },
+          }),
+          partial: false,
+          updateTime: 1002,
+          taskId: "task-1",
+        },
+      },
+    ] as any);
+
+    expect(combined).toHaveLength(2);
+    expect(combined[0]).toMatchObject({
+      type: "readSummary",
+      fileCount: 2,
+      searchCount: 1,
+      toolCount: 2,
+      text: "已浏览 2 个文件，1 个搜索",
+      files: ["/tmp/a.ts", "/tmp/b.ts"],
+      searches: ["hello"],
+    });
+    expect(combined[1]).toMatchObject({
       type: "tool",
-      toolName: "readFile",
-      toolCallId: "readFile:0",
-      updateTime: 1001,
-      params: { filePath: "/tmp/b.ts" },
+      toolName: "editFile",
     });
   });
 });

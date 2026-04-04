@@ -147,14 +147,11 @@ const getThoughtText = (delta: InteractionDelta): string | undefined => {
     return delta.thought;
   }
 
-  if (
-    delta.type === "thought_summary" &&
-    delta.content &&
-    typeof delta.content === "object" &&
-    typeof (delta.content as any).text === "string" &&
-    (delta.content as any).text
-  ) {
-    return (delta.content as any).text;
+  if (delta.type === "thought_summary" && delta.content && typeof delta.content === "object") {
+    const summaryContent = delta.content as { text?: string };
+    if (typeof summaryContent.text === "string" && summaryContent.text) {
+      return summaryContent.text;
+    }
   }
 
   return undefined;
@@ -194,6 +191,41 @@ export class GoogleGenAIProvider implements AmigoLlm {
         if (systemText.trim()) {
           systemInstructions.push(systemText);
         }
+        continue;
+      }
+
+      if (message.toolCalls && message.toolCalls.length > 0) {
+        inputTurns.push({
+          role: "model",
+          content:
+            typeof message.content === "string" && message.content.trim()
+              ? message.content
+              : JSON.stringify(
+                  message.toolCalls.map((toolCall) => ({
+                    kind: "assistant_tool_call",
+                    toolCallId: toolCall.id,
+                    toolName: toolCall.name,
+                    arguments: toolCall.arguments,
+                  })),
+                  null,
+                  2,
+                ),
+        });
+        continue;
+      }
+
+      if (message.role === "tool") {
+        inputTurns.push({
+          role: "user",
+          content:
+            typeof message.content === "string"
+              ? message.content
+              : message.content
+                  .map((part) =>
+                    part.type === "text" ? part.text : `[Attachment ${part.type}] ${part.url}`,
+                  )
+                  .join("\n"),
+        });
         continue;
       }
 
@@ -302,11 +334,9 @@ export class GoogleGenAIProvider implements AmigoLlm {
             continue;
           }
 
-          const toolCallKey = getGeminiToolCallKey(event.delta as any, assembledToolCalls.size);
-          const merged = mergeGeminiToolCall(
-            assembledToolCalls.get(toolCallKey),
-            event.delta as any,
-          );
+          const functionCall = event.delta as Extract<InteractionDelta, { type?: "function_call" }>;
+          const toolCallKey = getGeminiToolCallKey(functionCall, assembledToolCalls.size);
+          const merged = mergeGeminiToolCall(assembledToolCalls.get(toolCallKey), functionCall);
           assembledToolCalls.set(toolCallKey, merged);
 
           yield {

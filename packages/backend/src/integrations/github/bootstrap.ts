@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { conversationRepository } from "@/core/conversation";
 import { getConversationPersistenceProvider } from "@/core/persistence";
 import { getCacheRootPath } from "@/core/storage";
+import { resolveGithubGitAuth } from "@/integrations/github/app";
 import { logger } from "@/utils/logger";
 
 const execFileAsync = promisify(execFile);
@@ -93,22 +94,41 @@ async function pathExists(targetPath: string): Promise<boolean> {
   }
 }
 
-async function runGit(args: string[]): Promise<string> {
+function buildGithubHttpAuthEnv(host: string, token: string): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: `http.https://${host}/.extraheader`,
+    GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`, "utf8").toString("base64")}`,
+  };
+}
+
+async function runGit(args: string[], env?: NodeJS.ProcessEnv): Promise<string> {
   const { stdout, stderr } = await execFileAsync("git", args, {
     maxBuffer: 10 * 1024 * 1024,
+    ...(env ? { env } : {}),
   });
   return `${stdout || ""}${stderr || ""}`.trim();
 }
 
 async function ensureMirrorReady(repoUrl: string, mirrorPath: string): Promise<void> {
   await ensureDir(path.dirname(mirrorPath));
+  const githubAuth = await resolveGithubGitAuth(repoUrl);
+  const effectiveRepoUrl = githubAuth?.repoUrl || repoUrl;
+  const gitEnv = githubAuth ? buildGithubHttpAuthEnv(githubAuth.host, githubAuth.token) : undefined;
 
   if (await pathExists(mirrorPath)) {
-    await runGit(["--git-dir", mirrorPath, "fetch", "--prune", "origin"]);
+    if (effectiveRepoUrl !== repoUrl) {
+      await runGit(
+        ["--git-dir", mirrorPath, "remote", "set-url", "origin", effectiveRepoUrl],
+        gitEnv,
+      );
+    }
+    await runGit(["--git-dir", mirrorPath, "fetch", "--prune", "origin"], gitEnv);
     return;
   }
 
-  await runGit(["clone", "--mirror", repoUrl, mirrorPath]);
+  await runGit(["clone", "--mirror", effectiveRepoUrl, mirrorPath], gitEnv);
 }
 
 async function resolveDefaultBranch(mirrorPath: string): Promise<string> {

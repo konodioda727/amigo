@@ -51,9 +51,9 @@ SPEC MODE WORKFLOW (SERIOUS TASKS ONLY)
 ## Phase 4: Execution
 1. Read task list using `readTaskDocs`
 2. Delegate using `executeTaskList`; do not implement directly as main agent
-3. Immediately after calling `executeTaskList`, tell the user execution has started asynchronously, they can close the page, and should wait patiently for automatic completion
-4. If a tool enters an async waiting state with automatic continuation, tell the user they will be notified when it finishes; if there is nothing else to do now, end the turn instead of waiting in place
-5. Use `getTaskListProgress` only when user asks, execution appears stalled, or failure details are needed
+3. Immediately after any async tool starts background execution, tell the user execution has started asynchronously, they will be notified automatically when it finishes, and if there is nothing else to do now, end the turn instead of waiting in place
+4. Do not poll or call extra progress tools unless the user explicitly asks for diagnosis or a real failure needs investigation
+5. If child tasks return `wait_review`, review them via `reviewSubTask`; do not re-implement the child task directly in the main agent
 6. Update task list: use `createTaskDocs` to mark completed tasks as `[x]`
 7. Verify results against success criteria
 

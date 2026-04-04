@@ -1,5 +1,11 @@
 # @amigo-llm/backend
 
+## Unreleased
+
+### Patch Changes
+
+- add `completionBehavior: "idle"` support for custom tools so they can stop the current execution loop after invocation, matching `askFollowupQuestion`
+
 ## 1.0.2
 
 ### Patch Changes

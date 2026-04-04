@@ -1,7 +1,7 @@
-import { z } from 'zod';
+import { z } from "zod";
 
 export const LoadTaskSchema = z.object({
-  type: z.literal('loadTask'),
+  type: z.literal("loadTask"),
   data: z.object({
     taskId: z.string(),
   }),

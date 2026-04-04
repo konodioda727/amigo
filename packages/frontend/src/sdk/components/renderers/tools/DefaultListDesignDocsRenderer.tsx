@@ -1,4 +1,3 @@
-import { Layers3 } from "lucide-react";
 import type React from "react";
 import { ToolAccordion } from "./ToolAccordion";
 
@@ -10,11 +9,6 @@ interface ListDesignDocsToolOutput {
     title?: string | null;
     updatedAt?: string | null;
     valid?: boolean;
-    penpotBinding?: {
-      fileId: string;
-      penpotPageId: string;
-      fileUrl: string;
-    };
   }>;
 }
 
@@ -39,7 +33,6 @@ export const DefaultListDesignDocsRenderer: React.FC<ListDesignDocsRendererProps
 
   return (
     <ToolAccordion
-      icon={<Layers3 size={14} />}
       title={`设计稿列表${docs.length > 0 ? ` (${docs.length})` : ""}`}
       isLoading={isLoading}
       hasError={hasError}
@@ -52,9 +45,6 @@ export const DefaultListDesignDocsRenderer: React.FC<ListDesignDocsRendererProps
           <div key={doc.pageId} className="rounded border border-neutral-200 bg-white px-2 py-1.5">
             <div className="font-medium text-neutral-800">{doc.title || doc.pageId}</div>
             <div className="text-neutral-500">pageId: {doc.pageId}</div>
-            {doc.penpotBinding ? (
-              <div className="text-neutral-500">Penpot page: {doc.penpotBinding.penpotPageId}</div>
-            ) : null}
           </div>
         ))}
       </div>

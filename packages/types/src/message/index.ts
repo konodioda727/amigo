@@ -1,4 +1,4 @@
-import { z, type ZodObject } from "zod";
+import { type ZodObject, z } from "zod";
 
 /**
  * 消息 Schema 接口（兼容现有 ServerSendMessageSchema 结构）

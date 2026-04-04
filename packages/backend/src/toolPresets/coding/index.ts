@@ -1,5 +1,6 @@
 import type { Sandbox } from "@/core/sandbox";
 import { queueToolRetryAfterDependencies } from "@/core/tools/dependencyWorkflow";
+import { createToolResult } from "@/core/tools/result";
 import { normalizeSandboxToolWorkingDir } from "@/core/tools/sandboxDependency";
 import { defineTool } from "@/sdk";
 import { logger } from "@/utils/logger";
@@ -206,6 +207,29 @@ function commandNameSlug(command: string): string {
   return command.replace(/[:/\s]+/g, "_");
 }
 
+type RunChecksStepStatus = "running" | "passed" | "failed" | "timeout" | "blocked";
+type RunChecksStepSnapshot = {
+  name: string;
+  command: string;
+  status: RunChecksStepStatus;
+  exitCode?: number;
+  durationMs?: number;
+  outputTail?: string;
+};
+
+type RunChecksResult = {
+  success: boolean;
+  async?: boolean;
+  overallStatus: "passed" | "partial" | "failed" | "waiting_for_dependencies";
+  preset: string;
+  workingDir: string;
+  failedSteps: string[];
+  steps: RunChecksStepSnapshot[];
+  dependencyStatus?: "pending" | "running" | "success" | "failed" | "not_required";
+  jobId?: string;
+  message: string;
+};
+
 export const runChecksTool = defineTool({
   name: "runChecks",
   description: "统一运行 lint/test/typecheck/build 等检查，返回结构化结果。",
@@ -246,23 +270,25 @@ export const runChecksTool = defineTool({
     const workingDir = normalizeSandboxToolWorkingDir(
       typeof params.workingDir === "string" ? params.workingDir : undefined,
     );
+    const buildResult = (result: RunChecksResult) =>
+      createToolResult(result, {
+        transportMessage: result.message,
+        continuationSummary: result.message,
+      });
 
     try {
       const sandbox = (await context.getSandbox()) as Sandbox;
       if (!sandbox || !sandbox.isRunning()) {
         const message = "沙箱未运行，无法执行 runChecks";
-        return {
+        return buildResult({
+          success: false,
+          overallStatus: "failed",
+          preset: customCommands.length ? "custom" : preset,
+          workingDir,
+          failedSteps: [],
+          steps: [],
           message,
-          toolResult: {
-            success: false,
-            overallStatus: "failed",
-            preset: customCommands.length ? "custom" : preset,
-            workingDir,
-            failedSteps: [],
-            steps: [],
-            message,
-          },
-        };
+        });
       }
 
       const dependencyStatus = sandbox.getDependencyInstallStatus(workingDir);
@@ -299,54 +325,45 @@ export const runChecksTool = defineTool({
           ? "依赖正在下载中，runChecks 会在下载完成后自动运行。"
           : "runChecks 正在等待依赖下载完成，完成后会自动运行。";
 
-        return {
+        return buildResult({
+          success: false,
+          async: true,
+          overallStatus: "waiting_for_dependencies",
+          preset: customCommands.length ? "custom" : preset,
+          workingDir,
+          failedSteps: [],
+          steps: [],
+          dependencyStatus: dependencyStatus.status,
+          jobId: waitingJob.job.id,
           message,
-          toolResult: {
-            success: false,
-            async: true,
-            overallStatus: "waiting_for_dependencies",
-            preset: customCommands.length ? "custom" : preset,
-            workingDir,
-            failedSteps: [],
-            steps: [],
-            dependencyStatus: dependencyStatus.status,
-            jobId: waitingJob.job.id,
-            message,
-          },
-        };
+        });
       }
 
       if (dependencyStatus.status === "idle") {
         const message =
           "依赖尚未安装。请先读取目标目录的 package.json/README/锁文件，确认真实安装方式后调用 installDependencies，并传入明确的 installCommand。";
-        return {
+        return buildResult({
+          success: false,
+          overallStatus: "failed",
+          preset: customCommands.length ? "custom" : preset,
+          workingDir,
+          failedSteps: [],
+          steps: [],
           message,
-          toolResult: {
-            success: false,
-            overallStatus: "failed",
-            preset: customCommands.length ? "custom" : preset,
-            workingDir,
-            failedSteps: [],
-            steps: [],
-            message,
-          },
-        };
+        });
       }
 
       if (dependencyStatus.status === "failed") {
         const message = `依赖安装失败，请先修复后再执行 runChecks。日志: ${dependencyStatus.logPath}${dependencyStatus.error ? `\n\n最近错误:\n${dependencyStatus.error}` : ""}`;
-        return {
+        return buildResult({
+          success: false,
+          overallStatus: "failed",
+          preset: customCommands.length ? "custom" : preset,
+          workingDir,
+          failedSteps: [],
+          steps: [],
           message,
-          toolResult: {
-            success: false,
-            overallStatus: "failed",
-            preset: customCommands.length ? "custom" : preset,
-            workingDir,
-            failedSteps: [],
-            steps: [],
-            message,
-          },
-        };
+        });
       }
 
       let stepsToRun: Array<{ name: string; command: string }> = [];
@@ -367,28 +384,56 @@ export const runChecksTool = defineTool({
           customCommands.length > 0
             ? "runChecks 未收到可执行命令"
             : `runChecks 无法从 package.json 推断 preset='${preset}' 的检查命令`;
-        return {
+        return buildResult({
+          success: false,
+          overallStatus: "failed",
+          preset: presetLabel,
+          workingDir,
+          failedSteps: [],
+          steps: [],
           message,
-          toolResult: {
-            success: false,
-            overallStatus: "failed",
-            preset: presetLabel,
-            workingDir,
-            failedSteps: [],
-            steps: [],
-            message,
-          },
-        };
+        });
       }
 
-      const steps: Array<{
-        name: string;
-        command: string;
-        status: "passed" | "failed" | "timeout" | "blocked";
-        exitCode?: number;
-        durationMs: number;
-        outputTail: string;
-      }> = [];
+      const steps: RunChecksStepSnapshot[] = [];
+      const emitStepSnapshot = (current?: RunChecksStepSnapshot) => {
+        const snapshot = current
+          ? [
+              ...steps,
+              {
+                ...current,
+              },
+            ]
+          : [...steps];
+        const hasFailures = snapshot.some(
+          (item) =>
+            item.status === "failed" || item.status === "timeout" || item.status === "blocked",
+        );
+        const hasRunning = snapshot.some((item) => item.status === "running");
+        const message = hasRunning
+          ? "runChecks 执行中"
+          : hasFailures
+            ? "runChecks 部分失败"
+            : "runChecks 执行中";
+
+        context.postToolUpdate?.({
+          websocketData: {
+            overallStatus: hasRunning ? "running" : hasFailures ? "partial" : "passed",
+            preset: presetLabel,
+            workingDir,
+            failedSteps: snapshot
+              .filter(
+                (item) =>
+                  item.status === "failed" ||
+                  item.status === "timeout" ||
+                  item.status === "blocked",
+              )
+              .map((item) => item.name),
+            steps: snapshot,
+            message,
+          },
+        });
+      };
 
       for (const step of stepsToRun) {
         const startedAt = Date.now();
@@ -403,16 +448,16 @@ export const runChecksTool = defineTool({
               durationMs: Date.now() - startedAt,
               outputTail: blockReason,
             });
+            emitStepSnapshot();
             if (stopOnFail) break;
             continue;
           }
         }
 
-        context.postMessage?.({
-          type: "runChecksStep",
-          status: "running",
+        emitStepSnapshot({
           name: step.name,
           command: step.command,
+          status: "running",
         });
 
         const fullCommand =
@@ -440,12 +485,7 @@ export const runChecksTool = defineTool({
               : trimOutputTail(output, tailLines),
           };
           steps.push(result);
-          context.postMessage?.({
-            type: "runChecksStep",
-            status: result.status,
-            name: result.name,
-            exitCode: result.exitCode,
-          });
+          emitStepSnapshot();
           if (stopOnFail && result.status !== "passed") break;
         } catch (error) {
           const result = {
@@ -456,6 +496,7 @@ export const runChecksTool = defineTool({
             outputTail: `执行异常: ${error instanceof Error ? error.message : String(error)}`,
           };
           steps.push(result);
+          emitStepSnapshot();
           if (stopOnFail) break;
         }
       }
@@ -471,33 +512,27 @@ export const runChecksTool = defineTool({
         ? `runChecks 完成：${steps.length} 个步骤全部通过`
         : `runChecks 完成：${steps.length} 个步骤，失败 ${failedSteps.length} 个${failedSteps.length ? `（${failedSteps.join(", ")}）` : ""}`;
 
-      return {
+      return buildResult({
+        success,
+        overallStatus,
+        preset: presetLabel,
+        workingDir,
+        failedSteps,
+        steps,
         message,
-        toolResult: {
-          success,
-          overallStatus,
-          preset: presetLabel,
-          workingDir,
-          failedSteps,
-          steps,
-          message,
-        },
-      };
+      });
     } catch (error) {
       const message = `runChecks 执行异常: ${error instanceof Error ? error.message : String(error)}`;
       logger.error("[AppTools][runChecks] error:", error);
-      return {
+      return buildResult({
+        success: false,
+        overallStatus: "failed",
+        preset: customCommands.length ? "custom" : preset,
+        workingDir,
+        failedSteps: [],
+        steps: [],
         message,
-        toolResult: {
-          success: false,
-          overallStatus: "failed",
-          preset: customCommands.length ? "custom" : preset,
-          workingDir,
-          failedSteps: [],
-          steps: [],
-          message,
-        },
-      };
+      });
     }
   },
 });

@@ -9,7 +9,7 @@ import { SandboxToolRenderer } from "./components/SandboxToolRenderer";
 import AdminPage from "./pages/AdminPage";
 import AuthPage from "./pages/AuthPage";
 import ChatPage from "./pages/ChatPage";
-import DesignPage from "./pages/DesignPage";
+import DesignDraftPage from "./pages/DesignDraftPage";
 import HomePage from "./pages/HomePage";
 import SkillsPage from "./pages/SkillsPage";
 import { isLocalhost } from "./utils/isLocalhost";
@@ -62,8 +62,8 @@ const ProtectedApp: React.FC<{ wsUrl: string }> = ({ wsUrl }) => (
         <Route path="/admin" element={<Navigate to="/automations" replace />} />
         <Route path="/automations" element={<AdminPage />} />
         <Route path="/skills" element={<SkillsPage />} />
-        <Route path="/:taskId/design" element={<DesignPage />} />
-        <Route path="/:taskId/design/:pageId" element={<DesignPage />} />
+        <Route path="/:taskId/drafts" element={<DesignDraftPage />} />
+        <Route path="/:taskId/drafts/:draftId" element={<DesignDraftPage />} />
         <Route path="/:taskId" element={<ChatPage />} />
       </Routes>
     </Layout>

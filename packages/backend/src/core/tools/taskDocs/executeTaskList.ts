@@ -9,6 +9,12 @@ import {
 } from "@/core/conversation";
 import { conversationRepository } from "@/core/conversation/ConversationRepository";
 import {
+  extractCompletedSubTaskPayload,
+  extractPendingCompleteTaskPayload,
+  formatCompletedSubTaskPayload,
+  validateCompletedSubTaskPayload,
+} from "@/core/conversation/subTaskResult";
+import {
   getTaskId,
   parseChecklist,
   sortTasksTopologically,
@@ -25,12 +31,8 @@ type GenericTool = ToolInterface<string>;
 
 const CONCURRENCY_LIMIT = 2;
 const DOC_TRUNCATE_LIMIT = 4000;
-const FORBIDDEN_SUB_TASK_TOOLS = [
-  "createTaskDocs",
-  "readTaskDocs",
-  "getTaskListProgress",
-  "executeTaskList",
-];
+const MAX_SUB_TASK_AUTO_RETRIES = 2;
+const FORBIDDEN_SUB_TASK_TOOLS = ["createTaskDocs", "readTaskDocs", "executeTaskList"];
 const normalizeDescription = (description: string) =>
   description.replace(/\(In Progress\)$/, "").trim();
 
@@ -114,6 +116,7 @@ const buildSubAgentPrompt = ({
   dependencyResults,
   parentDocs,
   taskItem,
+  retryFeedback,
 }: {
   cleanDescription: string;
   availableTools: GenericTool[];
@@ -121,6 +124,7 @@ const buildSubAgentPrompt = ({
   dependencyResults: string;
   parentDocs: { requirements: string; design: string; taskList: string };
   taskItem: ReturnType<typeof parseChecklist>["items"][number];
+  retryFeedback?: string;
 }) => {
   const docsBlock = [
     formatDocSection("Requirements", parentDocs.requirements),
@@ -143,7 +147,13 @@ ${dependencyResults ? `\n**依赖任务 completeTask 结果（必须参考）：
 1. 只完成当前任务，避免重新拆分
 2. 参考父任务文档中的要求与设计，并按协作契约执行
 3. 使用提供的工具
-4. 只有在当前任务已经真正解决、最终结果已经准备好、且没有未完成步骤/待验证项/阻塞项时，才能使用 completeTask 返回结果`;
+4. 只有在当前任务已经真正解决、最终结果已经准备好、且没有未完成步骤/待验证项/阻塞项时，才能使用 completeTask 返回结果
+5. completeTask 的 \`summary\` 必须是 1-2 句摘要；\`result\` 必须严格包含以下 Markdown 二级标题，且每节都要写实质内容：
+   - \`## 交付物\`
+   - \`## 验证\`
+   - \`## 遗留问题\`
+   - \`## 下游说明\`
+${retryFeedback ? `\n**上一次自动验收未通过，必须返工并修正以下问题：**\n${retryFeedback}` : ""}`;
 };
 
 const getExistingSubTaskStatus = (
@@ -194,12 +204,6 @@ const startNewTask = ({
   return (async (): Promise<TaskExecutionResult> => {
     const { description, lineNumber } = taskItem;
     let taskSucceeded = false;
-    try {
-      markTaskInProgress(filePath, lineNumber, description);
-    } catch (e) {
-      logger.error(`[ExecuteTaskList] 标记任务开始失败: ${e}`);
-    }
-
     const cleanDescriptionForAgent = normalizeDescription(description);
     const { cleanDescription, availableTools, invalidTools, forbiddenTools } =
       resolveRequestedTools(cleanDescriptionForAgent, getToolByName);
@@ -208,24 +212,26 @@ const startNewTask = ({
       getExistingSubTaskStatus(parentConv, taskKey, cleanDescriptionForAgent) ||
       parentConv.memory.subTasks[description];
 
-    if (existingStatus?.subTaskId && (executionType === "failed" || executionType === "running")) {
+    if (existingStatus?.subTaskId && executionType === "failed") {
       const existingConversation = conversationRepository.load(existingStatus.subTaskId);
       if (existingConversation && !["aborted", "completed"].includes(existingConversation.status)) {
         logger.info(
-          `[ExecuteTaskList] 重新执行 ${executionType} 任务，先中断旧子任务: ${existingStatus.subTaskId}`,
+          `[ExecuteTaskList] 重新执行失败任务，先中断旧子任务: ${existingStatus.subTaskId}`,
         );
         taskOrchestrator.interrupt(existingConversation);
       }
     }
 
     const reuseSubTaskId =
-      executionType === "new" &&
-      existingStatus?.subTaskId &&
-      existingStatus.status !== "completed" &&
-      existingStatus.status !== "failed" &&
-      existingStatus.status !== "running"
-        ? existingStatus.subTaskId
-        : undefined;
+      executionType === "running"
+        ? existingStatus?.subTaskId
+        : executionType === "new" &&
+            existingStatus?.subTaskId &&
+            existingStatus.status !== "completed" &&
+            existingStatus.status !== "failed" &&
+            existingStatus.status !== "running"
+          ? existingStatus.subTaskId
+          : undefined;
 
     if (invalidTools.length > 0) {
       logger.warn(
@@ -233,42 +239,121 @@ const startNewTask = ({
       );
     }
 
-    const dependencyResults = buildDependencyResultContext({
-      dependencies: taskItem.dependencies,
-      parentConversation: parentConv,
-    });
-    const subAgentPrompt = buildSubAgentPrompt({
-      cleanDescription,
-      availableTools,
-      forbiddenTools,
-      dependencyResults,
-      parentDocs,
-      taskItem,
-    });
-
-    let summary: string;
+    let summary = "";
     let outcome: TaskExecutionResult["outcome"] = "failed";
-    try {
-      const result = await taskOrchestrator.runSubTask({
-        subPrompt: subAgentPrompt,
-        parentId: taskId,
-        target: cleanDescription,
-        tools: availableTools,
-        taskDescription: cleanDescriptionForAgent,
-        subTaskId: reuseSubTaskId,
+    let latestValidationReason = "";
+
+    for (let attempt = 0; attempt <= MAX_SUB_TASK_AUTO_RETRIES; attempt++) {
+      try {
+        markTaskInProgress(filePath, lineNumber, description);
+      } catch (e) {
+        logger.error(`[ExecuteTaskList] 标记任务开始失败: ${e}`);
+      }
+
+      const dependencyResults = buildDependencyResultContext({
+        dependencies: taskItem.dependencies,
+        parentConversation: parentConv,
       });
-      summary = result.result;
-      taskSucceeded = true;
-      outcome = "success";
-    } catch (error) {
-      const failureState = resolveSubTaskFailureState(error);
-      summary = failureState.summary;
-      outcome = failureState.outcome;
-      parentConv.updateSubTaskStatus(cleanDescriptionForAgent, {
-        status: failureState.status,
-        error: failureState.error,
-        completedAt: failureState.completedAt,
+      const subAgentPrompt = buildSubAgentPrompt({
+        cleanDescription,
+        availableTools,
+        forbiddenTools,
+        dependencyResults,
+        parentDocs,
+        taskItem,
+        retryFeedback:
+          attempt > 0 && latestValidationReason
+            ? `- ${latestValidationReason.split("\n").join("\n- ")}`
+            : undefined,
       });
+
+      try {
+        const result = await taskOrchestrator.runSubTask({
+          subPrompt: subAgentPrompt,
+          parentId: taskId,
+          target: cleanDescription,
+          tools: availableTools,
+          taskDescription: cleanDescriptionForAgent,
+          subTaskId: attempt === 0 ? reuseSubTaskId : undefined,
+        });
+        const subConversation = conversationRepository.load(result.subTaskId);
+        const completionPayload =
+          result.status === "wait_review"
+            ? subConversation
+              ? extractPendingCompleteTaskPayload(subConversation)
+              : null
+            : subConversation
+              ? extractCompletedSubTaskPayload(subConversation)
+              : null;
+
+        if (result.status === "wait_review") {
+          summary = buildWaitReviewSummary({
+            subTaskId: result.subTaskId,
+            summary: completionPayload
+              ? formatCompletedSubTaskPayload(completionPayload)
+              : result.result,
+          });
+          outcome = "wait_review";
+          parentConv.updateSubTaskStatus(cleanDescriptionForAgent, {
+            status: "wait_review",
+            subTaskId: result.subTaskId,
+          });
+          try {
+            updateTaskListStatus(filePath, lineNumber, cleanDescriptionForAgent, false);
+          } catch (e) {
+            logger.error(`[ExecuteTaskList] 写回待审核任务状态失败: ${e}`);
+          }
+          notifyParentReviewNeeded({
+            parentConv,
+            target: cleanDescription,
+            subTaskId: result.subTaskId,
+            summary,
+          });
+          break;
+        }
+
+        const validation = validateCompletedSubTaskPayload(completionPayload);
+
+        if (!validation.ok) {
+          latestValidationReason = validation.reason || "completeTask 结果不符合要求。";
+          parentConv.updateSubTaskStatus(cleanDescriptionForAgent, {
+            status: "failed",
+            error: latestValidationReason,
+            completedAt: new Date().toISOString(),
+          });
+          try {
+            updateTaskListStatus(filePath, lineNumber, cleanDescriptionForAgent, false);
+          } catch (e) {
+            logger.error(`[ExecuteTaskList] 回退未通过验收的任务状态失败: ${e}`);
+          }
+
+          if (attempt < MAX_SUB_TASK_AUTO_RETRIES) {
+            logger.warn(
+              `[ExecuteTaskList] 任务 "${cleanDescription}" 未通过自动验收，准备重试: ${latestValidationReason}`,
+            );
+            continue;
+          }
+
+          summary = latestValidationReason;
+          outcome = "failed";
+          break;
+        }
+
+        summary = result.result;
+        taskSucceeded = true;
+        outcome = "success";
+        break;
+      } catch (error) {
+        const failureState = resolveSubTaskFailureState(error);
+        summary = failureState.summary;
+        outcome = failureState.outcome;
+        parentConv.updateSubTaskStatus(cleanDescriptionForAgent, {
+          status: failureState.status,
+          error: failureState.error,
+          completedAt: failureState.completedAt,
+        });
+        break;
+      }
     }
 
     try {
@@ -370,9 +455,14 @@ const getTaskPriority = (executionType: TaskExecutionType) => {
 type TaskExecutionResult = {
   target: string;
   success: boolean;
-  outcome: "success" | "failed" | "interrupted";
+  outcome: "success" | "failed" | "interrupted" | "wait_review";
   summary: string;
   invalidTools?: string[];
+};
+
+const buildWaitReviewSummary = ({ subTaskId, summary }: { subTaskId: string; summary: string }) => {
+  const normalizedSummary = summary.trim() || "子任务已提交 completeTask 待审。";
+  return `子任务已提交待审完成结果。\nsubTaskId: ${subTaskId}\n\n${normalizedSummary}`;
 };
 
 const isInterruptedSubTaskError = (error: unknown): error is SubTaskInterruptedError =>
@@ -510,9 +600,10 @@ const buildExecutionMessage = ({
   const successCount = results.filter((r) => r.outcome === "success").length;
   const failedCount = results.filter((r) => r.outcome === "failed").length;
   const interruptedCount = results.filter((r) => r.outcome === "interrupted").length;
+  const reviewCount = results.filter((r) => r.outcome === "wait_review").length;
   const blockedCount = Math.max(
     0,
-    pendingTasks.length - successCount - failedCount - interruptedCount,
+    pendingTasks.length - successCount - failedCount - interruptedCount - reviewCount,
   );
 
   let warningMessage = hasInvalidTools
@@ -527,18 +618,97 @@ const buildExecutionMessage = ({
     warningMessage += `\n⚠️ 提示：有 ${interruptedCount} 个任务被中断，已回退为待审核状态。`;
   }
 
+  if (reviewCount > 0) {
+    warningMessage += `\n⚠️ 提示：有 ${reviewCount} 个任务已提交待审核结果。主任务应优先调用 reviewSubTask 审阅，而不是自行重做。`;
+  }
+
   if (blockedCount > 0) {
     warningMessage += `\n⚠️ 警告：有 ${blockedCount} 个任务未被执行（可能处于待审核、依赖未满足或配置错误）。`;
   }
 
-  return `✅ 自动执行完成（成功 ${successCount}/${pendingTasks.length}，失败 ${failedCount}，中断 ${interruptedCount}）${warningMessage}\n\n${results
+  return `✅ 自动执行完成（成功 ${successCount}/${pendingTasks.length}，失败 ${failedCount}，中断 ${interruptedCount}，待审核 ${reviewCount}）${warningMessage}\n\n${results
     .map(
       (r, i) =>
         `任务 ${i + 1}: ${r.target}\n状态: ${
-          r.outcome === "success" ? "成功" : r.outcome === "interrupted" ? "待审核" : "失败"
+          r.outcome === "success"
+            ? "成功"
+            : r.outcome === "interrupted" || r.outcome === "wait_review"
+              ? "待审核"
+              : "失败"
         }\n结果: ${r.summary}${r.invalidTools ? `\n⚠️ 无效工具: ${r.invalidTools.join(", ")}` : ""}`,
     )
     .join("\n\n")}`;
+};
+
+const summarizeExecutionOutcomes = ({
+  results,
+  pendingTasks,
+}: {
+  results: TaskExecutionResult[];
+  pendingTasks: ReturnType<typeof parseChecklist>["items"];
+}) => {
+  const successCount = results.filter((r) => r.outcome === "success").length;
+  const failedCount = results.filter((r) => r.outcome === "failed").length;
+  const interruptedCount = results.filter((r) => r.outcome === "interrupted").length;
+  const reviewCount = results.filter((r) => r.outcome === "wait_review").length;
+  const blockedCount = Math.max(
+    0,
+    pendingTasks.length - successCount - failedCount - interruptedCount - reviewCount,
+  );
+
+  return { successCount, failedCount, interruptedCount, reviewCount, blockedCount };
+};
+
+const detectFinalDesignDraftModuleExecution = (parentDocs: {
+  requirements: string;
+  design: string;
+  taskList: string;
+}) => {
+  const combined = `${parentDocs.requirements}\n${parentDocs.design}\n${parentDocs.taskList}`;
+  if (!combined.includes("最终设计稿模块实施")) {
+    return null;
+  }
+
+  const taskListDraftIdMatch = parentDocs.taskList.match(
+    /^# Task List: 最终设计稿模块实施\s+([^\s]+)\s*$/m,
+  );
+  const requirementsDraftIdMatch = parentDocs.requirements.match(/^- draftId:\s*([^\s]+)\s*$/m);
+  const draftId = taskListDraftIdMatch?.[1] || requirementsDraftIdMatch?.[1] || "";
+
+  return draftId ? { draftId } : { draftId: "" };
+};
+
+const buildPostExecuteContinuationReason = ({
+  parentDocs,
+  results,
+  pendingTasks,
+}: {
+  parentDocs: { requirements: string; design: string; taskList: string };
+  results: TaskExecutionResult[];
+  pendingTasks: ReturnType<typeof parseChecklist>["items"];
+}) => {
+  const { failedCount, interruptedCount, reviewCount, blockedCount } = summarizeExecutionOutcomes({
+    results,
+    pendingTasks,
+  });
+
+  if (reviewCount > 0) {
+    return "executeTaskList 异步执行已完成。若存在待审核子任务，请先使用 reviewSubTask 审阅并决定通过或打回，不要自己重做子任务。";
+  }
+
+  if (failedCount > 0 || interruptedCount > 0 || blockedCount > 0) {
+    return "executeTaskList 异步执行已完成，但仍有失败、中断或未执行任务。请基于最新执行结果继续处理，不要直接总结给用户。";
+  }
+
+  const finalDesignDraftContext = detectFinalDesignDraftModuleExecution(parentDocs);
+  if (finalDesignDraftContext) {
+    const draftIdHint = finalDesignDraftContext.draftId
+      ? `draftId="${finalDesignDraftContext.draftId}"`
+      : "对应的 draftId";
+    return `executeTaskList 异步执行已完成，且当前是最终设计稿模块实施任务。不要直接总结给用户；请立即调用 orchestrateFinalDesignDraft，参数使用 ${draftIdHint}，完成整页装配。整页装配完成后先调用 readFinalDesignDraft 确认 final draft 已生成，再调用 readDraftCritique 查看整页评审结果。`;
+  }
+
+  return "executeTaskList 异步执行已完成。若全部完成请直接总结给用户。";
 };
 
 const continueParentConversationIfNeeded = (
@@ -586,6 +756,27 @@ const appendInternalExecutionSummary = (
     type: "system",
     partial: false,
   });
+};
+
+const notifyParentReviewNeeded = ({
+  parentConv,
+  target,
+  subTaskId,
+  summary,
+}: {
+  parentConv: NonNullable<ReturnType<typeof conversationRepository.load>>;
+  target: string;
+  subTaskId: string;
+  summary: string;
+}) => {
+  appendInternalExecutionSummary(
+    parentConv,
+    `子任务待审核通知\n\n目标: ${target}\nsubTaskId: ${subTaskId}\n\n${summary}`,
+  );
+  continueParentConversationIfNeeded(
+    parentConv,
+    `子任务 ${subTaskId} 已提交待审核结果。请立即调用 reviewSubTask 审阅该子任务；不要等待所有子任务结束后再统一处理，也不要自己重做该子任务。`,
+  );
 };
 
 /**
@@ -671,7 +862,11 @@ export const ExecuteTaskList = createTool({
             appendInternalExecutionSummary(parentConv, executionMsg);
             continueParentConversationIfNeeded(
               parentConv,
-              "executeTaskList 异步执行已完成，请基于最新 taskList 和执行结果继续推进任务；若全部完成请直接总结给用户。",
+              buildPostExecuteContinuationReason({
+                parentDocs,
+                results,
+                pendingTasks,
+              }),
             );
           } catch (error) {
             const errorMsg = `执行任务列表失败: ${error instanceof Error ? error.message : String(error)}`;

@@ -1,4 +1,4 @@
-import type { ModelThinkType } from "./contextConfig";
+import type { ModelConfigSnapshot, ModelThinkType } from "./contextConfig";
 
 export type AmigoMessageRole = "system" | "user" | "assistant";
 
@@ -75,11 +75,13 @@ export interface AmigoLlm {
 export type LlmFactory = (options?: {
   model?: string;
   configId?: string;
+  userId?: string;
+  modelConfigSnapshot?: ModelConfigSnapshot;
   resolvedConfig?: {
     configId: string;
     model: string;
     provider: ModelProvider;
-    apiKey: string;
+    apiKey?: string;
     baseURL?: string;
     contextWindow?: number;
     thinkType?: ModelThinkType;

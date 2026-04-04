@@ -139,6 +139,25 @@ const server = new AmigoServerBuilder()
   .build();
 ```
 
+如果某个工具执行后应该立即结束当前回合、把控制权交还给用户，可以声明：
+
+```ts
+const askUserChoice = defineTool({
+  name: "askUserChoice",
+  description: "请求用户补充选择信息",
+  completionBehavior: "idle",
+  params: [],
+  async invoke() {
+    return {
+      message: "已请求用户补充信息",
+      toolResult: {},
+    };
+  },
+});
+```
+
+`completionBehavior: "idle"` 的效果和内置 `askFollowupQuestion` 一致：工具执行完成后会结束当前执行循环，等待用户下一次输入，而不是让模型立刻基于工具结果继续跑下一轮。
+
 ### 注册自定义消息
 
 ```ts

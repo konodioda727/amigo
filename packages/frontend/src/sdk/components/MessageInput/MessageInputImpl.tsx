@@ -5,6 +5,8 @@ import StarterKit from "@tiptap/starter-kit";
 import { ArrowUp, Paperclip, Play, Square } from "lucide-react";
 import {
   type ChangeEvent,
+  type ClipboardEvent,
+  type DragEvent,
   forwardRef,
   useCallback,
   useEffect,
@@ -22,6 +24,7 @@ import { ImagePreviewModal } from "../ImagePreviewModal";
 import {
   collectAttachmentsForUpload,
   deleteOssObjectViaServer,
+  extractImageFilesFromDataTransfer,
   type InputAttachment,
   requestOssPolicy,
   toUploadedUserMessageAttachments,
@@ -61,10 +64,12 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
     const [buttonState, setButtonState] = useState<"send" | "stop" | "resume">("send");
     const [pendingAttachments, setPendingAttachments] = useState<InputAttachment[]>([]);
     const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
+    const [isImageDragActive, setIsImageDragActive] = useState(false);
     const isSuggestionActiveRef = useRef(false);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const handleSendRef = useRef<() => Promise<void>>(async () => {});
     const uploadAbortMapRef = useRef<Record<string, () => void>>({});
+    const pendingAttachmentsRef = useRef<InputAttachment[]>([]);
 
     const currentTaskId = taskId || mainTaskId;
     const currentTask = currentTaskId ? tasks[currentTaskId] : null;
@@ -125,6 +130,10 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
     );
 
     useEffect(() => {
+      pendingAttachmentsRef.current = pendingAttachments;
+    }, [pendingAttachments]);
+
+    useEffect(() => {
       if (taskStatus === "streaming") {
         setButtonState("stop");
       } else if (taskStatus === "interrupted") {
@@ -175,6 +184,7 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
         abort();
       });
       uploadAbortMapRef.current = {};
+      pendingAttachmentsRef.current = [];
       setPendingAttachments((prev) => {
         prev.forEach((item) => {
           if (item.previewUrl) {
@@ -308,6 +318,38 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
       [config.url, updateAttachment],
     );
 
+    const enqueueFilesForUpload = useCallback(
+      (files: File[]) => {
+        if (files.length === 0) {
+          return [];
+        }
+
+        const { queuedUploads, notices } = collectAttachmentsForUpload(
+          files,
+          pendingAttachmentsRef.current,
+        );
+        notices.forEach(({ level, message }) => {
+          toast[level](message);
+        });
+        if (queuedUploads.length === 0) {
+          return [];
+        }
+
+        pendingAttachmentsRef.current = [
+          ...pendingAttachmentsRef.current,
+          ...queuedUploads.map(({ attachment }) => attachment),
+        ];
+        setPendingAttachments(pendingAttachmentsRef.current);
+
+        for (const item of queuedUploads) {
+          void startAttachmentUpload(item.attachment, item.file);
+        }
+
+        return queuedUploads;
+      },
+      [startAttachmentUpload],
+    );
+
     const handleFileInputChange = useCallback(
       (event: ChangeEvent<HTMLInputElement>) => {
         const selectedFiles = Array.from(event.target.files || []);
@@ -315,27 +357,88 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
           return;
         }
 
-        const { queuedUploads, notices } = collectAttachmentsForUpload(
-          selectedFiles,
-          pendingAttachments,
-        );
-        notices.forEach(({ level, message }) => {
-          toast[level](message);
-        });
-        if (queuedUploads.length > 0) {
-          setPendingAttachments((prev) => [
-            ...prev,
-            ...queuedUploads.map(({ attachment }) => attachment),
-          ]);
+        enqueueFilesForUpload(selectedFiles);
+        event.target.value = "";
+      },
+      [enqueueFilesForUpload],
+    );
+
+    const isAttachmentInteractionEnabled = !disabled && isConnected && buttonState === "send";
+
+    const handlePasteCapture = useCallback(
+      (event: ClipboardEvent<HTMLDivElement>) => {
+        if (!isAttachmentInteractionEnabled) {
+          return;
         }
 
-        event.target.value = "";
+        const imageFiles = extractImageFilesFromDataTransfer(event.clipboardData);
+        if (imageFiles.length === 0) {
+          return;
+        }
 
-        for (const item of queuedUploads) {
-          void startAttachmentUpload(item.attachment, item.file);
+        event.preventDefault();
+        if (enqueueFilesForUpload(imageFiles).length > 0) {
+          editor?.commands.focus("end");
         }
       },
-      [pendingAttachments, startAttachmentUpload],
+      [editor, enqueueFilesForUpload, isAttachmentInteractionEnabled],
+    );
+
+    const handleDragEnterCapture = useCallback(
+      (event: DragEvent<HTMLDivElement>) => {
+        if (!isAttachmentInteractionEnabled) {
+          return;
+        }
+        if (extractImageFilesFromDataTransfer(event.dataTransfer).length > 0) {
+          setIsImageDragActive(true);
+        }
+      },
+      [isAttachmentInteractionEnabled],
+    );
+
+    const handleDragOverCapture = useCallback(
+      (event: DragEvent<HTMLDivElement>) => {
+        if (!isAttachmentInteractionEnabled) {
+          return;
+        }
+        if (extractImageFilesFromDataTransfer(event.dataTransfer).length === 0) {
+          return;
+        }
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+        setIsImageDragActive(true);
+      },
+      [isAttachmentInteractionEnabled],
+    );
+
+    const handleDragLeaveCapture = useCallback((event: DragEvent<HTMLDivElement>) => {
+      if (
+        event.relatedTarget instanceof Node &&
+        event.currentTarget.contains(event.relatedTarget)
+      ) {
+        return;
+      }
+      setIsImageDragActive(false);
+    }, []);
+
+    const handleDropCapture = useCallback(
+      (event: DragEvent<HTMLDivElement>) => {
+        setIsImageDragActive(false);
+        if (!isAttachmentInteractionEnabled) {
+          return;
+        }
+
+        const imageFiles = extractImageFilesFromDataTransfer(event.dataTransfer);
+        if (imageFiles.length === 0) {
+          return;
+        }
+
+        event.preventDefault();
+        if (enqueueFilesForUpload(imageFiles).length > 0) {
+          editor?.commands.focus("end");
+        }
+      },
+      [editor, enqueueFilesForUpload, isAttachmentInteractionEnabled],
     );
 
     const handleRemoveAttachment = useCallback(
@@ -355,7 +458,9 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
           if (previewImage?.url && target?.previewUrl === previewImage.url) {
             setPreviewImage(null);
           }
-          return prev.filter((item) => item.id !== attachmentId);
+          const nextAttachments = prev.filter((item) => item.id !== attachmentId);
+          pendingAttachmentsRef.current = nextAttachments;
+          return nextAttachments;
         });
 
         if (targetAttachment?.status === "uploaded" && targetAttachment.objectKey) {
@@ -400,12 +505,19 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
           (item) => item.status === "uploading" || item.status === "error",
         )) ||
       (buttonState === "send" && !editor?.getText().trim() && pendingAttachments.length === 0);
-    const isAttachmentButtonDisabled = disabled || !isConnected || buttonState !== "send";
+    const isAttachmentButtonDisabled = !isAttachmentInteractionEnabled;
 
     return (
       <div className={`message-input-container ${className}`}>
         <style>{messageInputEditorStyles}</style>
-        <div className="tiptap-editor-wrapper">
+        <div
+          className={`tiptap-editor-wrapper ${isImageDragActive ? "is-image-drag-active" : ""}`}
+          onPasteCapture={handlePasteCapture}
+          onDragEnterCapture={handleDragEnterCapture}
+          onDragOverCapture={handleDragOverCapture}
+          onDragLeaveCapture={handleDragLeaveCapture}
+          onDropCapture={handleDropCapture}
+        >
           <ToolConfirmationRequest taskId={currentTaskId || ""} className="mb-4" />
           <AttachmentList
             attachments={pendingAttachments}

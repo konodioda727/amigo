@@ -28,6 +28,8 @@ export interface ProviderModelConfig {
 export interface ModelConfig {
   provider: string;
   apiKey: string;
+  hasApiKey?: boolean;
+  sourceConfigId?: string;
   baseURL?: string;
   models: ProviderModelConfig[];
   compressionThreshold?: number;
@@ -41,6 +43,42 @@ export interface ModelSelection {
   model: string;
 }
 
+export interface NotificationChannelConfig {
+  tenantKey?: string;
+  chatId?: string;
+  threadId?: string;
+  chatType?: string;
+  sessionKey?: string;
+  lastIncomingMessageId?: string;
+  lastIncomingMessageType?: string;
+  lastIncomingUserId?: string;
+  historyLimit?: number;
+  [key: string]: unknown;
+}
+
+export interface NotificationChannelRecord {
+  id: string;
+  userId: string;
+  type: string;
+  name: string;
+  config: NotificationChannelConfig;
+  isDefault: boolean;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NotificationChannelsSettings {
+  channels: NotificationChannelRecord[];
+  supportedTypes: string[];
+}
+
+export interface FeishuIntegrationSettings {
+  provider: "feishu";
+  appIdConfigured: boolean;
+  appSecretConfigured: boolean;
+}
+
 export interface UserModelConfigSettings {
   hasUserConfig: boolean;
   modelConfigs: Record<string, ModelConfig>;
@@ -51,7 +89,6 @@ export interface ResolvedModelOption {
   configId: string;
   model: string;
   provider: string;
-  apiKey: string;
   baseURL?: string;
   contextWindow?: number;
   thinkType?: ModelThinkType;
@@ -168,7 +205,6 @@ export const flattenModelConfigs = (
         configId,
         model: modelConfig.name,
         provider: config.provider,
-        apiKey: config.apiKey,
         ...(config.baseURL ? { baseURL: config.baseURL } : {}),
         ...(modelConfig.contextWindow ? { contextWindow: modelConfig.contextWindow } : {}),
         ...(modelConfig.thinkType ? { thinkType: modelConfig.thinkType } : {}),
@@ -208,6 +244,63 @@ export const upsertUserModelConfigs = async (
     body: JSON.stringify(payload),
   });
   return readJson<UserModelConfigSettings>(response);
+};
+
+export const listNotificationChannels = async (
+  wsUrl: string,
+): Promise<NotificationChannelsSettings> => {
+  const response = await fetch(
+    `${getAdminBaseUrl(wsUrl)}/api/notification-channels`,
+    withCredentials,
+  );
+  return readJson<NotificationChannelsSettings>(response);
+};
+
+export const upsertNotificationChannels = async (
+  wsUrl: string,
+  payload: {
+    channels: Array<{
+      id: string;
+      enabled: boolean;
+      isDefault: boolean;
+    }>;
+  },
+): Promise<NotificationChannelsSettings> => {
+  const response = await fetch(`${getAdminBaseUrl(wsUrl)}/api/notification-channels`, {
+    ...withCredentials,
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  return readJson<NotificationChannelsSettings>(response);
+};
+
+export const getFeishuIntegration = async (wsUrl: string): Promise<FeishuIntegrationSettings> => {
+  const response = await fetch(
+    `${getAdminBaseUrl(wsUrl)}/api/integrations/feishu`,
+    withCredentials,
+  );
+  return readJson<FeishuIntegrationSettings>(response);
+};
+
+export const upsertFeishuIntegration = async (
+  wsUrl: string,
+  payload: {
+    appId?: string;
+    appSecret?: string;
+  },
+): Promise<FeishuIntegrationSettings> => {
+  const response = await fetch(`${getAdminBaseUrl(wsUrl)}/api/integrations/feishu`, {
+    ...withCredentials,
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  return readJson<FeishuIntegrationSettings>(response);
 };
 
 export const getSkill = async (wsUrl: string, skillId: string): Promise<SkillDefinition> => {

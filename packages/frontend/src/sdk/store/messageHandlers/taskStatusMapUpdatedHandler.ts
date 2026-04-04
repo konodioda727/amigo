@@ -18,5 +18,13 @@ export const handleTaskStatusMapUpdated = (
   if (data.taskId && "context" in data) {
     store.setTaskContext(data.taskId, data.context);
   }
+  if (data.taskId === store.mainTaskId && data.documents && typeof data.documents === "object") {
+    const phases = ["requirements", "design", "taskList"] as const;
+    for (const phase of phases) {
+      if (typeof data.documents[phase] === "string") {
+        store.setDocContent(data.documents[phase], undefined, phase);
+      }
+    }
+  }
   return true;
 };

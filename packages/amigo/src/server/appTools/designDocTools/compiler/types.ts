@@ -2,7 +2,6 @@ import type { Node as YogaNode } from "yoga-layout";
 
 export type MarkupTag =
   | "page"
-  | "components"
   | "section"
   | "div"
   | "text"
@@ -10,24 +9,10 @@ export type MarkupTag =
   | "img"
   | "br"
   | "shape"
-  | "component"
-  | "use"
   | "input"
   | "textarea"
   | "select"
   | "option";
-
-export interface ComponentAssetDefinition {
-  id: string;
-  markupText: string;
-}
-
-export interface ImageAssetDefinition {
-  id: string;
-  url: string;
-  width?: number | null;
-  height?: number | null;
-}
 
 export interface MarkupElement {
   tagName: MarkupTag;

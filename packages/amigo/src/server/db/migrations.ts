@@ -188,23 +188,6 @@ CREATE TABLE IF NOT EXISTS documents (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `,
   `
-CREATE TABLE IF NOT EXISTS design_assets (
-  id CHAR(36) NOT NULL,
-  owner_conversation_id CHAR(36) NULL,
-  user_id CHAR(36) NOT NULL,
-  asset_key VARCHAR(255) NOT NULL,
-  metadata_json JSON NOT NULL,
-  content_json JSON NOT NULL,
-  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-  PRIMARY KEY (id),
-  UNIQUE KEY uq_design_assets_user_asset_key (user_id, asset_key),
-  KEY idx_design_assets_owner_conversation_id (owner_conversation_id),
-  CONSTRAINT fk_design_assets_owner_conversation_id FOREIGN KEY (owner_conversation_id) REFERENCES conversations (id) ON DELETE CASCADE,
-  CONSTRAINT fk_design_assets_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `,
-  `
 CREATE TABLE IF NOT EXISTS skills (
   id CHAR(36) NOT NULL,
   user_id CHAR(36) NOT NULL,
@@ -278,7 +261,7 @@ export const AMIGO_MIGRATIONS: MigrationDefinition[] = [
     version: 1,
     name: "initial_mysql_schema",
     statements: [...initialMigrationStatements],
-    checksum: migrationChecksum(1, "initial_mysql_schema", initialMigrationStatements),
+    checksum: "576bf62799bfdab74c9251fe46503de89be9cbedf5b6e486d9498ce4498147e9",
   },
   {
     version: 2,
@@ -769,6 +752,46 @@ CREATE TABLE IF NOT EXISTS user_model_configs (
   PRIMARY KEY (user_id),
   CONSTRAINT fk_user_model_configs_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `,
+    ]),
+  },
+  {
+    version: 6,
+    name: "app_settings",
+    statements: [
+      `
+CREATE TABLE IF NOT EXISTS app_settings (
+  \`key\` VARCHAR(191) NOT NULL,
+  settings_json JSON NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (\`key\`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `,
+    ],
+    checksum: migrationChecksum(6, "app_settings", [
+      `
+CREATE TABLE IF NOT EXISTS app_settings (
+  \`key\` VARCHAR(191) NOT NULL,
+  settings_json JSON NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (\`key\`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `,
+    ]),
+  },
+  {
+    version: 7,
+    name: "drop_design_assets",
+    statements: [
+      `
+DROP TABLE IF EXISTS design_assets
+      `,
+    ],
+    checksum: migrationChecksum(7, "drop_design_assets", [
+      `
+DROP TABLE IF EXISTS design_assets
       `,
     ]),
   },

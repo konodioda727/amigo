@@ -52,7 +52,7 @@ COPY code-server-open-file-extension /root/.local/share/code-server/extensions/a
 RUN npm install -g pnpm \
     && mkdir -p "${PNPM_HOME}" \
     && pnpm config set registry "${NPM_CONFIG_REGISTRY}" \
-    && pnpm add -g typescript ts-node lodash react next tailwindcss @tailwindcss/vite tsx
+    && pnpm add -g typescript ts-node pyright lodash react next tailwindcss @tailwindcss/vite tsx
 
 ENV GIT_AUTHOR_NAME="Amigo-Bot" \
     GIT_AUTHOR_EMAIL="amigo@kbkbk.xyz" \

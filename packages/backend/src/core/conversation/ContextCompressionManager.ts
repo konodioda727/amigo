@@ -35,8 +35,22 @@ const estimateChatMessageTokens = (message: ChatMessage): number => {
 };
 
 const estimateModelMessageTokens = (message: AmigoModelMessage): number => {
+  const toolCallSummary =
+    message.toolCalls && message.toolCalls.length > 0
+      ? `\n${JSON.stringify(message.toolCalls)}`
+      : "";
+  const toolResultSummary =
+    message.role === "tool"
+      ? `\n${message.toolName || ""}\n${message.toolCallId || ""}`.trim()
+      : "";
+
   if (typeof message.content === "string") {
-    return 6 + estimateTextTokens(message.content);
+    return (
+      6 +
+      estimateTextTokens(message.content) +
+      estimateTextTokens(toolCallSummary) +
+      estimateTextTokens(toolResultSummary)
+    );
   }
 
   const content = message.content
@@ -48,7 +62,12 @@ const estimateModelMessageTokens = (message: AmigoModelMessage): number => {
     })
     .join("\n");
 
-  return 6 + estimateTextTokens(content);
+  return (
+    6 +
+    estimateTextTokens(content) +
+    estimateTextTokens(toolCallSummary) +
+    estimateTextTokens(toolResultSummary)
+  );
 };
 
 const estimateModelMessagesTokens = (messages: AmigoModelMessage[]): number =>
@@ -92,12 +111,35 @@ const getCompressionAnchorIndex = (messages: ChatMessage[]): number | null => {
   return index >= 0 ? index : null;
 };
 
+const getCheckpointToolAnchorIndex = (messages: ChatMessage[]): number | null => {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message?.role !== "assistant" || message?.type !== "tool") {
+      continue;
+    }
+
+    try {
+      const parsed = JSON.parse(message.content || "") as {
+        toolName?: string;
+        result?: unknown;
+      };
+      if (parsed.toolName === "completionResult" && parsed.result !== undefined) {
+        return index;
+      }
+    } catch {
+      // Ignore malformed tool payloads and continue scanning older messages.
+    }
+  }
+
+  return null;
+};
+
 const getMessagesForCurrentContext = (messages: ChatMessage[]): ChatMessage[] => {
   if (messages.length <= 1) {
     return [...messages];
   }
 
-  const anchorIndex = getCompressionAnchorIndex(messages);
+  const anchorIndex = getCheckpointToolAnchorIndex(messages) ?? getCompressionAnchorIndex(messages);
   if (anchorIndex === null) {
     return [...messages];
   }
@@ -138,8 +180,8 @@ const buildCompressionUserPrompt = (transcript: string): string =>
 
 const buildCompactionMessageContent = (summary: string): string =>
   [
-    "以下为此锚点之前历史交互的压缩摘要。",
-    "它只包含已确认的目标、约束、关键动作、工具结果与未决问题；其后的近期消息拥有更高优先级。",
+    "以下是较早历史交互的低优先级摘要。",
+    "仅在近期消息没有覆盖时参考；其后的近期消息、原始工具结果与最新用户输入优先级更高。",
     "",
     summary.trim(),
   ].join("\n");
@@ -233,6 +275,7 @@ const streamSummaryText = async (
 
 const buildContextUsageSnapshot = (
   conversation: Conversation,
+  ephemeralMessages: ChatMessage[] = [],
 ): {
   contextUsage: ContextUsageStatus;
   modelMessages: AmigoModelMessage[];
@@ -259,7 +302,10 @@ const buildContextUsageSnapshot = (
     return null;
   }
 
-  const selectedMessages = getMessagesForCurrentContext(conversation.memory.messages);
+  const selectedMessages = [
+    ...getMessagesForCurrentContext(conversation.memory.messages),
+    ...ephemeralMessages,
+  ];
   const modelMessages = toModelMessages(
     selectedMessages,
     conversation.llm,
@@ -298,14 +344,19 @@ export class ContextCompressionManager {
   async prepareMessages(
     conversation: Conversation,
     signal?: AbortSignal,
+    ephemeralMessages: ChatMessage[] = [],
   ): Promise<AmigoModelMessage[]> {
-    const snapshot = buildContextUsageSnapshot(conversation);
+    const snapshot = buildContextUsageSnapshot(conversation, ephemeralMessages);
     if (!snapshot) {
       if (conversation.memory.contextUsage) {
         conversation.setContextUsage(undefined);
       }
+      const selectedMessages = [
+        ...getMessagesForCurrentContext(conversation.memory.messages),
+        ...ephemeralMessages,
+      ];
       return toModelMessages(
-        conversation.memory.messages,
+        selectedMessages,
         conversation.llm,
         conversation.memory.initialSystemPrompt,
       );
@@ -332,7 +383,10 @@ export class ContextCompressionManager {
     if (!config) {
       return snapshot.modelMessages;
     }
-    let selectedMessages = getMessagesForCurrentContext(conversation.memory.messages);
+    let selectedMessages = [
+      ...getMessagesForCurrentContext(conversation.memory.messages),
+      ...ephemeralMessages,
+    ];
     let modelMessages = snapshot.modelMessages;
     let contextUsage = {
       ...snapshot.contextUsage,
@@ -387,13 +441,16 @@ export class ContextCompressionManager {
       }
 
       conversation.memory.insertMessageAt(split.keepStartIndex, {
-        role: "system",
+        role: "user",
         type: "compaction",
         content: buildCompactionMessageContent(summary),
         partial: false,
       });
 
-      selectedMessages = getMessagesForCurrentContext(conversation.memory.messages);
+      selectedMessages = [
+        ...getMessagesForCurrentContext(conversation.memory.messages),
+        ...ephemeralMessages,
+      ];
       modelMessages = toModelMessages(
         selectedMessages,
         conversation.llm,
@@ -446,5 +503,6 @@ export const __testing__ = {
   decideCompressionSplit,
   estimateChatMessageTokens,
   estimateModelMessagesTokens,
+  getCheckpointToolAnchorIndex,
   getMessagesForCurrentContext,
 };

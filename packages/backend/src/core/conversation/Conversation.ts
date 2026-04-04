@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import type {
   ContextUsageStatus,
   ConversationStatus,
@@ -19,6 +21,41 @@ import {
   normalizeAutoApproveToolNames,
 } from "./autoApproveTools";
 import { broadcaster } from "./WebSocketBroadcaster";
+
+const readContextUserId = (context: unknown): string | undefined => {
+  if (!context || typeof context !== "object" || Array.isArray(context)) {
+    return undefined;
+  }
+
+  const userId = (context as { userId?: unknown }).userId;
+  return typeof userId === "string" && userId.trim() ? userId.trim() : undefined;
+};
+
+const readTaskDocSnapshot = (taskDocsPath: string) => {
+  const phases = {
+    requirements: "requirements.md",
+    design: "design.md",
+    taskList: "taskList.md",
+  } as const;
+  const documents: {
+    requirements?: string;
+    design?: string;
+    taskList?: string;
+  } = {};
+
+  for (const [phase, filename] of Object.entries(phases)) {
+    const filePath = path.join(taskDocsPath, filename);
+    if (!existsSync(filePath)) {
+      continue;
+    }
+    const content = readFileSync(filePath, "utf-8").trim();
+    if (content) {
+      documents[phase as keyof typeof documents] = content;
+    }
+  }
+
+  return documents;
+};
 
 export type ConversationType = "main" | "sub";
 
@@ -53,8 +90,9 @@ export class Conversation {
     this.parentId = params.parentId;
   }
 
-  private syncAutoApproveToolNamesToTaskStatus(): void {
+  private syncAutoApproveToolNamesToTaskStatus(toolNames: string[] = []): void {
     this.memory.setAutoApproveToolNames([
+      ...normalizeAutoApproveToolNames(toolNames),
       ...this.memory.autoApproveToolNames,
       ...getConfiguredAutoApproveToolNames(),
     ]);
@@ -69,6 +107,7 @@ export class Conversation {
         autoApproveToolNames: this.memory.autoApproveToolNames,
         contextUsage: this.memory.contextUsage,
         context: this.memory.context,
+        documents: readTaskDocSnapshot(this.memory.taskDocsPath),
       } satisfies TaskStatusMapUpdatedData,
     };
     broadcaster.broadcast(this.id, message);
@@ -152,6 +191,9 @@ export class Conversation {
     type?: ConversationType;
     parentId?: string;
     customPrompt?: string;
+    context?: unknown;
+    modelConfigSnapshot?: ModelConfigSnapshot;
+    autoApproveToolNames?: string[];
   }): Conversation {
     const id = params.id || uuidV4();
     const memory = new FilePersistedMemory(id, params.parentId);
@@ -165,7 +207,14 @@ export class Conversation {
       type,
       parentId: params.parentId,
     });
-    conversation.syncAutoApproveToolNamesToTaskStatus();
+
+    if (params.context !== undefined) {
+      memory.setContext(params.context);
+    }
+    if (params.modelConfigSnapshot) {
+      memory.setModelConfigSnapshot(params.modelConfigSnapshot);
+    }
+    conversation.syncAutoApproveToolNamesToTaskStatus(params.autoApproveToolNames);
 
     // 初始化系统提示词
     const systemPrompt = Conversation.buildInitialSystemPrompt(
@@ -222,14 +271,15 @@ export class Conversation {
   /**
    * 从已有 taskId 恢复会话
    */
-  static fromTaskId(
-    taskId: string,
-    // biome-ignore lint/suspicious/noExplicitAny: 用于工具集合
-    allCustomTools: ToolInterface<any>[],
-  ): Conversation {
+  static fromTaskId(taskId: string, allCustomTools: ToolInterface<any>[]): Conversation {
     const memory = new FilePersistedMemory(taskId);
     const llm = getLlm(
-      memory.modelConfigSnapshot ? { resolvedConfig: memory.modelConfigSnapshot } : undefined,
+      memory.modelConfigSnapshot
+        ? {
+            modelConfigSnapshot: memory.modelConfigSnapshot,
+            userId: readContextUserId(memory.context),
+          }
+        : undefined,
     );
     const type: ConversationType = memory.getFatherTaskId ? "sub" : "main";
 

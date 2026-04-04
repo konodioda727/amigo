@@ -46,18 +46,21 @@ export class CompletionHandler {
       return this.handleToolError(conversation, lastToolError);
     }
 
+    const completionBehavior =
+      conversation.toolService.getToolFromName(currentTool)?.completionBehavior;
+
     // 根据不同的工具类型处理完成逻辑
     switch (currentTool) {
       case "completeTask":
         return this.handleCompleteTask(conversation);
 
-      case "askFollowupQuestion":
-        return this.handleAskFollowupQuestion(conversation);
-
       case "message":
         return this.handleMessage(conversation);
 
       default:
+        if (completionBehavior === "idle") {
+          return this.handleIdleTool(conversation, currentTool);
+        }
         return this.handleDefault(conversation, currentTool);
     }
   }
@@ -112,15 +115,15 @@ export class CompletionHandler {
   }
 
   /**
-   * 处理 askFollowupQuestion 工具
+   * 处理执行后需要等待用户输入的工具
    */
-  private handleAskFollowupQuestion(conversation: Conversation): boolean {
+  private handleIdleTool(conversation: Conversation, currentTool: string): boolean {
     conversation.userInput = "";
     conversation.status = "idle";
     broadcaster.broadcastConversation(conversation, {
       type: "conversationOver",
       data: {
-        reason: "askFollowupQuestion",
+        reason: currentTool === "askFollowupQuestion" ? "askFollowupQuestion" : "tool",
       },
     });
     void flushConversationContinuationsIfIdle(conversation);

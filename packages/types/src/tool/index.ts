@@ -5,22 +5,24 @@ import { BrowserSearchSchema } from "./browserSearch";
 import { CompleteTaskSchema } from "./completeTask";
 import type { ToolExecutionContext } from "./context";
 import {
-  CreateDesignDocFromMarkupSchema,
-  ListDesignAssetsSchema,
-  ListDesignDocsSchema,
-  ReadDesignAssetSchema,
-  ReadDesignDocSchema,
-  ReplaceDesignSectionFromMarkupSchema,
-} from "./designDoc";
+  OrchestrateFinalDesignDraftSchema,
+  PatchLayoutOptionSourceSchema,
+  ReadDesignSessionSchema,
+  ReadDraftCritiqueSchema,
+  ReadFinalDesignDraftSchema,
+  ReadLayoutOptionsSchema,
+  ReadModuleDraftsSchema,
+  ReadThemeOptionsSchema,
+  UpsertDesignSessionSchema,
+  UpsertLayoutOptionsSchema,
+  UpsertModuleDraftsSchema,
+  UpsertThemeOptionsSchema,
+} from "./designDraft";
 import { EditFileSchema } from "./editFile";
 import { InstallDependenciesSchema } from "./installDependencies";
 import { ReadFileSchema } from "./readFile";
-import {
-  CreateTaskDocsSchema,
-  ExecuteTaskListSchema,
-  GetTaskListProgressSchema,
-  ReadTaskDocsSchema,
-} from "./taskDocs";
+import { ReviewSubTaskSchema } from "./reviewSubTask";
+import { CreateTaskDocsSchema, ExecuteTaskListSchema, ReadTaskDocsSchema } from "./taskDocs";
 import { UpdateDevServerSchema } from "./updateDevServer";
 
 export type { ToolExecutionContext } from "./context";
@@ -29,18 +31,24 @@ export const toolSchemas = z.discriminatedUnion("name", [
   AskFollowupQuestionSchema,
   CompleteTaskSchema,
   BrowserSearchSchema,
+  ReviewSubTaskSchema,
   CreateTaskDocsSchema,
   ReadTaskDocsSchema,
-  GetTaskListProgressSchema,
   ExecuteTaskListSchema,
   EditFileSchema,
   ReadFileSchema,
-  ListDesignAssetsSchema,
-  ListDesignDocsSchema,
-  ReadDesignAssetSchema,
-  CreateDesignDocFromMarkupSchema,
-  ReplaceDesignSectionFromMarkupSchema,
-  ReadDesignDocSchema,
+  ReadDesignSessionSchema,
+  UpsertDesignSessionSchema,
+  ReadLayoutOptionsSchema,
+  PatchLayoutOptionSourceSchema,
+  UpsertLayoutOptionsSchema,
+  ReadThemeOptionsSchema,
+  UpsertThemeOptionsSchema,
+  ReadFinalDesignDraftSchema,
+  ReadModuleDraftsSchema,
+  UpsertModuleDraftsSchema,
+  OrchestrateFinalDesignDraftSchema,
+  ReadDraftCritiqueSchema,
   BashSchema,
   InstallDependenciesSchema,
   UpdateDevServerSchema,
@@ -50,23 +58,36 @@ export type ToolNames = z.infer<typeof toolSchemas>["name"];
 
 export type ToolSchema = z.infer<typeof toolSchemas>;
 export type {
-  CreateDesignDocFromMarkupParams,
-  CreateDesignDocFromMarkupResult,
-  ListDesignAssetsParams,
-  ListDesignAssetsResult,
-  ListDesignDocsParams,
-  ListDesignDocsResult,
-  ReadDesignAssetParams,
-  ReadDesignAssetResult,
-  ReadDesignDocParams,
-  ReadDesignDocResult,
-  ReplaceDesignSectionFromMarkupParams,
-  ReplaceDesignSectionFromMarkupResult,
-} from "./designDoc";
+  OrchestrateFinalDesignDraftParams,
+  OrchestrateFinalDesignDraftResult,
+  PatchLayoutOptionSourceParams,
+  PatchLayoutOptionSourceResult,
+  ReadDesignSessionParams,
+  ReadDesignSessionResult,
+  ReadDraftCritiqueParams,
+  ReadDraftCritiqueResult,
+  ReadFinalDesignDraftParams,
+  ReadFinalDesignDraftResult,
+  ReadLayoutOptionsParams,
+  ReadLayoutOptionsResult,
+  ReadModuleDraftsParams,
+  ReadModuleDraftsResult,
+  ReadThemeOptionsParams,
+  ReadThemeOptionsResult,
+  UpsertDesignSessionParams,
+  UpsertDesignSessionResult,
+  UpsertLayoutOptionsParams,
+  UpsertLayoutOptionsResult,
+  UpsertModuleDraftsParams,
+  UpsertModuleDraftsResult,
+  UpsertThemeOptionsParams,
+  UpsertThemeOptionsResult,
+} from "./designDraft";
 export type {
   InstallDependenciesParams,
   InstallDependenciesResult,
 } from "./installDependencies";
+export type { ReviewSubTaskParams, ReviewSubTaskResult } from "./reviewSubTask";
 export type { UpdateDevServerParams, UpdateDevServerResult } from "./updateDevServer";
 
 /**
@@ -93,11 +114,13 @@ export interface ToolParamDefinition<K> {
   params?: ToolParamDefinition<string>[];
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: 用于工具集合的宽松类型
+export type ToolCompletionBehavior = "continue" | "idle";
+
 export interface ToolInterface<K extends ToolNames | any> {
   name: K extends ToolNames ? K : string;
   description: string;
   whenToUse?: string;
+  completionBehavior?: ToolCompletionBehavior;
   params: K extends ToolNames ? ToolParamDefinition<K>[] : ToolParamDefinition<string>[];
 
   invoke: (props: {
@@ -107,6 +130,7 @@ export interface ToolInterface<K extends ToolNames | any> {
     message: string;
     toolResult: K extends ToolNames ? ToolResult<K> : any;
     websocketData?: unknown;
+    error?: string;
   }>;
 }
 

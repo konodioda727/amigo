@@ -9,6 +9,7 @@ import { v4 as uuidV4 } from "uuid";
 import { broadcaster, conversationRepository } from "@/core/conversation";
 import { getResolver } from "@/core/messageResolver";
 import { getLlm } from "@/core/model";
+import type { ModelConfigSnapshot } from "@/core/model/contextConfig";
 import { getGlobalState } from "@/globalState";
 import { getSessionHistories } from "@/utils/getSessions";
 import { logger } from "@/utils/logger";
@@ -32,6 +33,25 @@ const readConversationUserId = (context: unknown): string | null => {
     return null;
   }
   return context.userId.trim();
+};
+
+const sanitizeModelConfigSnapshot = (
+  snapshot: ModelConfigSnapshot | undefined,
+  llm: { configId?: string; model: string; provider?: string },
+): ModelConfigSnapshot | undefined => {
+  const configId = snapshot?.configId?.trim() || llm.configId?.trim() || "";
+  const model = snapshot?.model?.trim() || llm.model.trim();
+  const provider = snapshot?.provider?.trim() || llm.provider?.trim() || undefined;
+
+  if (!configId || !model) {
+    return undefined;
+  }
+
+  return {
+    configId,
+    model,
+    ...(provider ? { provider } : {}),
+  };
 };
 
 export class ServerWebSocketMessageHandler {
@@ -191,27 +211,28 @@ export class ServerWebSocketMessageHandler {
       ws.data?.userId,
       config?.context ?? parsedMessage.data.context,
     );
+    const initialUserId = readConversationUserId(initialContext) || ws.data?.userId;
+    const initialLlm = getLlm(
+      parsedMessage.data.modelConfigSnapshot
+        ? {
+            modelConfigSnapshot: parsedMessage.data.modelConfigSnapshot,
+            userId: initialUserId,
+          }
+        : undefined,
+    );
+    const sanitizedSnapshot = parsedMessage.data.modelConfigSnapshot
+      ? sanitizeModelConfigSnapshot(parsedMessage.data.modelConfigSnapshot, initialLlm)
+      : undefined;
     const conversation = conversationRepository.create({
       id: taskId,
       type: "main",
       customPrompt: config?.customPrompt,
       toolNames: config?.toolNames,
-      llm: getLlm(
-        parsedMessage.data.modelConfigSnapshot
-          ? { resolvedConfig: parsedMessage.data.modelConfigSnapshot }
-          : undefined,
-      ),
+      llm: initialLlm,
+      context: initialContext,
+      modelConfigSnapshot: sanitizedSnapshot,
+      autoApproveToolNames: config?.autoApproveToolNames,
     });
-    if (initialContext !== undefined) {
-      conversation.memory.setContext(initialContext);
-    }
-    if (parsedMessage.data.modelConfigSnapshot) {
-      conversation.memory.setModelConfigSnapshot(parsedMessage.data.modelConfigSnapshot);
-    }
-
-    if (config?.autoApproveToolNames && config.autoApproveToolNames.length > 0) {
-      conversation.setAutoApproveToolNames(config.autoApproveToolNames);
-    }
 
     return conversation;
   }
@@ -332,10 +353,13 @@ export class ServerWebSocketMessageHandler {
 
     conversation.setLlm(
       getLlm({
-        resolvedConfig: snapshot,
+        modelConfigSnapshot: snapshot,
+        userId: readConversationUserId(conversation.memory.context) || ws.data?.userId,
       }),
     );
-    conversation.memory.setModelConfigSnapshot(snapshot);
+    conversation.memory.setModelConfigSnapshot(
+      sanitizeModelConfigSnapshot(snapshot, conversation.llm),
+    );
     conversation.memory.setContext({
       ...(isPlainObject(conversation.memory.context) ? conversation.memory.context : {}),
       model: snapshot.model,

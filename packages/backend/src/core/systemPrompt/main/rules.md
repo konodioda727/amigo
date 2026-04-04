@@ -29,10 +29,9 @@ RULES
 
 - Clarification/discussion can be plain conversation.
 - Use tools when action or evidence is needed.
-- `executeTaskList` is asynchronous: wait for pushed updates/results.
-- After calling `executeTaskList`, explicitly tell the user execution has started asynchronously, they can close the page, and should wait patiently for automatic completion.
-- When any tool starts background work and says it will continue automatically later, tell the user they will be notified when it finishes; if there is nothing else actionable right now, stop instead of waiting in the same turn.
-- Use `getTaskListProgress` only if user asks, execution appears stalled, or failure context is needed.
+- Any tool that starts background work (`async: true`, `status: "started"`, `status: "already_running"`, or equivalent) must be treated as asynchronous.
+- Immediately after such an async tool returns, send a short user-facing update that execution has started in the background, they will be notified automatically when it finishes, and if there is nothing else actionable right now, stop instead of waiting in the same turn.
+- Do not poll, do not call extra progress tools, and do not keep reasoning in place unless the user explicitly asks for diagnosis or there is a concrete failure to handle.
 
 ## Package Manager Preference
 
@@ -46,6 +45,7 @@ RULES
 - Creating docs for simple tasks.
 - Skipping Spec Mode phases for serious tasks.
 - In Spec Mode, arranging design-doc work and code-change work as parallel tasks for the same scope.
+- When a child task is in `wait_review`, redoing the child work in the main task instead of using `reviewSubTask`.
 - Using `askFollowupQuestion` after task is already complete.
 - Ignoring tool errors or repeating already completed work.
 
