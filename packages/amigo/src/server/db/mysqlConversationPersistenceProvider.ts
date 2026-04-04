@@ -182,6 +182,9 @@ export class MysqlConversationPersistenceProvider implements ConversationPersist
 
   save(record: ConversationPersistenceRecord): boolean {
     this.cache.set(record.taskId, structuredClone(record));
+    if (!this.hasPersistableUserId(record.context)) {
+      return true;
+    }
     this.enqueueFlush(async () => {
       await this.persistRecord(record);
     });
@@ -424,14 +427,19 @@ export class MysqlConversationPersistenceProvider implements ConversationPersist
   }
 
   private ensureContextUserId(context: unknown): unknown {
-    if (isPlainObject(context) && typeof context.userId === "string" && context.userId.trim()) {
-      return context;
-    }
     return context;
   }
 
+  private hasPersistableUserId(context: unknown): boolean {
+    return (
+      isPlainObject(context) &&
+      typeof context.userId === "string" &&
+      context.userId.trim().length > 0
+    );
+  }
+
   private async resolveUserId(context: unknown): Promise<string> {
-    if (isPlainObject(context) && typeof context.userId === "string" && context.userId.trim()) {
+    if (this.hasPersistableUserId(context)) {
       return context.userId.trim();
     }
     throw new Error("Conversation context 缺少 userId，无法持久化到 MySQL。");

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
+import { drizzle, type MySql2Database } from "drizzle-orm/mysql2";
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { decryptSecret, encryptSecret } from "../utils/secretBox";
 import { getDrizzleDb } from "./drizzle";
@@ -8,6 +9,7 @@ import {
   ensureAmigoMysqlSchema,
 } from "./migrations";
 import { createAmigoMysqlPool, readAmigoMysqlConfigFromEnv, withAmigoTransaction } from "./pool";
+import * as schema from "./schema";
 import {
   externalIdentitiesTable,
   notificationChannelsTable,
@@ -60,6 +62,8 @@ let pool: Pool | null = null;
 let schemaReadyPromise: Promise<void> | null = null;
 let localWebUserPromise: Promise<PersistedUser | null> | null = null;
 
+type AmigoDatabase = MySql2Database<typeof schema>;
+
 const isDuplicateEntryError = (error: unknown): boolean =>
   error instanceof Error && error.message.includes("ER_DUP_ENTRY");
 
@@ -82,6 +86,19 @@ const buildExternalIdentityEmail = (provider: string, externalId: string): strin
   const safeExternalId = externalId.toLowerCase().replace(/[^a-z0-9]+/g, "-") || randomUUID();
   return `${safeProvider}-${safeExternalId}@external.amigo.local`;
 };
+
+const buildExternalIdentityTenantSlug = (provider: string, externalId: string): string =>
+  `${provider}-${externalId}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 191);
+
+const createDrizzleDbForConnection = (connection: PoolConnection): AmigoDatabase =>
+  drizzle(connection, { schema, mode: "default" });
+
+const formatMysqlDateTime = (value: Date = new Date()): string =>
+  value.toISOString().slice(0, 23).replace("T", " ");
 
 export const parseJsonColumn = <T>(value: unknown, fallback: T): T => {
   if (value === null || value === undefined) {
@@ -172,11 +189,11 @@ export const ensureDefaultLocalWebUser = async (): Promise<PersistedUser | null>
   return localWebUserPromise;
 };
 
-const readExternalIdentityUser = async (
+const readExternalIdentityUserWithDb = async (
+  db: AmigoDatabase,
   provider: string,
   externalId: string,
 ): Promise<PersistedUser | null> => {
-  const db = getDrizzleDb();
   const rows = await db
     .select({
       id: usersTable.id,
@@ -208,6 +225,59 @@ const readExternalIdentityUser = async (
     : null;
 };
 
+const readExternalIdentityUser = async (
+  provider: string,
+  externalId: string,
+): Promise<PersistedUser | null> => {
+  return readExternalIdentityUserWithDb(getDrizzleDb(), provider, externalId);
+};
+
+const readUserByEmailWithDb = async (
+  db: AmigoDatabase,
+  email: string,
+): Promise<PersistedUser | null> => {
+  const rows = await db
+    .select({
+      id: usersTable.id,
+      tenantId: usersTable.tenantId,
+      kind: usersTable.kind,
+      displayName: usersTable.displayName,
+      status: usersTable.status,
+      email: usersTable.email,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.email, email))
+    .limit(1);
+
+  return rows[0]
+    ? {
+        id: rows[0].id,
+        tenantId: rows[0].tenantId,
+        kind: rows[0].kind as PersistedUser["kind"],
+        displayName: rows[0].displayName,
+        status: rows[0].status,
+        email: rows[0].email,
+      }
+    : null;
+};
+
+const readTenantBySlugWithDb = async (
+  db: AmigoDatabase,
+  slug: string,
+): Promise<{ id: string; slug: string; name: string } | null> => {
+  const rows = await db
+    .select({
+      id: tenantsTable.id,
+      slug: tenantsTable.slug,
+      name: tenantsTable.name,
+    })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.slug, slug))
+    .limit(1);
+
+  return rows[0] || null;
+};
+
 export const findOrCreateExternalIdentityUser = async (input: {
   provider: string;
   externalId: string;
@@ -232,42 +302,69 @@ export const findOrCreateExternalIdentityUser = async (input: {
   const displayName =
     (input.displayName || "").trim() || `${provider}:${externalId.slice(-8) || "user"}`;
   const email = buildExternalIdentityEmail(provider, externalId);
-  const tenantSlug = `${provider}-${externalId}`
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 191);
+  const tenantSlug = buildExternalIdentityTenantSlug(provider, externalId);
   const tenantName = displayName;
 
   try {
-    await mysqlTransaction(async () => {
-      const db = getDrizzleDb();
-      await db.insert(tenantsTable).values({
-        id: tenantId,
-        slug: tenantSlug || tenantId,
-        name: tenantName,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-      await db.insert(usersTable).values({
-        id: userId,
-        tenantId,
-        kind: "external",
-        displayName,
-        email,
-        emailVerified: 0,
-        image: null,
-        status: "active",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
+    await mysqlTransaction(async (connection) => {
+      const db = createDrizzleDbForConnection(connection);
+      const existingUser = await readExternalIdentityUserWithDb(db, provider, externalId);
+      if (existingUser) {
+        return;
+      }
+
+      const now = formatMysqlDateTime();
+      const tenant =
+        (tenantSlug && (await readTenantBySlugWithDb(db, tenantSlug))) ||
+        ({
+          id: tenantId,
+          slug: tenantSlug || tenantId,
+          name: tenantName,
+        } as const);
+
+      if (!(await readTenantBySlugWithDb(db, tenant.slug))) {
+        await db.insert(tenantsTable).values({
+          id: tenant.id,
+          slug: tenant.slug,
+          name: tenant.name,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+
+      const user =
+        (await readUserByEmailWithDb(db, email)) ||
+        ({
+          id: userId,
+          tenantId: tenant.id,
+          kind: "external",
+          displayName,
+          status: "active",
+          email,
+        } as const);
+
+      if (!(await readUserByEmailWithDb(db, email))) {
+        await db.insert(usersTable).values({
+          id: user.id,
+          tenantId: user.tenantId,
+          kind: "external",
+          displayName,
+          email,
+          emailVerified: 0,
+          image: null,
+          status: "active",
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+
       await db.insert(externalIdentitiesTable).values({
         id: randomUUID(),
-        userId,
+        userId: user.id,
         provider,
         externalId,
         metadataJson: input.metadata || {},
-        createdAt: new Date().toISOString(),
+        createdAt: now,
       });
     });
   } catch (error) {
@@ -325,12 +422,12 @@ export const upsertNotificationChannel = async (input: {
 }): Promise<void> => {
   await ensureMysqlSchemaUpToDate();
 
-  await mysqlTransaction(async () => {
-    const db = getDrizzleDb();
+  await mysqlTransaction(async (connection) => {
+    const db = createDrizzleDbForConnection(connection);
     if (input.isDefault) {
       await db
         .update(notificationChannelsTable)
-        .set({ isDefault: 0, updatedAt: new Date().toISOString() })
+        .set({ isDefault: 0, updatedAt: formatMysqlDateTime() })
         .where(
           and(
             eq(notificationChannelsTable.userId, input.userId),
@@ -358,7 +455,7 @@ export const upsertNotificationChannel = async (input: {
           configJson: input.config,
           isDefault: input.isDefault ? 1 : 0,
           enabled: input.enabled === false ? 0 : 1,
-          updatedAt: new Date().toISOString(),
+          updatedAt: formatMysqlDateTime(),
         })
         .where(eq(notificationChannelsTable.id, existing[0].id));
       return;
@@ -372,8 +469,8 @@ export const upsertNotificationChannel = async (input: {
       configJson: input.config,
       isDefault: input.isDefault ? 1 : 0,
       enabled: input.enabled === false ? 0 : 1,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: formatMysqlDateTime(),
+      updatedAt: formatMysqlDateTime(),
     });
   });
 };

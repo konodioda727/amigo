@@ -21,7 +21,6 @@ export type {
   SubTaskWaitReviewEvaluationResult,
   ToolParamExtensionsConfig,
 } from "./subTaskPolicyTypes";
-export { extractToolExecutionRecordsFromMessages } from "./subTaskResult";
 export {
   SubTaskInterruptedError,
   type SubTaskParams,

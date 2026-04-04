@@ -14,27 +14,32 @@ import {
 
 const JsonObjectSchema = z.record(z.string(), z.unknown());
 
+const CoercedPositiveIntSchema = z.coerce.number().int().positive();
+const CoercedHourSchema = z.coerce.number().int().min(0).max(23);
+const CoercedMinuteSchema = z.coerce.number().int().min(0).max(59);
+const CoercedWeekdaySchema = z.coerce.number().int().min(0).max(6);
+
 const IntervalScheduleSchema = z.object({
   type: z.literal("interval"),
-  everyMinutes: z.number().int().positive(),
+  everyMinutes: CoercedPositiveIntSchema,
 });
 
 const OnceScheduleSchema = z.object({
   type: z.literal("once"),
-  afterMinutes: z.number().int().positive(),
+  afterMinutes: CoercedPositiveIntSchema,
 });
 
 const DailyScheduleSchema = z.object({
   type: z.literal("daily"),
-  hour: z.number().int().min(0).max(23),
-  minute: z.number().int().min(0).max(59),
+  hour: CoercedHourSchema,
+  minute: CoercedMinuteSchema,
 });
 
 const WeeklyScheduleSchema = z.object({
   type: z.literal("weekly"),
-  weekday: z.number().int().min(0).max(6),
-  hour: z.number().int().min(0).max(23),
-  minute: z.number().int().min(0).max(59),
+  weekday: CoercedWeekdaySchema,
+  hour: CoercedHourSchema,
+  minute: CoercedMinuteSchema,
 });
 
 export const AutomationScheduleSchema = z.discriminatedUnion("type", [

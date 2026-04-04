@@ -159,6 +159,22 @@ const extractSenderId = (event: FeishuReceiveEvent) =>
   event.sender.sender_id?.union_id ||
   "";
 
+const maskIdentifier = (value?: string): string => {
+  const trimmed = value?.trim() || "";
+  if (!trimmed) {
+    return "missing";
+  }
+  if (trimmed.length <= 8) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, 4)}...${trimmed.slice(-4)}`;
+};
+
+const describeSenderIds = (event: FeishuReceiveEvent): string =>
+  `open_id=${maskIdentifier(event.sender.sender_id?.open_id)} ` +
+  `user_id=${maskIdentifier(event.sender.sender_id?.user_id)} ` +
+  `union_id=${maskIdentifier(event.sender.sender_id?.union_id)}`;
+
 const buildFeishuContext = (event: FeishuReceiveEvent, userId?: string): FeishuTaskContext => ({
   trigger: "feishu",
   ...(userId ? { userId } : {}),
@@ -345,15 +361,32 @@ export class FeishuBridge implements ConversationChannelProvider {
 
     const userId = await this.resolveOrCreateUser(event);
     const feishuContext = buildFeishuContext(event, userId || undefined);
+    if (!userId) {
+      logger.warn(
+        `[FeishuBridge] 飞书消息未绑定本地用户 messageId=${event.message.message_id} chatId=${event.message.chat_id} chatType=${event.message.chat_type} ${describeSenderIds(event)}`,
+      );
+    } else {
+      logger.info(
+        `[FeishuBridge] 飞书消息已绑定本地用户 messageId=${event.message.message_id} externalUser=${maskIdentifier(extractSenderId(event))} userId=${maskIdentifier(userId)}`,
+      );
+    }
     if (userId) {
-      await upsertNotificationChannel({
-        userId,
-        type: "feishu",
-        name: `feishu:${event.message.chat_id}`,
-        config: feishuContext.feishu,
-        isDefault: true,
-        enabled: true,
-      });
+      try {
+        await upsertNotificationChannel({
+          userId,
+          type: "feishu",
+          name: `feishu:${event.message.chat_id}`,
+          config: feishuContext.feishu,
+          isDefault: true,
+          enabled: true,
+        });
+      } catch (error) {
+        logger.warn(
+          `[FeishuBridge] 更新飞书通知通道失败 userId=${maskIdentifier(userId)} chatId=${event.message.chat_id}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
     }
     await this.acknowledgeInboundMessage(feishuContext.feishu);
     const shouldReuseConversation = !isGroupChat(event);
@@ -433,6 +466,9 @@ export class FeishuBridge implements ConversationChannelProvider {
   private async resolveOrCreateUser(event: FeishuReceiveEvent): Promise<string | null> {
     const senderExternalId = extractSenderId(event);
     if (!senderExternalId) {
+      logger.warn(
+        `[FeishuBridge] 飞书事件缺少 sender id，无法绑定本地用户 messageId=${event.message.message_id} chatId=${event.message.chat_id} ${describeSenderIds(event)}`,
+      );
       return null;
     }
 
@@ -444,7 +480,7 @@ export class FeishuBridge implements ConversationChannelProvider {
       return user?.id || null;
     } catch (error) {
       logger.warn(
-        `[FeishuBridge] 解析飞书用户失败 sender=${senderExternalId}: ${
+        `[FeishuBridge] 解析飞书用户失败 sender=${maskIdentifier(senderExternalId)} messageId=${event.message.message_id} chatId=${event.message.chat_id} ${describeSenderIds(event)}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );

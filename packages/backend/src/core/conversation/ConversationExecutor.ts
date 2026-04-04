@@ -97,9 +97,9 @@ export class ConversationExecutor {
       this.toolExecutor.getLastToolError(),
     );
 
-    if (completion.shouldContinue && !conversation.isAborted) {
+    if (completion && !conversation.isAborted) {
       logger.info(logs.onContinue);
-      return this.executeLoop(conversation, completion.nextTurnMessages);
+      return this.executeLoop(conversation);
     }
 
     logger.info(logs.onStop);
@@ -203,12 +203,12 @@ export class ConversationExecutor {
       );
 
       logger.info(
-        `[ConversationExecutor] handleStreamCompletion 返回: ${completion.shouldContinue}, currentTool: ${currentTool}, hadError: ${this.toolExecutor.getLastToolHadError()}, isAborted: ${conversation.isAborted}`,
+        `[ConversationExecutor] handleStreamCompletion 返回: ${completion}, currentTool: ${currentTool}, hadError: ${this.toolExecutor.getLastToolHadError()}, isAborted: ${conversation.isAborted}`,
       );
 
-      if (completion.shouldContinue && !conversation.isAborted) {
+      if (completion && !conversation.isAborted) {
         logger.info(`[ConversationExecutor] 继续执行循环`);
-        return this.executeLoop(conversation, completion.nextTurnMessages);
+        return this.executeLoop(conversation);
       } else {
         logger.info(`[ConversationExecutor] 停止执行循环`);
       }
