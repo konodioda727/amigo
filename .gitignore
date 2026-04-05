@@ -51,3 +51,4 @@ packages/swebench
 .playwright-cli
 deliverables
 **/.amigo
+.worktrees/
