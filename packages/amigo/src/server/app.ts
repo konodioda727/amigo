@@ -2,6 +2,7 @@ import path from "node:path";
 import {
   AmigoServerBuilder,
   bindGithubContextToTask,
+  CUSTOMED_TOOLS,
   conversationRepository,
   getBaseTools,
   getGlobalState,
@@ -72,6 +73,49 @@ const resolvePreviewHostConfig = (config?: PreviewHostConfig): PreviewHostConfig
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
+
+const ASK_FOLLOWUP_TOOL_NAME = "askFollowupQuestion";
+
+const AUTOMATION_EXECUTION_PROMPT = `
+当前轮是一个已经触发的 automation 执行，不是在创建、修改或确认 automation。
+你的职责是直接完成 automation 当前这次运行要做的事情。
+如果这是提醒、通知、闹钟、催办之类的 automation，现在就应该直接发出提醒内容，不要再次询问“要设置哪种提醒”“是否要创建提醒”“要不要确认提醒内容”。
+禁止调用 askFollowupQuestion。
+除非任务内容明确要求管理 automation，本轮不要调用 upsertAutomation。
+如果信息不完整，优先根据已有 prompt 和 context 做合理假设并直接执行；只有在确实无法执行时，才直接说明缺失原因并结束当前轮。
+`.trim();
+
+const mergeCustomPrompts = (...prompts: Array<string | undefined>): string | undefined => {
+  const merged = prompts.map((prompt) => prompt?.trim()).filter(Boolean);
+  return merged.length > 0 ? merged.join("\n\n") : undefined;
+};
+
+const extractToolNames = (tools: unknown): string[] => {
+  if (!Array.isArray(tools)) {
+    return [];
+  }
+
+  return tools
+    .map((tool) =>
+      tool && typeof tool === "object" && "name" in tool ? String(tool.name || "").trim() : "",
+    )
+    .filter(Boolean);
+};
+
+const resolveAutomationToolNames = (requestedToolNames?: string[]): string[] => {
+  const fallbackToolNames = Array.from(
+    new Set([
+      ...getBaseTools("main").map((tool) => tool.name),
+      ...CUSTOMED_TOOLS.map((tool) => tool.name),
+      ...extractToolNames(getGlobalState("registryTools")),
+    ]),
+  );
+
+  const selectedToolNames =
+    requestedToolNames?.map((name) => name.trim()).filter(Boolean) || fallbackToolNames;
+
+  return selectedToolNames.filter((name) => name !== ASK_FOLLOWUP_TOOL_NAME);
+};
 
 export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<AmigoApp> {
   requireMysqlConfigured();
@@ -160,11 +204,16 @@ export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<Ami
         ? automationContext.sourceTaskId.trim()
         : "";
     const taskConfig = await resolveTaskConfigFromContext(automationContext);
+    const automationToolNames = resolveAutomationToolNames(taskConfig?.toolNames);
     const conversation = conversationRepository.create({
       type: "main",
       ...(sourceTaskId ? { parentId: sourceTaskId } : {}),
-      customPrompt: taskConfig?.customPrompt,
+      customPrompt: mergeCustomPrompts(taskConfig?.customPrompt, AUTOMATION_EXECUTION_PROMPT),
+      toolNames: automationToolNames,
       context: taskConfig?.context,
+      autoApproveToolNames: taskConfig?.autoApproveToolNames
+        ?.map((name) => name.trim())
+        .filter((name) => name && name !== ASK_FOLLOWUP_TOOL_NAME),
     });
 
     taskOrchestrator.setUserInput(conversation, automation.prompt);

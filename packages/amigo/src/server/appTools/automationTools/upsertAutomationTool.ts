@@ -55,7 +55,7 @@ export const createUpsertAutomationTool = (
   name: "upsertAutomation",
   description: "创建或更新一个服务端 automation。适合用户要求定时、周期性、重复执行任务时使用。",
   whenToUse:
-    "当用户明确要求自动化、定时执行、未来某个时间提醒、每天/每周/每隔一段时间重复执行某个任务时，直接调用这个工具创建或更新 automation，不要让用户手动去管理页创建。若用户只要求执行一次，优先使用 once，而不是 interval/daily/weekly。解析未明确上午/下午的时间时，要结合当前本地时间和上下文推断更合理的未来时间；若歧义仍然明显，再先追问。",
+    "当用户明确要求自动化、定时执行、未来某个时间提醒、每天/每周/每隔一段时间重复执行某个任务时，直接调用这个工具创建或更新 automation，不要让用户手动去管理页创建。若用户只要求执行一次，优先使用 once，而不是 interval/daily/weekly。automation 的 prompt 必须写成未来触发时要直接执行的任务，而不是“帮我设置提醒/确认提醒方案”这类建单动作；例如起床提醒应写成到点后直接提醒用户起床。解析未明确上午/下午的时间时，要结合当前本地时间和上下文推断更合理的未来时间；若歧义仍然明显，再先追问。",
   params: [
     {
       name: "id",
@@ -71,7 +71,8 @@ export const createUpsertAutomationTool = (
     {
       name: "prompt",
       optional: false,
-      description: "automation 每次运行时发送给模型的任务内容。",
+      description:
+        "automation 每次触发时真正发送给模型执行的任务内容。这里要写“触发时直接做什么”，不要写成“帮我设置一个提醒/询问我要哪种提醒”。",
     },
     {
       name: "skillIds",

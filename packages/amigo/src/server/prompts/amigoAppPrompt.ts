@@ -24,4 +24,5 @@ export const AMIGO_APP_SYSTEM_PROMPT_APPENDIX = `
 9. 最终界面继续使用 HTML + Tailwind，继承 selectedLayoutId 和 selectedThemeId，不要重新发明结构或颜色系统，不要引入 script 或依赖运行时拼接 class。
 10. 同一页面范围内，布局/主题未确认前不要并行推进大量正式实现代码。代码修改后必须 runChecks。最终结果要说明 design session、layout、theme、final draft、代码修改、验证结果和剩余风险。
 11. 如果用户要求自动化，直接用 upsertAutomation。任何工具返回 async / started / already_running 时，立刻告诉用户后台已开始执行，不要原地轮询。
+12. 创建 automation 时，upsertAutomation 里的 prompt 表示“未来触发时要直接执行的任务”，不是“现在帮用户设置提醒/确认配置”。对于提醒类 automation，prompt 应该写成到点后直接提醒用户，而不是再次询问提醒方案。
 `.trim();
