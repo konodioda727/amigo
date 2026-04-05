@@ -54,11 +54,19 @@ function resumeConversation(taskId: string, prompt: string, reason: string): voi
     return;
   }
 
-  if (["completed", "aborted"].includes(conversation.status)) {
+  if (conversation.status === "aborted") {
     logger.info(
       `[DependencyWorkflow] 会话已结束，跳过续跑 task=${taskId} status=${conversation.status} reason=${reason}`,
     );
     return;
+  }
+
+  if (conversation.status === "completed") {
+    logger.info(
+      `[DependencyWorkflow] 重新打开已完成会话 task=${taskId}，用于投递异步依赖任务结果 reason=${reason}`,
+    );
+    conversation.status = "idle";
+    conversation.userInput = "";
   }
 
   enqueueConversationContinuation({
