@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { logger } from "@/utils/logger";
+import { hasConversationContinuations } from "../conversation/asyncContinuations";
 import { conversationRepository } from "../conversation/ConversationRepository";
 import { broadcaster } from "../conversation/WebSocketBroadcaster";
 import {
@@ -10,6 +11,7 @@ import {
   updateProgressSection,
 } from "../templates/checklistParser";
 import { createTool } from "./base";
+import { asyncToolJobRegistry } from "./base/asyncJobRegistry";
 import { getTaskDocsPath } from "./taskDocs/utils";
 
 /**
@@ -52,6 +54,29 @@ export const CompleteTask = createTool({
       "tool_executing",
       "waiting_tool_confirmation",
     ]);
+    const pendingAsyncJobs = asyncToolJobRegistry.listRunningByTaskId(context.taskId);
+    const hasPendingContinuation = hasConversationContinuations(context.taskId);
+
+    if (context.parentId && (pendingAsyncJobs.length > 0 || hasPendingContinuation)) {
+      const pendingJobSummary = pendingAsyncJobs.map((job) => job.toolName).join("、");
+      const errorMessage = [
+        "子任务仍有未完成的异步后续动作，暂时不能调用 completeTask。",
+        pendingAsyncJobs.length > 0 ? `仍在运行的后台任务：${pendingJobSummary}` : undefined,
+        hasPendingContinuation ? "仍有等待消费的 continuation 队列。" : undefined,
+        "请等待这些异步步骤回到当前子任务并执行完毕后，再提交 completeTask。",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      logger.warn(
+        `[completeTask] 阻止子任务 ${context.taskId} 过早完成：${errorMessage.replace(/\n/g, " | ")}`,
+      );
+      return {
+        message: errorMessage,
+        toolResult: result,
+        error: errorMessage,
+      };
+    }
 
     if (!context.parentId) {
       logger.info(`[completeTask] 主任务 ${context.taskId} 完成，直接返回最终结果`);

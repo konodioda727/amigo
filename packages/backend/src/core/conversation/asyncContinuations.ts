@@ -155,6 +155,11 @@ export async function flushConversationContinuationsIfIdle(
   }
 }
 
+export function hasConversationContinuations(taskId: string): boolean {
+  const queue = queuedContinuations.get(taskId);
+  return !!queue && queue.length > 0;
+}
+
 export function clearConversationContinuations(taskId: string): void {
   queuedContinuations.delete(taskId);
 }

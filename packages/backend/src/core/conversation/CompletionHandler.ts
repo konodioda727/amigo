@@ -1,9 +1,6 @@
 import type { ChatMessage } from "@amigo-llm/types";
 import { logger } from "@/utils/logger";
-import {
-  clearConversationContinuations,
-  flushConversationContinuationsIfIdle,
-} from "./asyncContinuations";
+import { flushConversationContinuationsIfIdle } from "./asyncContinuations";
 import type { Conversation } from "./Conversation";
 import { broadcaster } from "./WebSocketBroadcaster";
 
@@ -99,7 +96,6 @@ export class CompletionHandler {
   private handleCompleteTask(conversation: Conversation): boolean {
     logger.info("\n任务已完成（completeTask）。");
     conversation.status = "completed";
-    clearConversationContinuations(conversation.id);
 
     // 广播 conversationOver
     broadcaster.broadcastConversation(conversation, {

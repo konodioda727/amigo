@@ -85,6 +85,17 @@ export class AsyncToolJobRegistry {
   getLatest(key: string): AsyncToolJobInfo | null {
     return this.runningJobs.get(key)?.info || this.latestJobs.get(key) || null;
   }
+
+  listRunningByTaskId(taskId: string): AsyncToolJobInfo[] {
+    const normalizedTaskId = taskId.trim();
+    if (!normalizedTaskId) {
+      return [];
+    }
+
+    return Array.from(this.runningJobs.values())
+      .map((record) => record.info)
+      .filter((job) => job.taskId === normalizedTaskId);
+  }
 }
 
 export const asyncToolJobRegistry = new AsyncToolJobRegistry();
