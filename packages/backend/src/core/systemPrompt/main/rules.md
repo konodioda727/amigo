@@ -29,6 +29,8 @@ RULES
 
 - Clarification/discussion can be plain conversation.
 - Use tools when action or evidence is needed.
+- When the task is fully complete, end the turn with `completeTask`, not a plain assistant conclusion.
+- In main tasks, `completeTask.result` should optimize for user readability; there is no required sub-task section template.
 - Any tool that starts background work (`async: true`, `status: "started"`, `status: "already_running"`, or equivalent) must be treated as asynchronous.
 - Immediately after such an async tool returns, send a short user-facing update that execution has started in the background, they will be notified automatically when it finishes, and if there is nothing else actionable right now, stop instead of waiting in the same turn.
 - Do not poll, do not call extra progress tools, and do not keep reasoning in place unless the user explicitly asks for diagnosis or there is a concrete failure to handle.

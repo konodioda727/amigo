@@ -79,7 +79,7 @@ describe("Conversation system prompt overrides", () => {
     expect(systemPrompt).not.toContain("MAIN SCOPED PROMPT");
   });
 
-  it("uses direct final answers for main task turn endings", () => {
+  it("uses completeTask for main task turn endings", () => {
     const toolService = new ToolService([], []);
 
     const conversation = Conversation.create({
@@ -89,12 +89,12 @@ describe("Conversation system prompt overrides", () => {
     });
 
     const systemPrompt = conversation.memory.initialSystemPrompt || "";
-    expect(systemPrompt).toContain("respond directly with the final answer");
+    expect(systemPrompt).toContain("call `completeTask`");
     expect(systemPrompt).toContain("async tool");
     expect(systemPrompt).toContain("background work has started");
   });
 
-  it("keeps the main prompt delta-first and citation-oriented without forcing tool preambles", () => {
+  it("keeps the main prompt tool-driven and completeTask-oriented without forcing tool preambles", () => {
     const toolService = new ToolService([], []);
 
     const conversation = Conversation.create({
@@ -107,18 +107,16 @@ describe("Conversation system prompt overrides", () => {
     expect(systemPrompt).not.toContain(
       "Before the first tool call of a new investigation/execution phase",
     );
-    expect(systemPrompt).toContain("what you are about to do");
-    expect(systemPrompt).toContain("what is newly changing since the last user-visible update");
-    expect(systemPrompt).toContain("go straight to the tool call");
-    expect(systemPrompt).toContain("Do not repeat near-identical progress updates");
-    expect(systemPrompt).toContain("delta-first");
+    expect(systemPrompt).toContain("call `completeTask`");
+    expect(systemPrompt).toContain("user-facing");
+    expect(systemPrompt).toContain("easy to read");
+    expect(systemPrompt).toContain("there is no required sub-task section template");
     expect(systemPrompt).toContain(
       "Every active turn that is still working MUST contain at least one tool call",
     );
     expect(systemPrompt).toContain(
       "Plain assistant text alone is never a valid ending for an active turn that is still working",
     );
-    expect(systemPrompt).toContain("[citation: path/to/file]");
-    expect(systemPrompt).toContain("Do not invent citations");
+    expect(systemPrompt).toContain("background work has started");
   });
 });

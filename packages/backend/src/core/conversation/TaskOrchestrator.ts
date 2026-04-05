@@ -297,7 +297,21 @@ export class TaskOrchestrator {
    * 中断会话
    */
   interrupt(conversation: Conversation): void {
-    if (["aborted", "idle", "completed"].includes(conversation.status)) {
+    const activeChildren = conversationRepository
+      .getAll()
+      .filter(
+        (conv) =>
+          conv.parentId === conversation.id &&
+          conv.status !== "aborted" &&
+          conv.status !== "completed",
+      );
+
+    if (conversation.status === "aborted") {
+      logger.info(`会话状态为 ${conversation.status}，无需打断。`);
+      return;
+    }
+
+    if (["idle", "completed"].includes(conversation.status) && activeChildren.length === 0) {
       logger.info(`会话状态为 ${conversation.status}，无需打断。`);
       return;
     }
@@ -376,17 +390,8 @@ export class TaskOrchestrator {
     clearConversationContinuations(conversation.id);
 
     // 递归中断所有子任务
-    this.interruptChildren(conversation.id);
-  }
-
-  /**
-   * 中断所有子任务
-   */
-  private interruptChildren(parentId: string): void {
-    for (const conv of conversationRepository.getAll()) {
-      if (conv.parentId === parentId && conv.status !== "aborted" && conv.status !== "completed") {
-        this.interrupt(conv);
-      }
+    for (const child of activeChildren) {
+      this.interrupt(child);
     }
   }
 

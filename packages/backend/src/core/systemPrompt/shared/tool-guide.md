@@ -5,7 +5,7 @@ TOOL USAGE
 ## Selection Priority
 
 ```
-Task fully complete with no pending blocker or missing step? -> Main: respond directly with final answer; Sub: call `completeTask`
+Task fully complete with no pending blocker or missing step? -> `completeTask`
 Need async task execution? -> executeTaskList
 Any async tool starts? -> immediately tell user background work has started, they will be notified automatically when it finishes, and if there is nothing else actionable now, stop instead of waiting
 Need user input? -> askFollowupQuestion

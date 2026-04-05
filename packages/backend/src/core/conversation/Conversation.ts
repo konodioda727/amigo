@@ -31,6 +31,24 @@ const readContextUserId = (context: unknown): string | undefined => {
   return typeof userId === "string" && userId.trim() ? userId.trim() : undefined;
 };
 
+const readSystemPromptAppendix = (context: unknown, type: ConversationType): string | undefined => {
+  if (!context || typeof context !== "object" || Array.isArray(context)) {
+    return undefined;
+  }
+
+  const appendixContainer = (context as { systemPromptAppendix?: unknown }).systemPromptAppendix;
+  if (
+    !appendixContainer ||
+    typeof appendixContainer !== "object" ||
+    Array.isArray(appendixContainer)
+  ) {
+    return undefined;
+  }
+
+  const appendix = (appendixContainer as Record<string, unknown>)[type];
+  return typeof appendix === "string" && appendix.trim() ? appendix.trim() : undefined;
+};
+
 const readTaskDocSnapshot = (taskDocsPath: string) => {
   const phases = {
     requirements: "requirements.md",
@@ -168,12 +186,21 @@ export class Conversation {
     toolService: ToolService,
     type: ConversationType,
     customPrompt?: string,
+    context?: unknown,
   ): string {
     const configuredPrompt = getGlobalState("systemPrompts")?.[type]?.trim();
     let systemPrompt = configuredPrompt || getSystemPrompt(toolService, type);
     const extraSystemPrompt = (getGlobalState("extraSystemPrompt") || "").trim();
+    const scopedExtraSystemPrompt = (getGlobalState("extraSystemPrompts")?.[type] || "").trim();
+    const contextAppendix = readSystemPromptAppendix(context, type);
     if (extraSystemPrompt) {
       systemPrompt += `\n\n=====应用追加系统提示词:\n${extraSystemPrompt}`;
+    }
+    if (scopedExtraSystemPrompt) {
+      systemPrompt += `\n\n=====按类型追加系统提示词:\n${scopedExtraSystemPrompt}`;
+    }
+    if (contextAppendix) {
+      systemPrompt += `\n\n=====上下文系统提示补充:\n${contextAppendix}`;
     }
     if (customPrompt?.trim()) {
       systemPrompt += `\n\n=====用户自定义提示词:\n${customPrompt.trim()}`;
@@ -221,6 +248,7 @@ export class Conversation {
       params.toolService,
       type,
       params.customPrompt,
+      params.context,
     );
     memory.setInitialSystemPrompt(systemPrompt);
 
@@ -321,7 +349,12 @@ export class Conversation {
 
     // 如果是新会话（文件不存在或为空），注入 systemPrompt
     if (memory.isNewSession()) {
-      const systemPrompt = Conversation.buildInitialSystemPrompt(toolService, type);
+      const systemPrompt = Conversation.buildInitialSystemPrompt(
+        toolService,
+        type,
+        undefined,
+        memory.context,
+      );
       memory.setInitialSystemPrompt(systemPrompt);
 
       const initialToolNames = toolService.getAllTools().map((tool) => tool.name);

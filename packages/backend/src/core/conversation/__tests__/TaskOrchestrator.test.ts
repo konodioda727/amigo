@@ -6,6 +6,7 @@ import { resolveObservedSubTaskStatus, taskOrchestrator } from "../TaskOrchestra
 // Mock logger
 mock.module("@/utils/logger", () => ({
   logger: {
+    debug: mock(),
     info: mock(),
     warn: mock(),
     error: mock(),
@@ -67,7 +68,7 @@ describe("TaskOrchestrator Interrupt Logic", () => {
 
     taskOrchestrator.interrupt(conversation);
 
-    expect(logger.info).toHaveBeenCalledWith("会话状态为 idle，且没有运行中的子任务，无需打断。");
+    expect(logger.info).toHaveBeenCalledWith("会话状态为 idle，无需打断。");
   });
 
   it("should not interrupt if status is completed", () => {
@@ -83,9 +84,7 @@ describe("TaskOrchestrator Interrupt Logic", () => {
 
     taskOrchestrator.interrupt(conversation);
 
-    expect(logger.info).toHaveBeenCalledWith(
-      "会话状态为 completed，且没有运行中的子任务，无需打断。",
-    );
+    expect(logger.info).toHaveBeenCalledWith("会话状态为 completed，无需打断。");
   });
 
   it("should interrupt running children even if parent is idle", () => {
