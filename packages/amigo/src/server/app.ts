@@ -117,6 +117,24 @@ const resolveAutomationToolNames = (requestedToolNames?: string[]): string[] => 
   return selectedToolNames.filter((name) => name !== ASK_FOLLOWUP_TOOL_NAME);
 };
 
+const resolveExistingAutomationParentId = (sourceTaskId: string): string | undefined => {
+  const normalizedTaskId = sourceTaskId.trim();
+  if (!normalizedTaskId) {
+    return undefined;
+  }
+
+  const existingConversation =
+    conversationRepository.get(normalizedTaskId) || conversationRepository.load(normalizedTaskId);
+  if (existingConversation) {
+    return normalizedTaskId;
+  }
+
+  logger.warn(
+    `[AmigoApp] automation sourceTaskId=${normalizedTaskId} 不存在，跳过 parentId 绑定，仅保留在 context 中`,
+  );
+  return undefined;
+};
+
 export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<AmigoApp> {
   requireMysqlConfigured();
   await warmUserModelConfigStore();
@@ -203,11 +221,12 @@ export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<Ami
       typeof automationContext.sourceTaskId === "string"
         ? automationContext.sourceTaskId.trim()
         : "";
+    const parentTaskId = resolveExistingAutomationParentId(sourceTaskId);
     const taskConfig = await resolveTaskConfigFromContext(automationContext);
     const automationToolNames = resolveAutomationToolNames(taskConfig?.toolNames);
     const conversation = conversationRepository.create({
       type: "main",
-      ...(sourceTaskId ? { parentId: sourceTaskId } : {}),
+      ...(parentTaskId ? { parentId: parentTaskId } : {}),
       customPrompt: mergeCustomPrompts(taskConfig?.customPrompt, AUTOMATION_EXECUTION_PROMPT),
       toolNames: automationToolNames,
       context: taskConfig?.context,

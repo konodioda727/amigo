@@ -5,6 +5,7 @@ import type { RowDataPacket } from "mysql2/promise";
 import { z } from "zod";
 import {
   ensureMysqlSchemaUpToDate,
+  formatMysqlDateTime,
   isMysqlConfigured,
   listNotificationChannels,
   mysqlExecute,
@@ -171,6 +172,12 @@ const parseDateTime = (value: unknown): string | undefined => {
   return new Date(`${raw.replace(" ", "T")}Z`).toISOString();
 };
 
+const toMysqlDateTime = (value: Date | string): string =>
+  formatMysqlDateTime(typeof value === "string" ? new Date(value) : value);
+
+const toMysqlDateTimeOrNull = (value: Date | string | null | undefined): string | null =>
+  value ? toMysqlDateTime(value) : null;
+
 const mapAutomationRow = (row: AutomationRow): AutomationDefinition => {
   const schedule = AutomationScheduleSchema.parse(
     parseJsonColumn<AutomationSchedule>(row.schedule_json, {
@@ -267,7 +274,8 @@ export class AutomationStore {
 
     if (isMysqlConfigured()) {
       await this.init();
-      const nowIso = new Date().toISOString();
+      const now = new Date();
+      const nowIso = now.toISOString();
       const normalizedId = (input.id?.trim() || slugify(input.name)).trim();
       const existing = await this.get(normalizedId, userId);
       const enabled = input.enabled ?? true;
@@ -291,10 +299,10 @@ export class AutomationStore {
         scheduleJson: JSON.stringify(input.schedule),
         enabled: enabled ? 1 : 0,
         nextRunAt,
-        lastRunAt: existing?.lastRunAt ? new Date(existing.lastRunAt) : null,
+        lastRunAt: existing?.lastRunAt || null,
         lastError: existing?.lastError || null,
-        createdAt: existing?.createdAt ? new Date(existing.createdAt) : new Date(nowIso),
-        updatedAt: new Date(nowIso),
+        createdAt: existing?.createdAt || now,
+        updatedAt: now,
       };
 
       await mysqlExecute(
@@ -331,11 +339,11 @@ export class AutomationStore {
           payload.scheduleType,
           payload.scheduleJson,
           payload.enabled,
-          payload.nextRunAt ? new Date(payload.nextRunAt) : null,
-          payload.lastRunAt,
+          toMysqlDateTimeOrNull(payload.nextRunAt),
+          toMysqlDateTimeOrNull(payload.lastRunAt),
           payload.lastError,
-          payload.createdAt,
-          payload.updatedAt,
+          toMysqlDateTime(payload.createdAt),
+          toMysqlDateTime(payload.updatedAt),
         ],
       );
 
@@ -424,10 +432,12 @@ export class AutomationStore {
         `,
         [
           shouldRemainEnabled ? 1 : 0,
-          shouldRemainEnabled ? new Date(computeNextRunAt(automation.schedule, runAt)) : null,
-          runAt,
+          shouldRemainEnabled
+            ? toMysqlDateTime(computeNextRunAt(automation.schedule, runAt))
+            : null,
+          toMysqlDateTime(runAt),
           result.error?.trim() || null,
-          new Date().toISOString(),
+          formatMysqlDateTime(),
           id.trim(),
         ],
       );
@@ -449,9 +459,9 @@ export class AutomationStore {
           id.trim(),
           result.conversationId || null,
           result.error?.trim() ? "failed" : "completed",
-          runAt,
-          runAt,
-          runAt,
+          toMysqlDateTime(runAt),
+          toMysqlDateTime(runAt),
+          toMysqlDateTime(runAt),
           result.error?.trim() || null,
         ],
       );
@@ -519,7 +529,7 @@ export class AutomationStore {
           id, automation_id, status, triggered_at, started_at
         ) VALUES (?, ?, 'running', ?, ?)
       `,
-      [runId, id.trim(), now, now],
+      [runId, id.trim(), toMysqlDateTime(now), toMysqlDateTime(now)],
     );
     return runId;
   }

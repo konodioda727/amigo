@@ -259,6 +259,9 @@ export const serializeToolResultForMemory = (toolName: string, result: unknown):
   try {
     const normalized = normalizeToolResultForMemory(toolName, result);
     const serialized = JSON.stringify(normalized, null, 2);
+    if (typeof serialized !== "string") {
+      return String(normalized);
+    }
     const maxLength =
       toolName === "browserSearch"
         ? 60_000
@@ -282,6 +285,9 @@ export const serializeToolResultForContinuationMemory = (
   try {
     const normalized = normalizeToolResultForContinuationMemory(toolName, result);
     const serialized = JSON.stringify(normalized, null, 2);
+    if (typeof serialized !== "string") {
+      return String(normalized);
+    }
     const maxLength =
       toolName === "browserSearch"
         ? 60_000

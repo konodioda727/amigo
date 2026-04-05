@@ -102,7 +102,7 @@ const buildExternalIdentityTenantSlug = (provider: string, externalId: string): 
 const createDrizzleDbForConnection = (connection: PoolConnection): AmigoDatabase =>
   drizzle(connection, { schema, mode: "default" });
 
-const formatMysqlDateTime = (value: Date = new Date()): string =>
+export const formatMysqlDateTime = (value: Date = new Date()): string =>
   value.toISOString().slice(0, 23).replace("T", " ");
 
 export const parseJsonColumn = <T>(value: unknown, fallback: T): T => {

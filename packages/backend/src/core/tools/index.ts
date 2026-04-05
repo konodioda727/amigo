@@ -23,6 +23,44 @@ import { UpdateDevServer } from "./updateDevServer";
 type GenericTool = ToolInterface<any>;
 type GenericToolParamDefinition = ToolParamDefinition<any>;
 
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+
+const unwrapToolInvokeResult = (
+  invokeResult: unknown,
+): {
+  message: string;
+  toolResult: unknown;
+  websocketData?: unknown;
+  error?: string;
+} => {
+  if (!isPlainObject(invokeResult)) {
+    return {
+      message: "",
+      toolResult: invokeResult,
+    };
+  }
+
+  const transport = isPlainObject(invokeResult.transport) ? invokeResult.transport : null;
+  if (transport) {
+    return {
+      message: typeof transport.message === "string" ? transport.message : "",
+      toolResult: "result" in transport ? transport.result : undefined,
+      ...(transport.websocketData !== undefined ? { websocketData: transport.websocketData } : {}),
+      ...(typeof invokeResult.error === "string" ? { error: invokeResult.error } : {}),
+    };
+  }
+
+  return {
+    message: typeof invokeResult.message === "string" ? invokeResult.message : "",
+    toolResult: "toolResult" in invokeResult ? invokeResult.toolResult : undefined,
+    ...(invokeResult.websocketData !== undefined
+      ? { websocketData: invokeResult.websocketData }
+      : {}),
+    ...(typeof invokeResult.error === "string" ? { error: invokeResult.error } : {}),
+  };
+};
+
 export class ToolService {
   private _availableTools: Record<string, GenericTool> = {};
   constructor(baseTools: GenericTool[], userDefinedTools: GenericTool[]) {
@@ -121,14 +159,20 @@ export class ToolService {
       }
 
       const normalizedParams = this.normalizeToolCallParams(toolName, params, tool.params);
-      const invokeResult = (await tool.invoke({
+      const invokeResult = await tool.invoke({
         params: normalizedParams as never,
         context,
-      })) as Awaited<ReturnType<typeof tool.invoke>> & { websocketData?: unknown };
-      const { toolResult, message, websocketData, error } = invokeResult;
+      });
+      const { toolResult, message, websocketData, error } = unwrapToolInvokeResult(invokeResult);
       logger.debug("[ToolService] 工具调用完成:", toolName, normalizedParams, toolResult);
 
-      return { message, toolResult, params: normalizedParams, websocketData, error };
+      return {
+        message,
+        toolResult: toolResult as ToolResult<ToolNames>,
+        params: normalizedParams,
+        websocketData,
+        error,
+      };
     } catch (err) {
       const errorMsg = `工具执行错误: ${err instanceof Error ? err.message : String(err)}`;
       logger.error("[ToolService] 工具执行异常:", err);
