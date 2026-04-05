@@ -419,7 +419,7 @@ export class AutomationStore {
 
       const runAt = result.runAt || new Date();
       const shouldRemainEnabled =
-        automation.enabled && (result.error?.trim() ? true : automation.schedule.type !== "once");
+        automation.enabled && automation.schedule.type !== "once";
       await mysqlExecute(
         `
           UPDATE automations
@@ -476,7 +476,7 @@ export class AutomationStore {
 
     const runAt = result.runAt || new Date();
     const shouldRemainEnabled =
-      automation.enabled && (result.error?.trim() ? true : automation.schedule.type !== "once");
+      automation.enabled && automation.schedule.type !== "once";
     const nextAutomation: AutomationDefinition = {
       ...automation,
       lastRunAt: runAt.toISOString(),
