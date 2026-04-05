@@ -39,6 +39,19 @@ const envPreviewProtocol = (process.env.AMIGO_PREVIEW_PUBLIC_PROTOCOL || "").tri
 const normalizedPreviewProtocol =
   envPreviewProtocol === "http" || envPreviewProtocol === "https" ? envPreviewProtocol : undefined;
 
+const DEFAULT_QDRANT_MEMORY_CONFIG = {
+  url: "http://127.0.0.1:6333",
+  collectionPrefix: "amigo_memory",
+  longTerm: {
+    enabled: true,
+    topK: 6,
+    minScore: 0.15,
+  },
+  retrieval: {
+    hybrid: true,
+  },
+} as const;
+
 const start = async () => {
   const app = await createAmigoApp({
     ...(envPort ? { port: envPort } : {}),
@@ -60,6 +73,7 @@ const start = async () => {
           },
         }
       : {}),
+    qdrantMemory: DEFAULT_QDRANT_MEMORY_CONFIG,
   });
   app.server.start();
 

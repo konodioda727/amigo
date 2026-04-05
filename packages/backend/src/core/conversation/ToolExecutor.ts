@@ -69,17 +69,19 @@ export class ToolExecutor {
 
     if (!partial) {
       const onConversationMessage = getGlobalState("onConversationMessage");
+      const memoryRuntime = getGlobalState("memoryRuntime");
+      const message = {
+        role: "assistant" as const,
+        content: payload,
+        type,
+        partial,
+        updateTime: wsMessage.data.updateTime,
+      };
       if (onConversationMessage) {
         void Promise.resolve(
           onConversationMessage({
             taskId: conversation.id,
-            message: {
-              role: "assistant",
-              content: payload,
-              type,
-              partial,
-              updateTime: wsMessage.data.updateTime,
-            },
+            message,
             context: conversation.memory.context,
           }),
         ).catch((error) => {
@@ -88,6 +90,13 @@ export class ToolExecutor {
               error instanceof Error ? error.message : String(error)
             }`,
           );
+        });
+      }
+      if (memoryRuntime) {
+        void memoryRuntime.handleAssistantMessage({
+          taskId: conversation.id,
+          message,
+          context: conversation.memory.context,
         });
       }
     }

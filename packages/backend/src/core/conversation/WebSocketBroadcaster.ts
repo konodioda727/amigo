@@ -138,6 +138,7 @@ export class WebSocketBroadcaster {
 
     const lastMessage = conversation.memory.lastMessage!;
     const onConversationMessage = getGlobalState("onConversationMessage");
+    const memoryRuntime = getGlobalState("memoryRuntime");
     if (onConversationMessage) {
       void Promise.resolve(
         onConversationMessage({
@@ -151,6 +152,13 @@ export class WebSocketBroadcaster {
             error instanceof Error ? error.message : String(error)
           }`,
         );
+      });
+    }
+    if (memoryRuntime) {
+      void memoryRuntime.handleAssistantMessage({
+        taskId: conversation.id,
+        message: lastMessage,
+        context: conversation.memory.context,
       });
     }
 
@@ -177,6 +185,15 @@ export class WebSocketBroadcaster {
     }
 
     conversation.memory.addMessage(message);
+    const lastMessage = conversation.memory.lastMessage;
+    const memoryRuntime = getGlobalState("memoryRuntime");
+    if (lastMessage && memoryRuntime) {
+      void memoryRuntime.handleAssistantMessage({
+        taskId: conversation.id,
+        message: lastMessage,
+        context: conversation.memory.context,
+      });
+    }
   }
 
   /**

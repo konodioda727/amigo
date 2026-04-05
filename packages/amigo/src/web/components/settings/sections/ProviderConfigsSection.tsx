@@ -1,8 +1,8 @@
 import type React from "react";
-import type { ModelConfig, ModelSelection, ProviderModelConfig } from "@/utils/serverAdmin";
+import { flattenModelConfigs, type ModelSelection } from "@/utils/serverAdmin";
 import { INPUT_CLASS, PROVIDER_OPTIONS } from "../constants";
 import { getProviderLabel } from "../helpers";
-import type { EditableModelConfig, EditableSettings } from "../types";
+import type { EditableModelConfig, EditableProviderModelConfig, EditableSettings } from "../types";
 import { EmptyStateCard, Field, NumberField } from "../ui";
 
 interface ProviderConfigsSectionProps {
@@ -12,16 +12,20 @@ interface ProviderConfigsSectionProps {
   onAddConfig: () => void;
   onDeleteConfig: (configId: string) => void;
   onRenameConfigId: (previousId: string, nextId: string) => void;
-  onUpdateConfig: (configId: string, updater: (config: ModelConfig) => ModelConfig) => void;
+  onUpdateConfig: (
+    configId: string,
+    updater: (config: EditableModelConfig) => EditableModelConfig,
+  ) => void;
   onAddModel: (configId: string) => void;
   onDeleteModel: (configId: string, index: number) => void;
   onRenameModel: (configId: string, index: number, nextName: string) => void;
   onUpdateModel: (
     configId: string,
     index: number,
-    updater: (model: ProviderModelConfig) => ProviderModelConfig,
+    updater: (model: EditableProviderModelConfig) => EditableProviderModelConfig,
   ) => void;
   onSetDefaultModel: (selection: ModelSelection) => void;
+  onSetMemoryExtractorModel: (selection: ModelSelection | null) => void;
 }
 
 const ProviderConfigsSection: React.FC<ProviderConfigsSectionProps> = ({
@@ -37,7 +41,14 @@ const ProviderConfigsSection: React.FC<ProviderConfigsSectionProps> = ({
   onRenameModel,
   onUpdateModel,
   onSetDefaultModel,
+  onSetMemoryExtractorModel,
 }) => {
+  const allModels = flattenModelConfigs(settings.modelConfigs);
+  const memoryExtractorValue =
+    settings.memoryExtractorModel?.configId && settings.memoryExtractorModel.model
+      ? `${settings.memoryExtractorModel.configId}::${settings.memoryExtractorModel.model}`
+      : "";
+
   if (!activeConfig) {
     return (
       <EmptyStateCard
@@ -58,6 +69,75 @@ const ProviderConfigsSection: React.FC<ProviderConfigsSectionProps> = ({
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-4">
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-200 px-5 py-3.5">
+          <div className="text-sm font-medium text-slate-950">全局选择</div>
+        </div>
+        <div className="grid gap-4 px-5 py-4 md:grid-cols-2">
+          <Field label="默认模型">
+            <select
+              value={
+                settings.defaultModel?.configId && settings.defaultModel.model
+                  ? `${settings.defaultModel.configId}::${settings.defaultModel.model}`
+                  : ""
+              }
+              onChange={(event) => {
+                const value = event.target.value;
+                if (!value) {
+                  return;
+                }
+                const [configId, model] = value.split("::");
+                if (!configId || !model) {
+                  return;
+                }
+                onSetDefaultModel({ configId, model });
+              }}
+              className={INPUT_CLASS}
+            >
+              <option value="">请选择默认模型</option>
+              {allModels.map((item) => (
+                <option
+                  key={`${item.configId}::${item.model}`}
+                  value={`${item.configId}::${item.model}`}
+                >
+                  {item.configId} / {item.model}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="长期记忆提取模型">
+            <select
+              value={memoryExtractorValue}
+              onChange={(event) => {
+                const value = event.target.value;
+                if (!value) {
+                  onSetMemoryExtractorModel(null);
+                  return;
+                }
+                const [configId, model] = value.split("::");
+                if (!configId || !model) {
+                  onSetMemoryExtractorModel(null);
+                  return;
+                }
+                onSetMemoryExtractorModel({ configId, model });
+              }}
+              className={INPUT_CLASS}
+            >
+              <option value="">跟随当前会话模型</option>
+              {allModels.map((item) => (
+                <option
+                  key={`${item.configId}::${item.model}`}
+                  value={`${item.configId}::${item.model}`}
+                >
+                  {item.configId} / {item.model}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+      </section>
+
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3.5">
           <div className="flex items-center gap-2">

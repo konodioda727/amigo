@@ -1,6 +1,7 @@
 import type { ChatMessage, ContextUsageStatus } from "@amigo-llm/types";
 import type { AmigoModelMessage } from "@/core/model";
 import { resolveModelContextConfig } from "@/core/model/contextConfig";
+import { getGlobalState } from "@/globalState";
 import { logger } from "@/utils/logger";
 import type { Conversation } from "./Conversation";
 import { toModelMessages } from "./modelMessageTransform";
@@ -111,35 +112,12 @@ const getCompressionAnchorIndex = (messages: ChatMessage[]): number | null => {
   return index >= 0 ? index : null;
 };
 
-const getCheckpointToolAnchorIndex = (messages: ChatMessage[]): number | null => {
-  for (let index = messages.length - 1; index >= 0; index--) {
-    const message = messages[index];
-    if (message?.role !== "assistant" || message?.type !== "tool") {
-      continue;
-    }
-
-    try {
-      const parsed = JSON.parse(message.content || "") as {
-        toolName?: string;
-        result?: unknown;
-      };
-      if (parsed.toolName === "completionResult" && parsed.result !== undefined) {
-        return index;
-      }
-    } catch {
-      // Ignore malformed tool payloads and continue scanning older messages.
-    }
-  }
-
-  return null;
-};
-
 const getMessagesForCurrentContext = (messages: ChatMessage[]): ChatMessage[] => {
   if (messages.length <= 1) {
     return [...messages];
   }
 
-  const anchorIndex = getCheckpointToolAnchorIndex(messages) ?? getCompressionAnchorIndex(messages);
+  const anchorIndex = getCompressionAnchorIndex(messages);
   if (anchorIndex === null) {
     return [...messages];
   }
@@ -346,14 +324,22 @@ export class ContextCompressionManager {
     signal?: AbortSignal,
     ephemeralMessages: ChatMessage[] = [],
   ): Promise<AmigoModelMessage[]> {
-    const snapshot = buildContextUsageSnapshot(conversation, ephemeralMessages);
+    const memoryRuntime = getGlobalState("memoryRuntime");
+    const memoryContextMessages = memoryRuntime
+      ? await memoryRuntime.buildContextMessages(conversation)
+      : [];
+    const mergedEphemeralMessages = [
+      ...memoryContextMessages.map((entry) => entry.message),
+      ...ephemeralMessages,
+    ];
+    const snapshot = buildContextUsageSnapshot(conversation, mergedEphemeralMessages);
     if (!snapshot) {
       if (conversation.memory.contextUsage) {
         conversation.setContextUsage(undefined);
       }
       const selectedMessages = [
         ...getMessagesForCurrentContext(conversation.memory.messages),
-        ...ephemeralMessages,
+        ...mergedEphemeralMessages,
       ];
       return toModelMessages(
         selectedMessages,
@@ -385,7 +371,7 @@ export class ContextCompressionManager {
     }
     let selectedMessages = [
       ...getMessagesForCurrentContext(conversation.memory.messages),
-      ...ephemeralMessages,
+      ...mergedEphemeralMessages,
     ];
     let modelMessages = snapshot.modelMessages;
     let contextUsage = {
@@ -449,7 +435,7 @@ export class ContextCompressionManager {
 
       selectedMessages = [
         ...getMessagesForCurrentContext(conversation.memory.messages),
-        ...ephemeralMessages,
+        ...mergedEphemeralMessages,
       ];
       modelMessages = toModelMessages(
         selectedMessages,
@@ -503,6 +489,5 @@ export const __testing__ = {
   decideCompressionSplit,
   estimateChatMessageTokens,
   estimateModelMessagesTokens,
-  getCheckpointToolAnchorIndex,
   getMessagesForCurrentContext,
 };

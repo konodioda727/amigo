@@ -1,13 +1,20 @@
 import type { ChatMessage, MessageDefinition, ToolInterface } from "@amigo-llm/types";
 import type {
+  SubTaskCompletionValidationHookPayload,
+  SubTaskValidationResult,
+  SubTaskWaitReviewEvaluationHookPayload,
+  SubTaskWaitReviewEvaluationResult,
+} from "../core/conversation/subTaskPolicyTypes";
+import type { MemoryConfig, SdkMemoryRuntime } from "../core/memoryRuntime";
+import type {
   ModelConfig,
   ModelContextConfig,
   ModelSelection,
   ResolvedModelConfig,
-} from "@/core/model/contextConfig";
-import type { ConversationPersistenceProvider } from "@/core/persistence/types";
-import type { SandboxManager } from "@/core/sandbox/types";
-import type { CreateTaskConfigResolver } from "@/core/server";
+} from "../core/model/contextConfig";
+import type { ConversationPersistenceProvider } from "../core/persistence/types";
+import type { SandboxManager } from "../core/sandbox/types";
+import type { CreateTaskConfigResolver } from "../core/server";
 
 export type ConversationTypeKey = "main" | "sub";
 
@@ -44,6 +51,10 @@ export interface GlobalStateType {
     userId?: string;
     selection: string | ModelSelection;
   }) => ResolvedModelConfig | null;
+  /** SDK 内置 memory 配置 */
+  memoryConfig?: MemoryConfig;
+  /** SDK 内置 memory runtime */
+  memoryRuntime?: SdkMemoryRuntime;
   /** 会话创建完成后的 app 层 hook */
   onConversationCreate?: (payload: { taskId: string; context?: unknown }) => void | Promise<void>;
   /** 会话消息产生后的 app 层 hook */
@@ -54,6 +65,14 @@ export interface GlobalStateType {
   }) => void | Promise<void>;
   /** 在 createTask 真正创建会话前解析任务配置 */
   createTaskConfigResolver?: CreateTaskConfigResolver;
+  /** 子任务 completeTask 扩展校验 hook */
+  subTaskCompletionValidator?: (
+    payload: SubTaskCompletionValidationHookPayload,
+  ) => SubTaskValidationResult | Promise<SubTaskValidationResult>;
+  /** 子任务 wait_review 自动审阅 hook */
+  subTaskWaitReviewEvaluator?: (
+    payload: SubTaskWaitReviewEvaluationHookPayload,
+  ) => SubTaskWaitReviewEvaluationResult | Promise<SubTaskWaitReviewEvaluationResult>;
 }
 
 /**

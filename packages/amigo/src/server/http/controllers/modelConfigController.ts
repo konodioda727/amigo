@@ -14,7 +14,7 @@ const ProviderModelConfigSchema = z.object({
   thinkType: z.string().trim().min(1).optional(),
 });
 
-const PublicModelConfigSchema: z.ZodType<PublicModelConfig> = z.object({
+const PublicModelConfigSchema = z.object({
   provider: z.string().trim().min(1),
   apiKey: z.literal(""),
   hasApiKey: z.boolean(),
@@ -27,18 +27,17 @@ const PublicModelConfigSchema: z.ZodType<PublicModelConfig> = z.object({
   minMessagesToCompress: z.number().int().positive().optional(),
 });
 
-const ModelConfigUpsertSchema: z.ZodType<UserModelConfigUpsertInput["modelConfigs"][string]> =
-  z.object({
-    provider: z.string().trim().min(1),
-    apiKey: z.string().trim().optional(),
-    sourceConfigId: z.string().trim().min(1).optional(),
-    baseURL: z.string().trim().min(1).optional(),
-    models: z.array(ProviderModelConfigSchema).min(1),
-    compressionThreshold: z.number().positive().max(1).optional(),
-    targetRatio: z.number().positive().max(1).optional(),
-    preserveRecentMessages: z.number().int().positive().optional(),
-    minMessagesToCompress: z.number().int().positive().optional(),
-  });
+const ModelConfigUpsertSchema = z.object({
+  provider: z.string().trim().min(1),
+  apiKey: z.string().trim().optional(),
+  sourceConfigId: z.string().trim().min(1).optional(),
+  baseURL: z.string().trim().min(1).optional(),
+  models: z.array(ProviderModelConfigSchema).min(1),
+  compressionThreshold: z.number().positive().max(1).optional(),
+  targetRatio: z.number().positive().max(1).optional(),
+  preserveRecentMessages: z.number().int().positive().optional(),
+  minMessagesToCompress: z.number().int().positive().optional(),
+});
 
 const ModelSelectionSchema: z.ZodType<ModelSelection> = z.object({
   configId: z.string().trim().min(1).optional(),
@@ -49,65 +48,75 @@ const PublicUserModelConfigSettingsSchema = z
   .object({
     modelConfigs: z.record(z.string().trim().min(1), PublicModelConfigSchema),
     defaultModel: ModelSelectionSchema.nullish(),
+    memoryExtractorModel: ModelSelectionSchema.nullish(),
   })
   .superRefine((value, ctx) => {
-    const defaultModel = value.defaultModel;
-    if (!defaultModel) {
-      return;
-    }
+    for (const [field, selection] of [
+      ["defaultModel", value.defaultModel],
+      ["memoryExtractorModel", value.memoryExtractorModel],
+    ] as const) {
+      if (!selection) {
+        continue;
+      }
 
-    const configId = defaultModel.configId?.trim() || "";
-    if (!configId || !value.modelConfigs[configId]) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["defaultModel", "configId"],
-        message: "defaultModel.configId 不存在",
-      });
-      return;
-    }
+      const configId = selection.configId?.trim() || "";
+      if (!configId || !value.modelConfigs[configId]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field, "configId"],
+          message: `${field}.configId 不存在`,
+        });
+        continue;
+      }
 
-    const matchedModel = value.modelConfigs[configId].models.some(
-      (item) => item.name.trim() === defaultModel.model.trim(),
-    );
-    if (!matchedModel) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["defaultModel", "model"],
-        message: "defaultModel.model 不存在",
-      });
+      const matchedModel = value.modelConfigs[configId].models.some(
+        (item) => item.name.trim() === selection.model.trim(),
+      );
+      if (!matchedModel) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field, "model"],
+          message: `${field}.model 不存在`,
+        });
+      }
     }
   });
 
-const UserModelConfigUpsertSchema: z.ZodType<UserModelConfigUpsertInput> = z
+const UserModelConfigUpsertSchema = z
   .object({
     modelConfigs: z.record(z.string().trim().min(1), ModelConfigUpsertSchema),
     defaultModel: ModelSelectionSchema.nullish(),
+    memoryExtractorModel: ModelSelectionSchema.nullish(),
   })
   .superRefine((value, ctx) => {
-    const defaultModel = value.defaultModel;
-    if (!defaultModel) {
-      return;
-    }
+    for (const [field, selection] of [
+      ["defaultModel", value.defaultModel],
+      ["memoryExtractorModel", value.memoryExtractorModel],
+    ] as const) {
+      if (!selection) {
+        continue;
+      }
 
-    const configId = defaultModel.configId?.trim() || "";
-    if (!configId || !value.modelConfigs[configId]) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["defaultModel", "configId"],
-        message: "defaultModel.configId 不存在",
-      });
-      return;
-    }
+      const configId = selection.configId?.trim() || "";
+      if (!configId || !value.modelConfigs[configId]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field, "configId"],
+          message: `${field}.configId 不存在`,
+        });
+        continue;
+      }
 
-    const matchedModel = value.modelConfigs[configId].models.some(
-      (item) => item.name.trim() === defaultModel.model.trim(),
-    );
-    if (!matchedModel) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["defaultModel", "model"],
-        message: "defaultModel.model 不存在",
-      });
+      const matchedModel = value.modelConfigs[configId].models.some(
+        (item) => item.name.trim() === selection.model.trim(),
+      );
+      if (!matchedModel) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field, "model"],
+          message: `${field}.model 不存在`,
+        });
+      }
     }
   });
 
@@ -127,7 +136,7 @@ const sanitizeDefaultModelConfigs = (
       apiKey: string;
     }
   >,
-) =>
+): Record<string, PublicModelConfig> =>
   Object.fromEntries(
     Object.entries(modelConfigs).map(([configId, config]) => [
       configId,
@@ -145,6 +154,7 @@ const getDefaultSettings = (): PublicUserModelConfigSettings => {
   return {
     modelConfigs: sanitizeDefaultModelConfigs(defaultConfigs),
     defaultModel: null,
+    memoryExtractorModel: null,
   };
 };
 
@@ -167,14 +177,15 @@ export const getUserModelConfigsController = async (userId: string) => {
 
 export const upsertUserModelConfigsController = async (req: Request, userId: string) => {
   try {
-    const settings = await parseJsonBody(
+    const settings = (await parseJsonBody(
       req,
       UserModelConfigUpsertSchema,
       "INVALID_MODEL_CONFIGS_REQUEST",
-    );
+    )) as UserModelConfigUpsertInput;
     const saved = await upsertUserModelConfigSettings(userId, {
       ...settings,
       defaultModel: settings.defaultModel || null,
+      memoryExtractorModel: settings.memoryExtractorModel || null,
     });
     return jsonResponse({
       hasUserConfig: true,

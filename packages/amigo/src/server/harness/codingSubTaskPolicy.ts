@@ -120,48 +120,6 @@ const getLastAssistantMessage = (messages: ChatMessage[]) =>
         message.role === "assistant" && !message.partial && typeof message.content === "string",
     )?.content || "";
 
-const getLatestCompletionResultContent = (messages: ChatMessage[]): string => {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (
-      message?.role !== "assistant" ||
-      message?.type !== "tool" ||
-      message.partial ||
-      typeof message.content !== "string"
-    ) {
-      continue;
-    }
-
-    try {
-      const parsed = JSON.parse(message.content) as {
-        toolName?: string;
-        params?: {
-          result?: string;
-        };
-        result?: unknown;
-      };
-      if (parsed.toolName !== "completionResult") {
-        continue;
-      }
-
-      if (typeof parsed.params?.result === "string" && parsed.params.result.trim()) {
-        return parsed.params.result;
-      }
-
-      if (typeof parsed.result === "string" && parsed.result.trim()) {
-        return parsed.result;
-      }
-    } catch {
-      // Ignore malformed payloads and keep scanning older messages.
-    }
-  }
-
-  return "";
-};
-
-const getReviewerDecisionSource = (messages: ChatMessage[]): string =>
-  getLatestCompletionResultContent(messages) || getLastAssistantMessage(messages);
-
 const parseIndependentReviewerDecision = (content: string): SubTaskWaitReviewEvaluationResult => {
   const decisionMatch = REVIEWER_DECISION_PATTERN.exec(content);
   const summary = REVIEWER_SUMMARY_PATTERN.exec(content)?.[1]?.trim();
@@ -220,7 +178,7 @@ export const evaluateAmigoSubTaskWaitReview = async ({
     const executor = taskOrchestrator.getExecutor(reviewerConversation.id);
     await executor.execute(reviewerConversation);
     return parseIndependentReviewerDecision(
-      getReviewerDecisionSource(reviewerConversation.memory.messages),
+      getLastAssistantMessage(reviewerConversation.memory.messages),
     );
   } catch (error) {
     return {

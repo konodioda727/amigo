@@ -21,7 +21,6 @@ import {
 import { EditFileSchema } from "./editFile";
 import { InstallDependenciesSchema } from "./installDependencies";
 import { ReadFileSchema } from "./readFile";
-import { ReviewSubTaskSchema } from "./reviewSubTask";
 import { CreateTaskDocsSchema, ExecuteTaskListSchema, ReadTaskDocsSchema } from "./taskDocs";
 import { UpdateDevServerSchema } from "./updateDevServer";
 
@@ -31,7 +30,6 @@ export const toolSchemas = z.discriminatedUnion("name", [
   AskFollowupQuestionSchema,
   CompleteTaskSchema,
   BrowserSearchSchema,
-  ReviewSubTaskSchema,
   CreateTaskDocsSchema,
   ReadTaskDocsSchema,
   ExecuteTaskListSchema,
@@ -87,7 +85,6 @@ export type {
   InstallDependenciesParams,
   InstallDependenciesResult,
 } from "./installDependencies";
-export type { ReviewSubTaskParams, ReviewSubTaskResult } from "./reviewSubTask";
 export type { UpdateDevServerParams, UpdateDevServerResult } from "./updateDevServer";
 
 /**

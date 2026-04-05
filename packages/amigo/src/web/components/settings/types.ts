@@ -16,6 +16,7 @@ export type EditableModelConfig = Omit<ModelConfig, "models"> & {
 export type EditableSettings = {
   modelConfigs: Record<string, EditableModelConfig>;
   defaultModel: ModelSelection | null;
+  memoryExtractorModel: ModelSelection | null;
 };
 
 export type SettingsTab = "provider-configs" | "message-channels";

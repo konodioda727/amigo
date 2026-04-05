@@ -953,6 +953,7 @@ export class Sandbox {
       `/sandbox/${params.workingDir === "." ? "" : params.workingDir}`.replace(/\/$/, "") ||
       "/sandbox";
     const command = [
+      "mkdir -p /tmp/amigo",
       `cd ${shellQuote(workingDirPath)}`,
       `export PNPM_STORE_DIR=${shellQuote(PNPM_STORE_CONTAINER_PATH)}`,
       `(${plan.installCommand}) >${shellQuote(logPath)} 2>&1`,
@@ -1008,6 +1009,7 @@ export class Sandbox {
       `/sandbox/${params.workingDir === "." ? "" : params.workingDir}`.replace(/\/$/, "") ||
       "/sandbox";
     const command = [
+      "mkdir -p /tmp/amigo",
       `cd ${shellQuote(workingDirPath)}`,
       `export PNPM_STORE_DIR=${shellQuote(PNPM_STORE_CONTAINER_PATH)}`,
       `(${params.installCommand}) >${shellQuote(logPath)} 2>&1`,

@@ -34,6 +34,27 @@
 // Builder API
 export { AmigoServerBuilder } from "../core/builder";
 export { ValidationError } from "../core/config";
+export type {
+  InMemoryMemoryIndexProvider,
+  LongTermMemoryCandidate,
+  MemoryConfig,
+  MemoryDocument,
+  MemoryEmbeddingProvider,
+  MemoryLongTermConfig,
+  MemoryNamespace,
+  MemoryRetrievalConfig,
+  MemoryStore,
+  MemoryStoreHit,
+  MemoryStoreQuery,
+  MemoryStoreRecord,
+} from "../core/memoryRuntime";
+export {
+  createDeterministicMemoryEmbeddingProvider,
+  createInMemoryMemoryIndexProvider,
+  createInMemoryMemoryStore,
+  DeterministicMemoryEmbeddingProvider,
+  InMemoryMemoryStore,
+} from "../core/memoryRuntime";
 export {
   listAvailableModels,
   MODEL_PROVIDERS,

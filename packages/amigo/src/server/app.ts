@@ -8,6 +8,7 @@ import {
   getGlobalState,
   type LoggerConfig,
   logger,
+  type MemoryConfig,
   type ModelConfig,
   type SandboxOptions,
   SandboxRegistry,
@@ -25,10 +26,16 @@ import {
   listNotificationChannels,
   requireMysqlConfigured,
 } from "./db";
+import { evaluateAmigoSubTaskWaitReview } from "./harness/codingSubTaskPolicy";
 import { createAmigoHttpHandler } from "./http/appHttpHandler";
 import { ConversationChannelRouter } from "./integrations/channels/router";
 import { createFeishuBridge, type FeishuBridge } from "./integrations/feishu/bridge";
-import { resolveUserScopedModelConfig, warmUserModelConfigStore } from "./modelConfigs/store";
+import { createQdrantMemoryConfig, type QdrantMemoryConfigOptions } from "./memory/qdrantMemory";
+import {
+  resolveUserScopedMemoryExtractorModelSelection,
+  resolveUserScopedModelConfig,
+  warmUserModelConfigStore,
+} from "./modelConfigs/store";
 import { AMIGO_APP_SYSTEM_PROMPT_APPENDIX } from "./prompts/amigoAppPrompt";
 import { AmigoAppServer } from "./runtime/appServer";
 import { SkillHubMarketClient } from "./skills/skillHubMarket";
@@ -45,6 +52,8 @@ export interface AmigoAppOptions {
   sandboxConfig?: SandboxOptions;
   previewHostConfig?: PreviewHostConfig;
   ossConfig?: OssUploadConfig | null;
+  memory?: MemoryConfig | null;
+  qdrantMemory?: QdrantMemoryConfigOptions | null;
 }
 
 export interface AmigoApp {
@@ -231,8 +240,8 @@ export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<Ami
       toolNames: automationToolNames,
       context: taskConfig?.context,
       autoApproveToolNames: taskConfig?.autoApproveToolNames
-        ?.map((name) => name.trim())
-        .filter((name) => name && name !== ASK_FOLLOWUP_TOOL_NAME),
+        ?.map((name: string) => name.trim())
+        .filter((name: string) => name && name !== ASK_FOLLOWUP_TOOL_NAME),
     });
 
     taskOrchestrator.setUserInput(conversation, automation.prompt);
@@ -262,6 +271,35 @@ export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<Ami
       ...getBaseTools("sub").map((tool) => tool.name),
     ]),
   );
+  const memoryConfig =
+    options.memory !== undefined
+      ? options.memory || undefined
+      : options.qdrantMemory !== undefined
+        ? options.qdrantMemory
+          ? createQdrantMemoryConfig({
+              ...options.qdrantMemory,
+              longTerm: options.qdrantMemory.longTerm
+                ? {
+                    ...options.qdrantMemory.longTerm,
+                    extractor: {
+                      ...(options.qdrantMemory.longTerm.extractor || {}),
+                      resolveModelSelection: (payload) =>
+                        resolveUserScopedMemoryExtractorModelSelection({
+                          userId: payload.userId,
+                        }),
+                    },
+                  }
+                : {
+                    extractor: {
+                      resolveModelSelection: (payload) =>
+                        resolveUserScopedMemoryExtractorModelSelection({
+                          userId: payload.userId,
+                        }),
+                    },
+                  },
+            })
+          : undefined
+        : undefined;
   let builder = new AmigoServerBuilder().port(port).cachePath(cachePath);
   if (options.loggerConfig) {
     builder = builder.loggerConfig(options.loggerConfig);
@@ -275,10 +313,22 @@ export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<Ami
   for (const tool of getUserCodingAgentTools(automationStore, automationScheduler)) {
     builder = builder.registerTool(tool as never);
   }
+  if (memoryConfig) {
+    const memoryAwareBuilder = builder as typeof builder & {
+      memory: (config: typeof memoryConfig) => typeof builder;
+    };
+    builder = memoryAwareBuilder.memory(memoryConfig);
+    logger.info(
+      `[AmigoApp] 已启用 SDK memory (${options.memory !== undefined ? "options.memory" : "options.qdrantMemory"})`,
+    );
+  }
+  if (modelConfigs) {
+    builder = builder.modelConfigs(modelConfigs);
+  }
 
   const runtimeServer = builder
     .appendSystemPrompt(AMIGO_APP_SYSTEM_PROMPT_APPENDIX)
-    .modelConfigs(modelConfigs)
+    .subTaskWaitReviewEvaluator(evaluateAmigoSubTaskWaitReview)
     .userModelConfigResolver(resolveUserScopedModelConfig)
     .sandboxManager(sandboxManager)
     .skills({ provider: skillStore })

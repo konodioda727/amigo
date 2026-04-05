@@ -80,57 +80,33 @@ describe("ContextCompressionManager helpers", () => {
     expect(selected.map((message) => message.updateTime)).toEqual([4, 5]);
   });
 
-  it("prefers the latest completionResult checkpoint over older history", () => {
+  it("keeps all history when no compaction marker exists", () => {
     const messages: ChatMessage[] = [
       createMessage(1, "old-1"),
+      createMessage(2, "old-2"),
       {
         role: "assistant",
         type: "tool",
         content: JSON.stringify({
-          toolName: "completionResult",
-          result: "checkpoint-1",
+          toolName: "completeTask",
+          result: "done",
           params: {
-            summary: "checkpoint-1",
-            result: "checkpoint-1",
+            summary: "done",
+            result: "done",
           },
         }),
-        updateTime: 2,
-      },
-      {
-        role: "system",
-        type: "message",
-        content: "tool result after checkpoint-1",
         updateTime: 3,
       },
       createMessage(4, "recent-1"),
-      {
-        role: "assistant",
-        type: "tool",
-        content: JSON.stringify({
-          toolName: "completionResult",
-          result: "checkpoint-2",
-          params: {
-            summary: "checkpoint-2",
-            result: "checkpoint-2",
-          },
-        }),
-        updateTime: 5,
-      },
-      {
-        role: "system",
-        type: "message",
-        content: "tool result after checkpoint-2",
-        updateTime: 6,
-      },
-      createMessage(7, "recent-2", "assistant"),
+      createMessage(5, "recent-2", "assistant"),
     ];
 
     const selected = __testing__.getMessagesForCurrentContext(messages);
 
-    expect(selected.map((message) => message.updateTime)).toEqual([5, 6, 7]);
+    expect(selected.map((message) => message.updateTime)).toEqual([1, 2, 3, 4, 5]);
   });
 
-  it("prefers the latest completionResult checkpoint even when a compaction marker exists earlier", () => {
+  it("uses the latest compaction marker even when later tool payloads exist", () => {
     const messages: ChatMessage[] = [
       createMessage(1, "old-1"),
       {
@@ -144,11 +120,11 @@ describe("ContextCompressionManager helpers", () => {
         role: "assistant",
         type: "tool",
         content: JSON.stringify({
-          toolName: "completionResult",
-          result: "checkpoint",
+          toolName: "completeTask",
+          result: "done",
           params: {
-            summary: "checkpoint",
-            result: "checkpoint",
+            summary: "done",
+            result: "done",
           },
         }),
         updateTime: 4,
@@ -156,7 +132,7 @@ describe("ContextCompressionManager helpers", () => {
       {
         role: "system",
         type: "message",
-        content: "tool result after checkpoint",
+        content: "tool result after completion",
         updateTime: 5,
       },
       createMessage(6, "recent-2"),
@@ -164,7 +140,7 @@ describe("ContextCompressionManager helpers", () => {
 
     const selected = __testing__.getMessagesForCurrentContext(messages);
 
-    expect(selected.map((message) => message.updateTime)).toEqual([4, 5, 6]);
+    expect(selected.map((message) => message.updateTime)).toEqual([2, 3, 4, 5, 6]);
   });
 
   it("builds a fresh context usage snapshot from current memory", () => {

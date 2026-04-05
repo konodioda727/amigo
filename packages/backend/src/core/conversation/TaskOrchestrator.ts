@@ -1,5 +1,6 @@
 import type { ToolInterface, UserMessageAttachment } from "@amigo-llm/types";
 import pWaitFor from "p-wait-for";
+import { getGlobalState } from "@/globalState";
 import { logger } from "@/utils/logger";
 import { clearConversationContinuations } from "./asyncContinuations";
 import type { Conversation } from "./Conversation";
@@ -270,6 +271,15 @@ export class TaskOrchestrator {
       type: "userSendMessage",
       partial: false,
     });
+    const lastMessage = conversation.memory.lastMessage;
+    const memoryRuntime = getGlobalState("memoryRuntime");
+    if (lastMessage && memoryRuntime) {
+      void memoryRuntime.handleUserMessage({
+        taskId: conversation.id,
+        message: lastMessage,
+        context: conversation.memory.context,
+      });
+    }
 
     const wsMessage = {
       type: "userSendMessage" as const,

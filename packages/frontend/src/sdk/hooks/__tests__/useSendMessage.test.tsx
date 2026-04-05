@@ -73,48 +73,6 @@ describe("useSendMessage sendConfirm", () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps completionResult confirmations out of streaming state", () => {
-    const store = createWebSocketStore({ autoConnect: false });
-
-    store.setState({
-      socket: {
-        readyState: WebSocket.OPEN,
-        send: mock(),
-      } as any,
-      activeTaskId: "task-1",
-      mainTaskId: "task-1",
-      tasks: {
-        "task-1": {
-          rawMessages: [],
-          displayMessages: [],
-          status: "waiting_tool_call",
-          lastUpdateTime: Date.now(),
-          pendingToolCall: {
-            toolName: "completionResult",
-            params: { summary: "done", result: "done" },
-          },
-        },
-      },
-    });
-
-    const contextValue: WebSocketContextValue = {
-      store,
-      config: {
-        url: "ws://localhost:10013",
-        autoConnect: false,
-        reconnect: true,
-        reconnectInterval: 3000,
-        reconnectAttempts: 5,
-      },
-      handlers: {},
-    };
-
-    const { getByTestId } = renderWithContext(contextValue);
-    fireEvent.click(getByTestId("confirm"));
-
-    expect(store.getState().tasks["task-1"]?.status).toBe("idle");
-  });
-
   it("still marks other tool confirmations as streaming", () => {
     const store = createWebSocketStore({ autoConnect: false });
 

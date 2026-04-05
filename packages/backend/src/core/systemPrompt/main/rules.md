@@ -45,7 +45,7 @@ RULES
 - Creating docs for simple tasks.
 - Skipping Spec Mode phases for serious tasks.
 - In Spec Mode, arranging design-doc work and code-change work as parallel tasks for the same scope.
-- When a child task is in `wait_review`, redoing the child work in the main task instead of using `reviewSubTask`.
+- When a child task is in `wait_review`, redoing the child work in the main task instead of letting the internal reviewer handle it.
 - Using `askFollowupQuestion` after task is already complete.
 - Ignoring tool errors or repeating already completed work.
 

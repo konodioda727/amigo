@@ -16,7 +16,6 @@ import { CompleteTask } from "./completeTask";
 import { EditFile } from "./editFile";
 import { InstallDependencies } from "./installDependencies";
 import { ReadFile } from "./readFile";
-import { ReviewSubTask } from "./reviewSubTask";
 import { CreateTaskDocs, ExecuteTaskList, ReadTaskDocs } from "./taskDocs/index";
 import { UpdateDevServer } from "./updateDevServer";
 
@@ -448,7 +447,6 @@ const _SHARED_BASIC_TOOLS: GenericTool[] = [
 export const DEFAULT_MAIN_BASIC_TOOLS: GenericTool[] = [
   AskFollowupQuestions,
   CompleteTask,
-  ReviewSubTask,
   BrowserSearch,
   EditFile,
   ReadFile,
@@ -486,7 +484,6 @@ export const CUSTOMED_TOOLS: GenericTool[] = [];
 export {
   AskFollowupQuestions,
   CompleteTask,
-  ReviewSubTask,
   BrowserSearch,
   EditFile,
   ReadFile,

@@ -49,9 +49,11 @@ export const serializeModelConfigs = (
 export const hydrateEditableSettings = (
   modelConfigs: Record<string, ModelConfig>,
   defaultModel?: ModelSelection | null,
+  memoryExtractorModel?: ModelSelection | null,
 ): EditableSettings => ({
   modelConfigs: hydrateModelConfigs(modelConfigs),
   defaultModel: defaultModel || null,
+  memoryExtractorModel: memoryExtractorModel || null,
 });
 
 export const buildEmptyModel = (): EditableProviderModelConfig => hydrateModel();

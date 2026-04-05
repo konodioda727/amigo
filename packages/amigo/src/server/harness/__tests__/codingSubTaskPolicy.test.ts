@@ -123,7 +123,7 @@ describe("codingSubTaskPolicy", () => {
     expect(conversationRepository.getAll()).toHaveLength(1);
   });
 
-  it("prefers reviewer decisions persisted through completionResult payloads", async () => {
+  it("uses the reviewer's latest assistant message as the decision source", async () => {
     const parent = conversationRepository.create({
       id: "parent-reviewer-main-tool-payload",
       type: "main",
@@ -137,24 +137,13 @@ describe("codingSubTaskPolicy", () => {
         ) => {
           conversation.memory.addMessage({
             role: "assistant",
-            type: "tool",
+            type: "message",
             partial: false,
-            content: JSON.stringify({
-              toolName: "completionResult",
-              params: {
-                summary: "需要返工",
-                result: [
-                  "<review_decision>request_changes</review_decision>",
-                  "<review_summary>检查发现真实产物与 completeTask 不一致。</review_summary>",
-                  "<review_feedback>请补充 runChecks 并修正文档中的验证结论。</review_feedback>",
-                ].join("\n"),
-              },
-              result: [
-                "<review_decision>request_changes</review_decision>",
-                "<review_summary>旧格式兜底</review_summary>",
-                "<review_feedback>无</review_feedback>",
-              ].join("\n"),
-            }),
+            content: [
+              "<review_decision>request_changes</review_decision>",
+              "<review_summary>检查发现真实产物与 completeTask 不一致。</review_summary>",
+              "<review_feedback>请补充 runChecks 并修正文档中的验证结论。</review_feedback>",
+            ].join("\n"),
           });
           conversation.status = "completed";
         },

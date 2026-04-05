@@ -99,3 +99,60 @@ describe("Sandbox queueEditorOpenFile", () => {
     expect(payload.column).toBe(3);
   });
 });
+
+describe("Sandbox dependency install commands", () => {
+  it("creates the log directory before running a detected install plan", async () => {
+    const sandbox = new Sandbox() as unknown as {
+      container: object | null;
+      installDependencies: (params: { workingDir: string }) => Promise<void>;
+      detectDependencyInstallPlan: (workingDir: string) => Promise<{
+        packageManager: string;
+        installCommand?: string;
+      }>;
+      runCommand: (cmd: string) => Promise<string>;
+      dependencyInstallStates: Map<string, unknown>;
+    };
+    let command = "";
+    sandbox.container = {};
+    sandbox.detectDependencyInstallPlan = async () => ({
+      packageManager: "pnpm",
+      installCommand: "pnpm install",
+    });
+    sandbox.runCommand = mock(async (cmd: string) => {
+      command = cmd;
+      return "";
+    });
+
+    await sandbox.installDependencies({ workingDir: "." });
+
+    expect(command).toContain("mkdir -p /tmp/amigo");
+    expect(command).toContain("(pnpm install) >'/tmp/amigo/dependency-install-root.log' 2>&1");
+  });
+
+  it("creates the log directory before running a custom install command", async () => {
+    const sandbox = new Sandbox() as unknown as {
+      container: object | null;
+      runDependencyInstallCommand: (params: {
+        workingDir: string;
+        installCommand: string;
+      }) => Promise<void>;
+      runCommand: (cmd: string) => Promise<string>;
+    };
+    let command = "";
+    sandbox.container = {};
+    sandbox.runCommand = mock(async (cmd: string) => {
+      command = cmd;
+      return "";
+    });
+
+    await sandbox.runDependencyInstallCommand({
+      workingDir: "packages/backend",
+      installCommand: "bun install",
+    });
+
+    expect(command).toContain("mkdir -p /tmp/amigo");
+    expect(command).toContain(
+      "(bun install) >'/tmp/amigo/dependency-install-packages_backend.log' 2>&1",
+    );
+  });
+});

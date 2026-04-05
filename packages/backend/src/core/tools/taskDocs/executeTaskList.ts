@@ -4,6 +4,7 @@ import type { ToolInterface } from "@amigo-llm/types";
 import {
   enqueueConversationContinuation,
   flushConversationContinuationsIfIdle,
+  runSubTaskWaitReviewEvaluation,
   SubTaskInterruptedError,
   taskOrchestrator,
 } from "@/core/conversation";
@@ -24,6 +25,7 @@ import {
 import { logger } from "@/utils/logger";
 import { createTool } from "../base";
 import { asyncToolJobRegistry } from "../base/asyncJobRegistry";
+import { reviewSubTaskCompletion } from "../reviewSubTask";
 import { buildDependencyResultContext } from "./dependencyContext";
 import { getTaskDocsPath, parseToolsFromDescription } from "./utils";
 
@@ -32,6 +34,7 @@ type GenericTool = ToolInterface<string>;
 const CONCURRENCY_LIMIT = 2;
 const DOC_TRUNCATE_LIMIT = 4000;
 const MAX_SUB_TASK_AUTO_RETRIES = 2;
+const MAX_INTERNAL_REVIEW_ROUNDS = 2;
 const FORBIDDEN_SUB_TASK_TOOLS = ["createTaskDocs", "readTaskDocs", "executeTaskList"];
 const normalizeDescription = (description: string) =>
   description.replace(/\(In Progress\)$/, "").trim();
@@ -182,24 +185,158 @@ const resolveExecutionType = (
   return { type: "new" as const, status };
 };
 
+const isPendingCompleteTaskReview = (
+  conversation: ReturnType<typeof conversationRepository.load>,
+): boolean =>
+  !!conversation &&
+  conversation.status === "waiting_tool_confirmation" &&
+  conversation.pendingToolCall?.toolName === "completeTask";
+
+const resolveInternalReviewFeedback = (message?: string, feedback?: string) =>
+  [feedback?.trim(), message?.trim()].find(Boolean);
+
+const resolveCompletedSubTaskSummary = (
+  conversation: ReturnType<typeof conversationRepository.load>,
+  fallback: string,
+) => {
+  const payload = conversation ? extractCompletedSubTaskPayload(conversation) : null;
+  return payload ? formatCompletedSubTaskPayload(payload) : fallback;
+};
+
+const handleInternalWaitReview = async ({
+  parentConv,
+  subTaskId,
+  target,
+  cleanDescriptionForAgent,
+  availableTools,
+}: {
+  parentConv: NonNullable<ReturnType<typeof conversationRepository.load>>;
+  subTaskId: string;
+  target: string;
+  cleanDescriptionForAgent: string;
+  availableTools: GenericTool[];
+}): Promise<{
+  outcome: TaskExecutionResult["outcome"];
+  summary: string;
+  taskSucceeded: boolean;
+  validationReason?: string;
+} | null> => {
+  for (let round = 0; round < MAX_INTERNAL_REVIEW_ROUNDS; round += 1) {
+    const subConversation = conversationRepository.load(subTaskId);
+    if (!isPendingCompleteTaskReview(subConversation)) {
+      return null;
+    }
+
+    const pendingPayload = extractPendingCompleteTaskPayload(subConversation);
+    const evaluation = await runSubTaskWaitReviewEvaluation({
+      subTaskId,
+      pendingPayload,
+      taskDescription: cleanDescriptionForAgent,
+      parentTaskId: parentConv.id,
+      parentMessages: parentConv.memory.messages,
+      subTaskMessages: subConversation.memory.messages,
+      toolNames: availableTools.map((tool) => tool.name),
+      context: parentConv.memory.context,
+    });
+
+    const decision = evaluation.action === "approve" ? "approve" : "request_changes";
+    const reviewResult = await reviewSubTaskCompletion({
+      parentTaskId: parentConv.id,
+      subTaskId,
+      decision,
+      feedback: resolveInternalReviewFeedback(evaluation.message, evaluation.feedback),
+    });
+
+    if (!reviewResult.success) {
+      return {
+        outcome: "failed",
+        summary: reviewResult.message,
+        taskSucceeded: false,
+        validationReason: reviewResult.message,
+      };
+    }
+
+    const refreshedConversation = conversationRepository.load(subTaskId);
+
+    if (decision === "approve") {
+      const payload = refreshedConversation
+        ? extractCompletedSubTaskPayload(refreshedConversation)
+        : null;
+      const validation = validateCompletedSubTaskPayload(payload);
+      if (!validation.ok) {
+        const reason = validation.reason || "completeTask 结果不符合要求。";
+        return {
+          outcome: "failed",
+          summary: reason,
+          taskSucceeded: false,
+          validationReason: reason,
+        };
+      }
+
+      return {
+        outcome: "success",
+        summary: resolveCompletedSubTaskSummary(refreshedConversation, reviewResult.message),
+        taskSucceeded: true,
+      };
+    }
+
+    if (isPendingCompleteTaskReview(refreshedConversation)) {
+      continue;
+    }
+
+    if (refreshedConversation?.status === "error") {
+      return {
+        outcome: "failed",
+        summary: "子任务在内部返工后执行失败。",
+        taskSucceeded: false,
+        validationReason: "子任务在内部返工后执行失败。",
+      };
+    }
+
+    if (refreshedConversation?.status === "idle") {
+      return {
+        outcome: "failed",
+        summary: "子任务在内部返工后进入等待输入状态，无法继续自动处理。",
+        taskSucceeded: false,
+        validationReason: "子任务在内部返工后进入等待输入状态，无法继续自动处理。",
+      };
+    }
+  }
+
+  const pendingConversation = conversationRepository.load(subTaskId);
+  const pendingPayload = pendingConversation
+    ? extractPendingCompleteTaskPayload(pendingConversation)
+    : null;
+  const summary = buildWaitReviewSummary({
+    subTaskId,
+    summary: pendingPayload ? formatCompletedSubTaskPayload(pendingPayload) : target,
+  });
+
+  return {
+    outcome: "wait_review",
+    summary,
+    taskSucceeded: false,
+  };
+};
+
 const startNewTask = ({
   taskItem,
   filePath,
-  getToolByName,
   parentDocs,
   parentConv,
   executionType,
   taskId,
   completedTaskIds,
+  getToolByName,
 }: {
   taskItem: ReturnType<typeof parseChecklist>["items"][number];
   filePath: string;
-  getToolByName: (name: string) => GenericTool | undefined;
   parentDocs: { requirements: string; design: string; taskList: string };
   parentConv: NonNullable<ReturnType<typeof conversationRepository.load>>;
   executionType: TaskExecutionType;
   taskId: string;
   completedTaskIds: Set<string>;
+  getToolByName: (name: string) => GenericTool | undefined;
 }) => {
   return (async (): Promise<TaskExecutionResult> => {
     const { description, lineNumber } = taskItem;
@@ -242,6 +379,40 @@ const startNewTask = ({
     let summary = "";
     let outcome: TaskExecutionResult["outcome"] = "failed";
     let latestValidationReason = "";
+
+    if (executionType === "wait_review" && existingStatus?.subTaskId) {
+      const internalReviewResult = await handleInternalWaitReview({
+        parentConv,
+        subTaskId: existingStatus.subTaskId,
+        target: cleanDescription,
+        cleanDescriptionForAgent,
+        availableTools,
+      });
+
+      if (internalReviewResult) {
+        summary = internalReviewResult.summary;
+        outcome = internalReviewResult.outcome;
+        taskSucceeded = internalReviewResult.taskSucceeded;
+        latestValidationReason = internalReviewResult.validationReason || "";
+      }
+
+      try {
+        updateTaskListStatus(filePath, lineNumber, cleanDescriptionForAgent, taskSucceeded);
+      } catch (e) {
+        logger.error(`[ExecuteTaskList] 更新任务状态失败: ${e}`);
+      }
+
+      const id = getTaskId(cleanDescriptionForAgent);
+      if (id && taskSucceeded) completedTaskIds.add(id);
+
+      return {
+        target: cleanDescription,
+        success: taskSucceeded,
+        outcome,
+        summary,
+        invalidTools: invalidTools.length > 0 ? invalidTools : undefined,
+      };
+    }
 
     for (let attempt = 0; attempt <= MAX_SUB_TASK_AUTO_RETRIES; attempt++) {
       try {
@@ -287,28 +458,43 @@ const startNewTask = ({
               : null;
 
         if (result.status === "wait_review") {
-          summary = buildWaitReviewSummary({
-            subTaskId: result.subTaskId,
-            summary: completionPayload
-              ? formatCompletedSubTaskPayload(completionPayload)
-              : result.result,
-          });
-          outcome = "wait_review";
-          parentConv.updateSubTaskStatus(cleanDescriptionForAgent, {
-            status: "wait_review",
-            subTaskId: result.subTaskId,
-          });
-          try {
-            updateTaskListStatus(filePath, lineNumber, cleanDescriptionForAgent, false);
-          } catch (e) {
-            logger.error(`[ExecuteTaskList] 写回待审核任务状态失败: ${e}`);
-          }
-          notifyParentReviewNeeded({
+          const internalReviewResult = await handleInternalWaitReview({
             parentConv,
-            target: cleanDescription,
             subTaskId: result.subTaskId,
-            summary,
+            target: cleanDescription,
+            cleanDescriptionForAgent,
+            availableTools,
           });
+
+          if (internalReviewResult) {
+            summary = internalReviewResult.summary;
+            outcome = internalReviewResult.outcome;
+            taskSucceeded = internalReviewResult.taskSucceeded;
+            latestValidationReason = internalReviewResult.validationReason || "";
+          } else {
+            summary = buildWaitReviewSummary({
+              subTaskId: result.subTaskId,
+              summary: completionPayload
+                ? formatCompletedSubTaskPayload(completionPayload)
+                : result.result,
+            });
+            outcome = "wait_review";
+            parentConv.updateSubTaskStatus(cleanDescriptionForAgent, {
+              status: "wait_review",
+              subTaskId: result.subTaskId,
+            });
+            try {
+              updateTaskListStatus(filePath, lineNumber, cleanDescriptionForAgent, false);
+            } catch (e) {
+              logger.error(`[ExecuteTaskList] 写回待审核任务状态失败: ${e}`);
+            }
+            notifyParentReviewNeeded({
+              parentConv,
+              target: cleanDescription,
+              subTaskId: result.subTaskId,
+              summary,
+            });
+          }
           break;
         }
 
@@ -560,7 +746,7 @@ const runTaskScheduler = async ({
         if (!isTaskReady({ item, completedTaskIds, runningTaskIds })) {
           return false;
         }
-        return getExecutionType(item) !== "wait_review";
+        return true;
       })
       .sort((a, b) => {
         const priorityDiff =
@@ -619,7 +805,7 @@ const buildExecutionMessage = ({
   }
 
   if (reviewCount > 0) {
-    warningMessage += `\n⚠️ 提示：有 ${reviewCount} 个任务已提交待审核结果。主任务应优先调用 reviewSubTask 审阅，而不是自行重做。`;
+    warningMessage += `\n⚠️ 提示：有 ${reviewCount} 个任务仍处于内部待审核状态，需要进一步自动返工或诊断。`;
   }
 
   if (blockedCount > 0) {
@@ -693,7 +879,7 @@ const buildPostExecuteContinuationReason = ({
   });
 
   if (reviewCount > 0) {
-    return "executeTaskList 异步执行已完成。若存在待审核子任务，请先使用 reviewSubTask 审阅并决定通过或打回，不要自己重做子任务。";
+    return "executeTaskList 异步执行已完成，但仍有子任务停留在内部待审核状态。请基于最新执行结果继续诊断，不要直接总结给用户。";
   }
 
   if (failedCount > 0 || interruptedCount > 0 || blockedCount > 0) {
@@ -775,7 +961,7 @@ const notifyParentReviewNeeded = ({
   );
   continueParentConversationIfNeeded(
     parentConv,
-    `子任务 ${subTaskId} 已提交待审核结果。请立即调用 reviewSubTask 审阅该子任务；不要等待所有子任务结束后再统一处理，也不要自己重做该子任务。`,
+    `子任务 ${subTaskId} 已提交待审核结果，但内部 reviewer 尚未收敛。请基于最新上下文继续诊断，不要自己重做子任务。`,
   );
 };
 

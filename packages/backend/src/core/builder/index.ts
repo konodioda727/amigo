@@ -8,6 +8,13 @@ import type { ChatMessage, MessageDefinition, ToolInterface } from "@amigo-llm/t
 import type { ZodObject, ZodRawShape } from "zod";
 import type { LoggerConfig } from "@/utils/logger";
 import { type ServerConfig, ServerConfigSchema } from "../config";
+import type {
+  SubTaskCompletionValidationHookPayload,
+  SubTaskValidationResult,
+  SubTaskWaitReviewEvaluationHookPayload,
+  SubTaskWaitReviewEvaluationResult,
+} from "../conversation/subTaskPolicyTypes";
+import type { MemoryConfig } from "../memoryRuntime";
 import type { LlmFactory } from "../model";
 import type {
   ModelConfig,
@@ -65,11 +72,18 @@ export class AmigoServerBuilder {
     payload: ConversationMessageHookPayload,
   ) => void | Promise<void>;
   private _createTaskConfigResolver?: CreateTaskConfigResolver;
+  private _subTaskCompletionValidator?: (
+    payload: SubTaskCompletionValidationHookPayload,
+  ) => SubTaskValidationResult | Promise<SubTaskValidationResult>;
+  private _subTaskWaitReviewEvaluator?: (
+    payload: SubTaskWaitReviewEvaluationHookPayload,
+  ) => SubTaskWaitReviewEvaluationResult | Promise<SubTaskWaitReviewEvaluationResult>;
   private _skillProvider?: SkillProvider;
   private _userModelConfigResolver?: (payload: {
     userId?: string;
     selection: string | ModelSelection;
   }) => ResolvedModelConfig | null;
+  private _memoryConfig?: MemoryConfig;
 
   /**
    * 设置服务器端口
@@ -259,6 +273,24 @@ export class AmigoServerBuilder {
     return this;
   }
 
+  subTaskCompletionValidator(
+    validator: (
+      payload: SubTaskCompletionValidationHookPayload,
+    ) => SubTaskValidationResult | Promise<SubTaskValidationResult>,
+  ): this {
+    this._subTaskCompletionValidator = validator;
+    return this;
+  }
+
+  subTaskWaitReviewEvaluator(
+    evaluator: (
+      payload: SubTaskWaitReviewEvaluationHookPayload,
+    ) => SubTaskWaitReviewEvaluationResult | Promise<SubTaskWaitReviewEvaluationResult>,
+  ): this {
+    this._subTaskWaitReviewEvaluator = evaluator;
+    return this;
+  }
+
   userModelConfigResolver(
     resolver: (payload: {
       userId?: string;
@@ -266,6 +298,11 @@ export class AmigoServerBuilder {
     }) => ResolvedModelConfig | null,
   ): this {
     this._userModelConfigResolver = resolver;
+    return this;
+  }
+
+  memory(config: MemoryConfig): this {
+    this._memoryConfig = config;
     return this;
   }
 
@@ -343,7 +380,10 @@ export class AmigoServerBuilder {
       onConversationCreate,
       onConversationMessage: this._onConversationMessage,
       createTaskConfigResolver,
+      subTaskCompletionValidator: this._subTaskCompletionValidator,
+      subTaskWaitReviewEvaluator: this._subTaskWaitReviewEvaluator,
       userModelConfigResolver: this._userModelConfigResolver,
+      memory: this._memoryConfig,
     });
   }
 }

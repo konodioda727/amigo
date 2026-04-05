@@ -79,7 +79,7 @@ describe("Conversation system prompt overrides", () => {
     expect(systemPrompt).not.toContain("MAIN SCOPED PROMPT");
   });
 
-  it("includes completionResult guidance for main task async turn endings", () => {
+  it("uses direct final answers for main task turn endings", () => {
     const toolService = new ToolService([], []);
 
     const conversation = Conversation.create({
@@ -89,7 +89,7 @@ describe("Conversation system prompt overrides", () => {
     });
 
     const systemPrompt = conversation.memory.initialSystemPrompt || "";
-    expect(systemPrompt).toContain("call `completionResult`");
+    expect(systemPrompt).toContain("respond directly with the final answer");
     expect(systemPrompt).toContain("async tool");
     expect(systemPrompt).toContain("background work has started");
   });
@@ -116,7 +116,7 @@ describe("Conversation system prompt overrides", () => {
       "Every active turn that is still working MUST contain at least one tool call",
     );
     expect(systemPrompt).toContain(
-      "Plain assistant text alone is never a valid ending for an active turn",
+      "Plain assistant text alone is never a valid ending for an active turn that is still working",
     );
     expect(systemPrompt).toContain("[citation: path/to/file]");
     expect(systemPrompt).toContain("Do not invent citations");

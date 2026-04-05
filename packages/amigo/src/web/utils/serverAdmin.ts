@@ -83,6 +83,7 @@ export interface UserModelConfigSettings {
   hasUserConfig: boolean;
   modelConfigs: Record<string, ModelConfig>;
   defaultModel?: ModelSelection | null;
+  memoryExtractorModel?: ModelSelection | null;
 }
 
 export interface ResolvedModelOption {

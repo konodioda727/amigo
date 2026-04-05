@@ -11,6 +11,7 @@ import { ensureMysqlSchemaUpToDate, mysqlExecute, mysqlQuery, parseJsonColumn } 
 export interface UserModelConfigSettingsRecord {
   modelConfigs: Record<string, ModelConfig>;
   defaultModel: ModelSelection | null;
+  memoryExtractorModel: ModelSelection | null;
 }
 
 export interface PublicModelConfig extends Omit<ModelConfig, "apiKey"> {
@@ -22,6 +23,7 @@ export interface PublicModelConfig extends Omit<ModelConfig, "apiKey"> {
 export interface PublicUserModelConfigSettings {
   modelConfigs: Record<string, PublicModelConfig>;
   defaultModel: ModelSelection | null;
+  memoryExtractorModel: ModelSelection | null;
 }
 
 export interface UserModelConfigUpsertInput {
@@ -33,6 +35,7 @@ export interface UserModelConfigUpsertInput {
     }
   >;
   defaultModel: ModelSelection | null;
+  memoryExtractorModel: ModelSelection | null;
 }
 
 type UserModelConfigRow = RowDataPacket & {
@@ -49,6 +52,7 @@ const cloneSettingsRecord = (
     Object.entries(settings.modelConfigs).map(([configId, config]) => [configId, { ...config }]),
   ),
   defaultModel: settings.defaultModel ? { ...settings.defaultModel } : null,
+  memoryExtractorModel: settings.memoryExtractorModel ? { ...settings.memoryExtractorModel } : null,
 });
 
 const normalizeSettingsRecord = (value: unknown): UserModelConfigSettingsRecord | null => {
@@ -59,6 +63,7 @@ const normalizeSettingsRecord = (value: unknown): UserModelConfigSettingsRecord 
   const record = value as {
     modelConfigs?: unknown;
     defaultModel?: unknown;
+    memoryExtractorModel?: unknown;
   };
   if (
     !record.modelConfigs ||
@@ -115,23 +120,27 @@ const normalizeSettingsRecord = (value: unknown): UserModelConfigSettingsRecord 
     };
   }
 
-  const defaultModel =
-    record.defaultModel &&
-    typeof record.defaultModel === "object" &&
-    !Array.isArray(record.defaultModel) &&
-    typeof (record.defaultModel as { model?: unknown }).model === "string"
+  const normalizeSelection = (selection: unknown): ModelSelection | null =>
+    selection &&
+    typeof selection === "object" &&
+    !Array.isArray(selection) &&
+    typeof (selection as { model?: unknown }).model === "string"
       ? {
-          model: ((record.defaultModel as { model: string }).model || "").trim(),
-          ...(typeof (record.defaultModel as { configId?: unknown }).configId === "string" &&
-          (record.defaultModel as { configId: string }).configId.trim()
-            ? { configId: (record.defaultModel as { configId: string }).configId.trim() }
+          model: ((selection as { model: string }).model || "").trim(),
+          ...(typeof (selection as { configId?: unknown }).configId === "string" &&
+          (selection as { configId: string }).configId.trim()
+            ? { configId: (selection as { configId: string }).configId.trim() }
             : {}),
         }
       : null;
 
+  const defaultModel = normalizeSelection(record.defaultModel);
+  const memoryExtractorModel = normalizeSelection(record.memoryExtractorModel);
+
   return {
     modelConfigs,
     defaultModel: defaultModel?.model ? defaultModel : null,
+    memoryExtractorModel: memoryExtractorModel?.model ? memoryExtractorModel : null,
   };
 };
 
@@ -164,6 +173,7 @@ const toPublicSettings = (
     ]),
   ),
   defaultModel: settings.defaultModel ? { ...settings.defaultModel } : null,
+  memoryExtractorModel: settings.memoryExtractorModel ? { ...settings.memoryExtractorModel } : null,
 });
 
 export const warmUserModelConfigStore = async (): Promise<void> => {
@@ -250,6 +260,7 @@ export const upsertUserModelConfigSettings = async (
   const nextSettings: UserModelConfigSettingsRecord = {
     modelConfigs: nextModelConfigs,
     defaultModel: input.defaultModel ? { ...input.defaultModel } : null,
+    memoryExtractorModel: input.memoryExtractorModel ? { ...input.memoryExtractorModel } : null,
   };
 
   await ensureMysqlSchemaUpToDate();
@@ -283,4 +294,16 @@ export const resolveUserScopedModelConfig = (payload: {
 
   const globalConfigs = getGlobalState("modelConfigs") ?? getGlobalState("modelContextConfigs");
   return resolveModelConfigFromConfigs(payload.selection, globalConfigs);
+};
+
+export const resolveUserScopedMemoryExtractorModelSelection = (payload: {
+  userId?: string;
+}): ModelSelection | null => {
+  const userId = payload.userId?.trim();
+  if (!userId) {
+    return null;
+  }
+
+  const cached = settingsCache.get(userId);
+  return cached?.memoryExtractorModel ? { ...cached.memoryExtractorModel } : null;
 };

@@ -6,10 +6,8 @@ import {
   getFeishuIntegration,
   getUserModelConfigs,
   listNotificationChannels,
-  type ModelConfig,
   type ModelSelection,
   type NotificationChannelRecord,
-  type ProviderModelConfig,
   upsertFeishuIntegration,
   upsertNotificationChannels,
   upsertUserModelConfigs,
@@ -30,7 +28,13 @@ import SelectionList from "./settings/SelectionList";
 import SettingsShell from "./settings/SettingsShell";
 import MessageChannelsSection from "./settings/sections/MessageChannelsSection";
 import ProviderConfigsSection from "./settings/sections/ProviderConfigsSection";
-import type { EditableSettings, SettingsListItem, SettingsTab } from "./settings/types";
+import type {
+  EditableModelConfig,
+  EditableProviderModelConfig,
+  EditableSettings,
+  SettingsListItem,
+  SettingsTab,
+} from "./settings/types";
 
 interface SettingsModalProps {
   open: boolean;
@@ -73,7 +77,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
 
         const nextChannels = normalizeNotificationChannels(channelResponse.channels);
         setSettings(
-          hydrateEditableSettings(modelResponse.modelConfigs, modelResponse.defaultModel || null),
+          hydrateEditableSettings(
+            modelResponse.modelConfigs,
+            modelResponse.defaultModel || null,
+            modelResponse.memoryExtractorModel || null,
+          ),
         );
         setNotificationChannels(nextChannels);
         setFeishuIntegration(feishuResponse);
@@ -107,7 +115,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
   const activeConfig = activeConfigId ? settings?.modelConfigs[activeConfigId] : undefined;
   const activePage = SETTINGS_PAGES.find((page) => page.id === activeTab) || SETTINGS_PAGES[0];
 
-  const updateConfig = (configId: string, updater: (config: ModelConfig) => ModelConfig) => {
+  const updateConfig = (
+    configId: string,
+    updater: (config: EditableModelConfig) => EditableModelConfig,
+  ) => {
     setSettings((prev) => {
       if (!prev?.modelConfigs[configId]) {
         return prev;
@@ -126,7 +137,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
   const updateModel = (
     configId: string,
     index: number,
-    updater: (model: ProviderModelConfig) => ProviderModelConfig,
+    updater: (model: EditableProviderModelConfig) => EditableProviderModelConfig,
   ) => {
     updateConfig(configId, (config) => ({
       ...config,
@@ -169,11 +180,16 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
         prev.defaultModel?.configId === previousId
           ? { ...prev.defaultModel, configId: nextId }
           : prev.defaultModel;
+      const nextMemoryExtractorModel =
+        prev.memoryExtractorModel?.configId === previousId
+          ? { ...prev.memoryExtractorModel, configId: nextId }
+          : prev.memoryExtractorModel;
 
       return {
         ...prev,
         modelConfigs: nextConfigs,
         defaultModel: nextDefaultModel,
+        memoryExtractorModel: nextMemoryExtractorModel,
       };
     });
     setActiveConfigId(nextId);
@@ -187,6 +203,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
         [nextId]: buildEmptyProvider(),
       },
       defaultModel: prev?.defaultModel || null,
+      memoryExtractorModel: prev?.memoryExtractorModel || null,
     }));
     setActiveConfigId(nextId);
     setActiveTab("provider-configs");
@@ -202,6 +219,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
       delete nextConfigs[configId];
       const nextConfigIds = Object.keys(nextConfigs);
       const nextDefaultModel = prev.defaultModel?.configId === configId ? null : prev.defaultModel;
+      const nextMemoryExtractorModel =
+        prev.memoryExtractorModel?.configId === configId ? null : prev.memoryExtractorModel;
 
       if (activeConfigId === configId) {
         setActiveConfigId(nextConfigIds[0] || "");
@@ -210,6 +229,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
       return {
         modelConfigs: nextConfigs,
         defaultModel: nextDefaultModel,
+        memoryExtractorModel: nextMemoryExtractorModel,
       };
     });
   };
@@ -220,6 +240,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
         ? {
             ...prev,
             defaultModel: selection,
+          }
+        : prev,
+    );
+  };
+
+  const handleSetMemoryExtractorModel = (selection: ModelSelection | null) => {
+    setSettings((prev) =>
+      prev
+        ? {
+            ...prev,
+            memoryExtractorModel: selection,
           }
         : prev,
     );
@@ -248,6 +279,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
         prev.defaultModel?.configId === configId && prev.defaultModel.model === removedModel.name
           ? null
           : prev.defaultModel;
+      const nextMemoryExtractorModel =
+        prev.memoryExtractorModel?.configId === configId &&
+        prev.memoryExtractorModel.model === removedModel.name
+          ? null
+          : prev.memoryExtractorModel;
 
       return {
         ...prev,
@@ -259,6 +295,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
           },
         },
         defaultModel: nextDefaultModel,
+        memoryExtractorModel: nextMemoryExtractorModel,
       };
     });
   };
@@ -279,6 +316,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
         prev.defaultModel?.configId === configId && prev.defaultModel.model === currentModel.name
           ? { ...prev.defaultModel, model: nextName }
           : prev.defaultModel;
+      const nextMemoryExtractorModel =
+        prev.memoryExtractorModel?.configId === configId &&
+        prev.memoryExtractorModel.model === currentModel.name
+          ? { ...prev.memoryExtractorModel, model: nextName }
+          : prev.memoryExtractorModel;
 
       return {
         ...prev,
@@ -292,6 +334,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
           },
         },
         defaultModel: nextDefaultModel,
+        memoryExtractorModel: nextMemoryExtractorModel,
       };
     });
   };
@@ -325,6 +368,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
         upsertUserModelConfigs(config.url, {
           modelConfigs: serializeModelConfigs(settings.modelConfigs),
           defaultModel: settings.defaultModel,
+          memoryExtractorModel: settings.memoryExtractorModel,
         }),
         upsertNotificationChannels(config.url, {
           channels: notificationChannels.map((channel) => ({
@@ -341,7 +385,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
 
       const nextChannels = normalizeNotificationChannels(nextChannelSettings.channels);
       setSettings(
-        hydrateEditableSettings(nextModelSettings.modelConfigs, nextModelSettings.defaultModel),
+        hydrateEditableSettings(
+          nextModelSettings.modelConfigs,
+          nextModelSettings.defaultModel,
+          nextModelSettings.memoryExtractorModel || null,
+        ),
       );
       setNotificationChannels(nextChannels);
       setFeishuIntegration(nextFeishuIntegration);
@@ -452,7 +500,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
         <ProviderConfigsSection
           activeConfigId={activeConfigId}
           activeConfig={activeConfig}
-          settings={settings || { modelConfigs: {}, defaultModel: null }}
+          settings={
+            settings || { modelConfigs: {}, defaultModel: null, memoryExtractorModel: null }
+          }
           onAddConfig={handleAddConfig}
           onDeleteConfig={handleDeleteConfig}
           onRenameConfigId={handleRenameConfigId}
@@ -462,6 +512,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
           onRenameModel={handleRenameModel}
           onUpdateModel={updateModel}
           onSetDefaultModel={handleSetDefaultModel}
+          onSetMemoryExtractorModel={handleSetMemoryExtractorModel}
         />
       )}
     </SettingsShell>
