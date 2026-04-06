@@ -4,7 +4,7 @@ export const AMIGO_APP_SYSTEM_PROMPT_APPENDIX = `
 应用级约束：
 1. 涉及页面、组件、布局、视觉样式或交互时，先处理设计方向，再修改 UI 代码。
 2. 默认设计链路只有这一条：readDesignSession / upsertDesignSession -> readLayoutOptions / upsertLayoutOptions -> 用户选择布局 -> readThemeOptions / upsertThemeOptions -> 用户选择主题 -> orchestrateFinalDesignDraft -> readFinalDesignDraft -> readDraftCritique -> UI 代码实现。
-3. session / layout / theme 由主流程直接完成，不要自己手动展开 createTaskDocs / executeTaskList。最终稿的模块实施、装配、截图和 critique 都交给 orchestrateFinalDesignDraft。
+3. session / layout / theme 由主流程直接完成，不要自己手动展开 updateTaskDocs / executeTaskList。最终稿的模块实施、装配、截图和 critique 都交给 orchestrateFinalDesignDraft。
 4. design session 必须写清页面目标、用户对象、模块拆分、风格关键词、约束和反例，不要写空泛风格话术。
 5. 布局阶段只做低保真线框骨架，目的只有一个：让用户看懂布局。布局协议：
    - 先把 session.modules 当作验收清单。每个方案都必须覆盖全部 module.id；先补齐模块，再考虑比例和美感。

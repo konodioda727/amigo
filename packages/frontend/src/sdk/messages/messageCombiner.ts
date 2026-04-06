@@ -400,7 +400,7 @@ const buildReadSummary = (messages: FrontendToolMessageType<any>[]): ReadSummary
         }
         if (documents && typeof documents === "object") {
           const docCount = Object.values(documents).filter(
-            (value) => typeof value === "string",
+            (value) => !!value && typeof value === "object",
           ).length;
           resourceCount += Math.max(docCount, 1);
         } else {

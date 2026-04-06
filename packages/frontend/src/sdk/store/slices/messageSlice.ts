@@ -22,17 +22,20 @@ const checkAndExtractDoc = (
   if (message.type === "tool") {
     try {
       const parsed = JSON.parse((message.data as any).message || "{}");
-      if (parsed.toolName === "createTaskDocs") {
+      if (parsed.toolName === "updateTaskDocs") {
         const params = parsed.params;
-        if (params?.content) {
+        const result = parsed.result as { updatedContent?: string } | undefined;
+        const nextContent =
+          typeof result?.updatedContent === "string" ? result.updatedContent : params?.content;
+        if (nextContent) {
           // Use phase from params if available, otherwise try to infer or default
           const phase = params.phase as DocType | undefined;
-          store.setDocContent(params.content, params.taskName || params.title, phase);
+          store.setDocContent(nextContent, params.taskName || params.title, phase);
         }
       }
     } catch (e) {
       // ignore parse error
-      console.error("Error parsing tool message for createTaskDocs", e);
+      console.error("Error parsing tool message for task docs", e);
     }
   }
 };
@@ -157,13 +160,16 @@ const findLatestDocs = (messages: WebSocketMessage<any>[]): DocsResult => {
     } else if (msg.type === "tool") {
       try {
         const parsed = JSON.parse((msg.data as any).message || "{}");
-        if (parsed.toolName === "createTaskDocs") {
+        if (parsed.toolName === "updateTaskDocs") {
           const params = parsed.params;
-          if (params?.content) {
+          const result = parsed.result as { updatedContent?: string } | undefined;
+          const nextContent =
+            typeof result?.updatedContent === "string" ? result.updatedContent : params?.content;
+          if (nextContent) {
             const phase = (params.phase as DocType) || "taskList";
             if (["requirements", "design", "taskList"].includes(phase)) {
               docs[phase] = {
-                content: params.content,
+                content: nextContent,
                 title: params.taskName || params.title,
               };
               lastEdited = phase;

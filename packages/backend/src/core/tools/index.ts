@@ -16,7 +16,7 @@ import { CompleteTask } from "./completeTask";
 import { EditFile } from "./editFile";
 import { InstallDependencies } from "./installDependencies";
 import { ReadFile } from "./readFile";
-import { CreateTaskDocs, ExecuteTaskList, ReadTaskDocs } from "./taskDocs/index";
+import { ExecuteTaskList, ReadTaskDocs, UpdateTaskDocs } from "./taskDocs/index";
 import { UpdateDevServer } from "./updateDevServer";
 
 type GenericTool = ToolInterface<any>;
@@ -439,7 +439,7 @@ const _SHARED_BASIC_TOOLS: GenericTool[] = [
   ReadFile,
   Bash,
   InstallDependencies,
-  CreateTaskDocs,
+  UpdateTaskDocs,
   ReadTaskDocs,
   UpdateDevServer,
 ];
@@ -452,7 +452,7 @@ export const DEFAULT_MAIN_BASIC_TOOLS: GenericTool[] = [
   ReadFile,
   Bash,
   InstallDependencies,
-  CreateTaskDocs,
+  UpdateTaskDocs,
   ReadTaskDocs,
   ExecuteTaskList,
   UpdateDevServer,
@@ -464,7 +464,7 @@ export const DEFAULT_SUB_BASIC_TOOLS: GenericTool[] = [
   ReadFile,
   Bash,
   InstallDependencies,
-  CreateTaskDocs,
+  UpdateTaskDocs,
   ReadTaskDocs,
   CompleteTask,
   UpdateDevServer,
@@ -489,7 +489,7 @@ export {
   ReadFile,
   Bash,
   InstallDependencies,
-  CreateTaskDocs,
+  UpdateTaskDocs,
   ReadTaskDocs,
   ExecuteTaskList,
   UpdateDevServer,

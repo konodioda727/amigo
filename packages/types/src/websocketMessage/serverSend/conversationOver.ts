@@ -7,7 +7,7 @@ export const ConversationOverSchema = z.object({
     reason: z
       .enum([
         "askFollowupQuestion",
-        "createTaskDocs",
+        "updateTaskDocs",
         "completeTask",
         "interrupt",
         "error",

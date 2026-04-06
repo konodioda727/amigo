@@ -1,6 +1,6 @@
 import type { USER_SEND_MESSAGE_NAME, UserSendMessageData } from "@amigo-llm/types";
 import { broadcaster } from "@/core/conversation";
-import { CreateTaskDocs } from "@/core/tools/taskDocs";
+import { UpdateTaskDocs } from "@/core/tools/taskDocs";
 import { logger } from "@/utils/logger";
 import BaseMessageResolver from "../base";
 
@@ -26,7 +26,7 @@ export class UpdateTaskDocMessageResolver extends BaseMessageResolver<"updateTas
     }
 
     try {
-      const { toolResult } = await CreateTaskDocs.invoke({
+      const { toolResult } = await UpdateTaskDocs.invoke({
         params: {
           phase,
           content,
@@ -44,7 +44,7 @@ export class UpdateTaskDocMessageResolver extends BaseMessageResolver<"updateTas
         role: "assistant",
         type: "tool",
         content: JSON.stringify({
-          toolName: "createTaskDocs",
+          toolName: "updateTaskDocs",
           params: {
             phase,
             content,

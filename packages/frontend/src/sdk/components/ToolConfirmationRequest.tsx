@@ -110,7 +110,7 @@ const getFriendlyToolLabel = (toolName: string): string => {
     bash: "运行命令",
     browserSearch: "联网搜索",
     completeTask: "提交任务完成结果",
-    createTaskDocs: "写入任务文档",
+    updateTaskDocs: "更新任务文档",
     editFile: "修改文件",
     executeTaskList: "执行任务清单",
     readFile: "读取文件",

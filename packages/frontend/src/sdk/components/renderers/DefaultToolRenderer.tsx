@@ -5,7 +5,6 @@ import { DefaultBashRenderer } from "./tools/DefaultBashRenderer";
 import { DefaultBrowserSearchRenderer } from "./tools/DefaultBrowserSearchRenderer";
 import { DefaultCompleteTaskRenderer } from "./tools/DefaultCompleteTaskRenderer";
 import { DefaultCreateDesignDocRenderer } from "./tools/DefaultCreateDesignDocRenderer";
-import { DefaultCreateTaskDocsRenderer } from "./tools/DefaultCreateTaskDocsRenderer";
 import { DefaultEditFileRenderer } from "./tools/DefaultEditFileRenderer";
 import { DefaultExecuteTaskListRenderer } from "./tools/DefaultExecuteTaskListRenderer";
 import { DefaultListDesignDocsRenderer } from "./tools/DefaultListDesignDocsRenderer";
@@ -13,6 +12,7 @@ import { DefaultReadDesignDocRenderer } from "./tools/DefaultReadDesignDocRender
 import { DefaultReadFileRenderer } from "./tools/DefaultReadFileRenderer";
 import { DefaultReadSkillBundleRenderer } from "./tools/DefaultReadSkillBundleRenderer";
 import { DefaultReadTaskDocsRenderer } from "./tools/DefaultReadTaskDocsRenderer";
+import { DefaultUpdateTaskDocsRenderer } from "./tools/DefaultUpdateTaskDocsRenderer";
 import { DefaultUpsertAutomationRenderer } from "./tools/DefaultUpsertAutomationRenderer";
 import { ToolAccordion } from "./tools/ToolAccordion";
 
@@ -26,8 +26,8 @@ const toolRendererMap: {
   bash: DefaultBashRenderer as React.FC<ToolMessageRendererProps<"bash">>,
   editFile: DefaultEditFileRenderer as React.FC<ToolMessageRendererProps<"editFile">>,
   readFile: DefaultReadFileRenderer as React.FC<ToolMessageRendererProps<"readFile">>,
-  createTaskDocs: DefaultCreateTaskDocsRenderer as React.FC<
-    ToolMessageRendererProps<"createTaskDocs">
+  updateTaskDocs: DefaultUpdateTaskDocsRenderer as React.FC<
+    ToolMessageRendererProps<"updateTaskDocs">
   >,
   readTaskDocs: DefaultReadTaskDocsRenderer as React.FC<ToolMessageRendererProps<"readTaskDocs">>,
   executeTaskList: DefaultExecuteTaskListRenderer as React.FC<

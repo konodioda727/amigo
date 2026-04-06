@@ -28,4 +28,10 @@ You MUST follow these rules.
    - You may skip navigation only when no relevant result exists, or the user explicitly wants the search list (explain why)
    - If still insufficient after two searches, stop searching and ask for guidance via `askFollowupQuestion`
 
+4. TASK DOC ITERATION DISCIPLINE
+   - In Spec Mode, `requirements.md` and `design.md` MUST be built incrementally
+   - Do not write a full doc from assumptions when key facts or user preferences are missing
+   - Research what you can first; ask exactly one focused `askFollowupQuestion` when a real decision remains
+   - After each new fact or answer, patch only the affected part of the doc with `updateTaskDocs`
+
 ====

@@ -590,10 +590,10 @@ const generateModuleDrafts = async (params: {
     theme: params.theme,
     revisionFeedbackByModuleId: params.revisionFeedbackByModuleId,
   });
-  const createTaskDocsTool = params.getToolByName("createTaskDocs");
+  const updateTaskDocsTool = params.getToolByName("updateTaskDocs");
   const executeTaskListTool = params.getToolByName("executeTaskList");
-  if (!createTaskDocsTool || !executeTaskListTool) {
-    throw new Error("缺少 createTaskDocs 或 executeTaskList 工具，无法执行模块 taskList");
+  if (!updateTaskDocsTool || !executeTaskListTool) {
+    throw new Error("缺少 updateTaskDocs 或 executeTaskList 工具，无法执行模块 taskList");
   }
 
   const toolContext = {
@@ -604,19 +604,19 @@ const generateModuleDrafts = async (params: {
     signal: undefined,
   };
 
-  await createTaskDocsTool.invoke({
+  await updateTaskDocsTool.invoke({
     params: { phase: "requirements", content: requirementsDoc },
     context: toolContext,
   });
   broadcastTaskDocState(params.currentTaskId);
 
-  await createTaskDocsTool.invoke({
+  await updateTaskDocsTool.invoke({
     params: { phase: "design", content: designDoc },
     context: toolContext,
   });
   broadcastTaskDocState(params.currentTaskId);
 
-  await createTaskDocsTool.invoke({
+  await updateTaskDocsTool.invoke({
     params: { phase: "taskList", content: taskListDoc },
     context: toolContext,
   });

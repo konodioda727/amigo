@@ -51,7 +51,7 @@ const MUTATING_TOOL_NAMES = new Set([
   "editFile",
   "installDependencies",
   "updateDevServer",
-  "createTaskDocs",
+  "updateTaskDocs",
   "completeTask",
 ]);
 
@@ -112,9 +112,9 @@ const extractResourceKeys = (interaction: ToolInteraction): string[] => {
   }
 
   if (interaction.toolName === "readTaskDocs") {
-    const docName =
-      typeof interaction.arguments.docName === "string" ? interaction.arguments.docName.trim() : "";
-    return docName ? [`taskdoc:${docName}`] : [];
+    const phase =
+      typeof interaction.arguments.phase === "string" ? interaction.arguments.phase.trim() : "";
+    return phase ? [`taskdoc:${phase}`] : [];
   }
 
   if (interaction.toolName === "readDesignDoc") {

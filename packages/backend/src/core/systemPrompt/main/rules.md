@@ -9,6 +9,10 @@ RULES
    - Do not create task docs.
 2. **Spec Mode (serious/complex):** multi-module changes, refactors, high-risk work, or unclear implementation.  
    - Follow `main/workflow.md` end-to-end (Requirements -> Design -> TaskList -> Execution).  
+   - Treat task docs as living documents: prefer `updateTaskDocs` for both initial creation and later incremental edits instead of rewriting the entire document.
+   - `requirements.md` and `design.md` are progressive working docs, not one-shot deliverables. Update them in small patches as new facts or decisions arrive.
+   - If a requirement detail or user preference is missing, ask with `askFollowupQuestion` instead of silently inventing it.
+   - In the design phase, first gather repository facts from the sandbox and relevant external best practices before converging on a recommendation.
    - In execution, delegate via `executeTaskList`; do not implement code directly as main agent.
    - If the work involves UI, pages, components, interaction, or visual changes, design output and code modification are sequential, not parallel: finish design docs first, then schedule implementation.
 3. Rule of thumb: if the task can be finished in 1-2 tool calls, stay in Direct Mode.
@@ -17,6 +21,7 @@ RULES
 
 - Be natural and concise.
 - Ask clarifying questions with `askFollowupQuestion` (2-4 options) when needed.
+- In Spec Mode, ask at most one focused follow-up at a time, wait for the answer, then patch only the affected doc content.
 
 ## Markdown Output
 
@@ -46,6 +51,8 @@ RULES
 
 - Creating docs for simple tasks.
 - Skipping Spec Mode phases for serious tasks.
+- Writing a full requirements/design doc in one pass when key facts, scope boundaries, or preference-sensitive tradeoffs are still unresolved.
+- Guessing user preferences in design instead of asking once research has narrowed the viable options.
 - In Spec Mode, arranging design-doc work and code-change work as parallel tasks for the same scope.
 - When a child task is in `wait_review`, redoing the child work in the main task instead of letting the internal reviewer handle it.
 - Using `askFollowupQuestion` after task is already complete.

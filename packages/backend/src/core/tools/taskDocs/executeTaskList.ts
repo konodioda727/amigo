@@ -35,7 +35,7 @@ const CONCURRENCY_LIMIT = 2;
 const DOC_TRUNCATE_LIMIT = 4000;
 const MAX_SUB_TASK_AUTO_RETRIES = 2;
 const MAX_INTERNAL_REVIEW_ROUNDS = 2;
-const FORBIDDEN_SUB_TASK_TOOLS = ["createTaskDocs", "readTaskDocs", "executeTaskList"];
+const FORBIDDEN_SUB_TASK_TOOLS = ["updateTaskDocs", "readTaskDocs", "executeTaskList"];
 const normalizeDescription = (description: string) =>
   description.replace(/\(In Progress\)$/, "").trim();
 

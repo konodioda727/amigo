@@ -3,7 +3,7 @@ import path from "node:path";
 import { logger } from "@/utils/logger";
 import { createTool } from "../base";
 import { createToolResult } from "../result";
-import { DOC_TYPE_TO_FILENAME, getTaskDocsPath } from "./utils";
+import { addLineNumbers, DOC_TYPE_TO_FILENAME, getTaskDocsPath } from "./utils";
 
 /**
  * 读取任务文档工具
@@ -60,9 +60,27 @@ export const ReadTaskDocs = createTool({
 
     try {
       const documents: {
-        requirements?: string;
-        design?: string;
-        taskList?: string;
+        requirements?: {
+          content: string;
+          numberedContent: string;
+          totalLines: number;
+          startLine: number;
+          endLine: number;
+        };
+        design?: {
+          content: string;
+          numberedContent: string;
+          totalLines: number;
+          startLine: number;
+          endLine: number;
+        };
+        taskList?: {
+          content: string;
+          numberedContent: string;
+          totalLines: number;
+          startLine: number;
+          endLine: number;
+        };
       } = {};
 
       // 确定要读取的文档类型
@@ -79,8 +97,15 @@ export const ReadTaskDocs = createTool({
 
         try {
           if (existsSync(filePath)) {
-            const content = readFileSync(filePath, "utf-8");
-            documents[docPhase as keyof typeof documents] = content.trim();
+            const content = readFileSync(filePath, "utf-8").replace(/\r\n/g, "\n").trim();
+            const totalLines = content ? content.split("\n").length : 0;
+            documents[docPhase as keyof typeof documents] = {
+              content,
+              numberedContent: content ? addLineNumbers(content, 1) : "",
+              totalLines,
+              startLine: 1,
+              endLine: totalLines,
+            };
           }
         } catch (readError) {
           logger.warn(
