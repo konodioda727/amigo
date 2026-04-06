@@ -14,6 +14,10 @@ import type {
 
 const DEFAULT_LONG_TERM_TOP_K = 6;
 const DEFAULT_LONG_TERM_MIN_SCORE = 0.15;
+const DEFAULT_LONG_TERM_MIN_CONFIDENCE = 0.8;
+
+const TASK_SCOPED_MEMORY_PATTERN =
+  /(taskdoc|task doc|requirements(?:\.md)?|design(?:\.md)?|tasklist(?:\.md)?|需求文档|设计文档|任务列表|任务文档|当前任务|这个任务|本轮|当前轮|这轮|这次|增量更新|渐进式|局部修改|局部更新)/i;
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
@@ -94,6 +98,11 @@ const buildLongTermPrompt = (hits: MemoryStoreHit[]): string => {
   }
 
   return lines.join("\n").trim();
+};
+
+const isTaskScopedCandidate = (candidate: LongTermMemoryCandidate, userText: string): boolean => {
+  const combined = `${candidate.topic}\n${candidate.text}\n${userText}`.trim();
+  return TASK_SCOPED_MEMORY_PATTERN.test(combined);
 };
 
 export class SdkMemoryRuntime {
@@ -281,6 +290,23 @@ export class SdkMemoryRuntime {
     return Array.from(map.values());
   }
 
+  private filterPersistableCandidates(params: {
+    candidates: LongTermMemoryCandidate[];
+    userText: string;
+  }): LongTermMemoryCandidate[] {
+    const minConfidence = this.config.longTerm?.minConfidence ?? DEFAULT_LONG_TERM_MIN_CONFIDENCE;
+
+    return params.candidates.filter((candidate) => {
+      if (candidate.confidence < minConfidence) {
+        return false;
+      }
+      if (isTaskScopedCandidate(candidate, params.userText)) {
+        return false;
+      }
+      return true;
+    });
+  }
+
   private async extractLongTermCandidates(params: {
     taskId: string;
     userId: string;
@@ -293,8 +319,12 @@ export class SdkMemoryRuntime {
         userText: params.userText,
         systemPrompt: this.config.longTerm?.extractor?.systemPrompt,
       });
-      if (modelCandidates.length > 0) {
-        return this.deduplicateCandidates(modelCandidates);
+      const persistableCandidates = this.filterPersistableCandidates({
+        candidates: modelCandidates,
+        userText: params.userText,
+      });
+      if (persistableCandidates.length > 0) {
+        return this.deduplicateCandidates(persistableCandidates);
       }
       return [];
     } catch (error) {

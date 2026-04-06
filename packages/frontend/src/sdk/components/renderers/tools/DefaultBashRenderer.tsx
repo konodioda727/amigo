@@ -1,6 +1,7 @@
 import type React from "react";
 import type { ToolMessageRendererProps } from "../../../types/renderers";
 import { ToolAccordion } from "./ToolAccordion";
+import { ToolCodeBlock } from "./ToolCodeBlock";
 
 export const DefaultBashRenderer: React.FC<ToolMessageRendererProps<"bash">> = ({ message }) => {
   const { params, toolOutput, error, hasError, partial } = message;
@@ -15,14 +16,7 @@ export const DefaultBashRenderer: React.FC<ToolMessageRendererProps<"bash">> = (
       hasError={hasError}
       error={error}
     >
-      {isCompleted && (
-        <div className="bg-[#1e1e1e] text-gray-300 px-3 py-2 rounded font-mono text-xs overflow-x-auto">
-          <div className="text-green-400 mb-1">$ {command}</div>
-          {toolOutput?.output && (
-            <div className="whitespace-pre-wrap break-all text-gray-300">{toolOutput.output}</div>
-          )}
-        </div>
-      )}
+      {isCompleted && <ToolCodeBlock command={command} output={toolOutput?.output} />}
     </ToolAccordion>
   );
 };

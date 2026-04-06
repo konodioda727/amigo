@@ -230,6 +230,45 @@ describe("toModelMessages runtime datetime context", () => {
     expect(String(modelMessages[1]?.content)).toContain('"summary": "README 已读取"');
   });
 
+  it("serializes listFiles tool results as a file tree for openai-compatible models", () => {
+    const messages: ChatMessage[] = [
+      buildAssistantToolCallMemoryMessage({
+        toolName: "listFiles",
+        toolCallId: "call-tree",
+        arguments: { directoryPath: "src" },
+      }),
+      buildToolResultMemoryMessage({
+        toolName: "listFiles",
+        toolCallId: "call-tree",
+        result: {
+          success: true,
+          directoryPath: "src",
+          tree: ["src/", "├── components/", "└── index.ts"].join("\n"),
+          entries: [
+            { path: "src/components", name: "components", type: "directory", depth: 1 },
+            { path: "src/index.ts", name: "index.ts", type: "file", depth: 1 },
+          ],
+          truncated: false,
+          maxDepth: 2,
+          includeHidden: false,
+          maxEntries: 200,
+          message: "已列出目录 src，共 2 项",
+        },
+        summary: "src 已列出",
+      }),
+    ];
+
+    const modelMessages = toModelMessages(messages, createStubLlm());
+    expect(modelMessages[1]).toEqual({
+      role: "tool",
+      toolCallId: "call-tree",
+      toolName: "listFiles",
+      content: expect.stringContaining("tree:\nsrc/\n├── components/\n└── index.ts"),
+    });
+    expect(String(modelMessages[1]?.content)).toContain("summary: src 已列出");
+    expect(String(modelMessages[1]?.content)).not.toContain('"entries"');
+  });
+
   it("falls back to transcript text for tool history on google genai models", () => {
     const messages: ChatMessage[] = [
       buildAssistantToolCallMemoryMessage({

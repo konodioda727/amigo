@@ -95,6 +95,8 @@ describe("EditFile", () => {
 
     expect(result.transport.result.success).toBe(true);
     expect(result.transport.result.linesWritten).toBe(1);
+    expect(result.continuation.summary).toBe("【已修改 /tmp/example.txt】");
+    expect(result.continuation.result.diagnostics).toBeUndefined();
     expect(commands).toEqual([
       "mkdir -p '/tmp'",
       `test -f '/tmp/example.txt' && echo "exists" || echo "not_found"`,
@@ -205,6 +207,7 @@ describe("EditFile", () => {
     expect(result.transport.result.success).toBe(true);
     expect(result.transport.result.linesWritten).toBe(1);
     expect(result.transport.result.message).toContain("成功精确替换文件");
+    expect(result.continuation.summary).toBe("【已修改 /tmp/example.txt】");
     expect(commands).toEqual([
       "mkdir -p '/tmp'",
       `test -f '/tmp/example.txt' && echo "exists" || echo "not_found"`,
@@ -299,7 +302,8 @@ describe("EditFile", () => {
     expect(result.transport.result.diagnostics?.language).toBe("typescript");
     expect(result.transport.result.diagnostics?.errorCount).toBe(1);
     expect(result.transport.message).toContain("发现 1 个 TypeScript 语法错误");
-    expect(result.continuation.summary).toContain("发现 1 个 TypeScript 语法错误");
+    expect(result.continuation.summary).toBe("【已修改 /tmp/example.ts】");
+    expect(result.continuation.result.diagnostics).toBeUndefined();
   });
 
   it("runs Python syntax diagnostics after writing a py file", async () => {
@@ -354,6 +358,7 @@ describe("EditFile", () => {
     expect(result.transport.result.diagnostics?.language).toBe("python");
     expect(result.transport.result.diagnostics?.errorCount).toBe(1);
     expect(result.transport.message).toContain("发现 1 个 Python 语法错误");
-    expect(result.continuation.summary).toContain("发现 1 个 Python 语法错误");
+    expect(result.continuation.summary).toBe("【已修改 /tmp/example.py】");
+    expect(result.continuation.result.diagnostics).toBeUndefined();
   });
 });

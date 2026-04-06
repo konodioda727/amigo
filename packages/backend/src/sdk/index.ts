@@ -35,6 +35,17 @@
 export { AmigoServerBuilder } from "../core/builder";
 export { ValidationError } from "../core/config";
 export type {
+  LanguageRuntimeHost,
+  LanguageRuntimeHostManager,
+  LspConfig,
+  LspRuntimeContext,
+  LspServerDefinition,
+  SpawnStdioProcessParams,
+  StdioProcess,
+  StdioProcessExit,
+} from "../core/languageRuntime";
+export { createLanguageRuntimeHostManagerFromSandboxManager } from "../core/languageRuntime";
+export type {
   InMemoryMemoryIndexProvider,
   LongTermMemoryCandidate,
   MemoryConfig,
@@ -73,6 +84,7 @@ export type {
 // Error types
 // Registries (advanced usage)
 export { MessageRegistry, RegistrationError, ToolRegistry } from "../core/registry";
+export * from "../core/rules";
 export type { SandboxManager } from "../core/sandbox";
 export type {
   ConversationMessageHookPayload,
@@ -80,6 +92,10 @@ export type {
   CreateTaskConfigResolver,
 } from "../core/server";
 export * from "../core/skills";
+export type {
+  EditFileDiagnosticsProvider,
+  EditFileDiagnosticsProviderPayload,
+} from "../core/tools/editFileDiagnostics";
 export type { LoggerConfig } from "../utils/logger";
 export { configureLogger, LogLevel } from "../utils/logger";
 // Helper functions

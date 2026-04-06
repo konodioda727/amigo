@@ -9,8 +9,12 @@ export interface ToolExecutionContext {
   taskId: string;
   /** 父任务 ID（主任务为 undefined，用于获取共享资源如 sandbox） */
   parentId?: string;
+  /** 当前会话上下文 */
+  conversationContext?: unknown;
   /** 获取当前会话的 sandbox（懒加载） */
   getSandbox: () => Promise<unknown>;
+  /** 获取语言运行时宿主（懒加载） */
+  getLanguageRuntimeHost?: () => Promise<unknown>;
   /** 根据名称获取其他工具 */
   getToolByName: (name: string) => ToolInterface<string> | undefined;
   /** AbortSignal */

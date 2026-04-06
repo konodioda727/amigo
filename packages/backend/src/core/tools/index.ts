@@ -15,7 +15,9 @@ import { BrowserSearch } from "./browserSearch";
 import { CompleteTask } from "./completeTask";
 import { EditFile } from "./editFile";
 import { InstallDependencies } from "./installDependencies";
+import { ListFiles } from "./listFiles";
 import { ReadFile } from "./readFile";
+import { createReadRulesTool, READ_RULES_TOOL_NAME } from "./readRules";
 import { ExecuteTaskList, ReadTaskDocs, UpdateTaskDocs } from "./taskDocs/index";
 import { UpdateDevServer } from "./updateDevServer";
 
@@ -30,6 +32,8 @@ const unwrapToolInvokeResult = (
 ): {
   message: string;
   toolResult: unknown;
+  continuationResult?: unknown;
+  continuationSummary?: string;
   websocketData?: unknown;
   error?: string;
 } => {
@@ -41,10 +45,17 @@ const unwrapToolInvokeResult = (
   }
 
   const transport = isPlainObject(invokeResult.transport) ? invokeResult.transport : null;
+  const continuation = isPlainObject(invokeResult.continuation) ? invokeResult.continuation : null;
   if (transport) {
     return {
       message: typeof transport.message === "string" ? transport.message : "",
       toolResult: "result" in transport ? transport.result : undefined,
+      ...(continuation && "result" in continuation
+        ? { continuationResult: continuation.result }
+        : {}),
+      ...(continuation && typeof continuation.summary === "string"
+        ? { continuationSummary: continuation.summary }
+        : {}),
       ...(transport.websocketData !== undefined ? { websocketData: transport.websocketData } : {}),
       ...(typeof invokeResult.error === "string" ? { error: invokeResult.error } : {}),
     };
@@ -53,6 +64,12 @@ const unwrapToolInvokeResult = (
   return {
     message: typeof invokeResult.message === "string" ? invokeResult.message : "",
     toolResult: "toolResult" in invokeResult ? invokeResult.toolResult : undefined,
+    ...(invokeResult.continuationResult !== undefined
+      ? { continuationResult: invokeResult.continuationResult }
+      : {}),
+    ...(typeof invokeResult.continuationSummary === "string"
+      ? { continuationSummary: invokeResult.continuationSummary }
+      : {}),
     ...(invokeResult.websocketData !== undefined
       ? { websocketData: invokeResult.websocketData }
       : {}),
@@ -142,6 +159,8 @@ export class ToolService {
     message: string;
     params: Record<string, unknown> | string;
     toolResult: ToolResult<ToolNames>;
+    continuationResult?: ToolResult<ToolNames>;
+    continuationSummary?: string;
     websocketData?: unknown;
     error?: string;
   }> {
@@ -162,12 +181,17 @@ export class ToolService {
         params: normalizedParams as never,
         context,
       });
-      const { toolResult, message, websocketData, error } = unwrapToolInvokeResult(invokeResult);
+      const { toolResult, message, continuationResult, continuationSummary, websocketData, error } =
+        unwrapToolInvokeResult(invokeResult);
       logger.debug("[ToolService] 工具调用完成:", toolName, normalizedParams, toolResult);
 
       return {
         message,
         toolResult: toolResult as ToolResult<ToolNames>,
+        ...(continuationResult !== undefined
+          ? { continuationResult: continuationResult as ToolResult<ToolNames> }
+          : {}),
+        ...(typeof continuationSummary === "string" ? { continuationSummary } : {}),
         params: normalizedParams,
         websocketData,
         error,
@@ -436,6 +460,7 @@ export class ToolService {
 const _SHARED_BASIC_TOOLS: GenericTool[] = [
   BrowserSearch,
   EditFile,
+  ListFiles,
   ReadFile,
   Bash,
   InstallDependencies,
@@ -449,6 +474,7 @@ export const DEFAULT_MAIN_BASIC_TOOLS: GenericTool[] = [
   CompleteTask,
   BrowserSearch,
   EditFile,
+  ListFiles,
   ReadFile,
   Bash,
   InstallDependencies,
@@ -461,6 +487,7 @@ export const DEFAULT_MAIN_BASIC_TOOLS: GenericTool[] = [
 export const DEFAULT_SUB_BASIC_TOOLS: GenericTool[] = [
   BrowserSearch,
   EditFile,
+  ListFiles,
   ReadFile,
   Bash,
   InstallDependencies,
@@ -486,7 +513,10 @@ export {
   CompleteTask,
   BrowserSearch,
   EditFile,
+  ListFiles,
   ReadFile,
+  createReadRulesTool,
+  READ_RULES_TOOL_NAME,
   Bash,
   InstallDependencies,
   UpdateTaskDocs,

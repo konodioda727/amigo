@@ -187,4 +187,50 @@ describe("CompletionHandler default tool flow", () => {
       },
     });
   });
+
+  it("adds a specific tool-selection reminder when a main-task turn ends with plain text", async () => {
+    const handler = new CompletionHandler();
+    const addMessage = mock();
+    const conversation = {
+      id: "task-5",
+      type: "main",
+      status: "streaming",
+      isAborted: false,
+      userInput: "input",
+      toolService: {
+        getToolFromName: mock(() => undefined),
+      },
+      memory: {
+        addMessage,
+      },
+    } as unknown as Conversation;
+
+    const shouldContinue = await handler.handleStreamCompletion(
+      conversation,
+      "message",
+      false,
+      null,
+    );
+
+    expect(shouldContinue).toBe(true);
+    expect(conversation.status).toBe("streaming");
+    expect(addMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: "system",
+        type: "message",
+        partial: false,
+        content: expect.stringContaining("已经可以回答用户当前问题"),
+      }),
+    );
+    expect(addMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining("缺少用户本人才能提供的关键信息"),
+      }),
+    );
+    expect(addMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining("证据足够就收口"),
+      }),
+    );
+  });
 });

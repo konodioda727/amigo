@@ -13,6 +13,7 @@ import { v4 as uuidV4 } from "uuid";
 import { getGlobalState } from "@/globalState";
 import { FilePersistedMemory } from "../memory";
 import { type AmigoLlm, getLlm } from "../model";
+import { buildRulesPromptAppendix } from "../rules";
 import { getSystemPrompt } from "../systemPrompt";
 import { getTaskId } from "../templates/checklistParser";
 import { getBaseTools, ToolService } from "../tools";
@@ -188,6 +189,7 @@ export class Conversation {
     customPrompt?: string,
     context?: unknown,
   ): string {
+    const ruleProvider = getGlobalState("ruleProvider");
     const configuredPrompt = getGlobalState("systemPrompts")?.[type]?.trim();
     let systemPrompt = configuredPrompt || getSystemPrompt(toolService, type);
     const extraSystemPrompt = (getGlobalState("extraSystemPrompt") || "").trim();
@@ -198,6 +200,21 @@ export class Conversation {
     }
     if (scopedExtraSystemPrompt) {
       systemPrompt += `\n\n=====按类型追加系统提示词:\n${scopedExtraSystemPrompt}`;
+    }
+    const providerAppendix = ruleProvider?.getSystemPromptAppendix({
+      conversationType: type,
+      context,
+    });
+    if (providerAppendix) {
+      systemPrompt += `\n\n=====应用目录系统提示词:\n${providerAppendix}`;
+    }
+    const rulesAppendix = buildRulesPromptAppendix({
+      provider: ruleProvider,
+      conversationType: type,
+      context,
+    });
+    if (rulesAppendix) {
+      systemPrompt += `\n\n=====按需规则目录:\n${rulesAppendix}`;
     }
     if (contextAppendix) {
       systemPrompt += `\n\n=====上下文系统提示补充:\n${contextAppendix}`;

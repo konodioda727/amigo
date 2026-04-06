@@ -9,7 +9,12 @@ import type { Conversation } from "./Conversation";
 import {
   buildAssistantMemoryToolContent,
   serializeToolResultForMemory,
+  summarizeToolResultStatusForMemory,
 } from "./toolResultSerialization";
+import {
+  buildAssistantToolCallMemoryMessage,
+  buildToolResultMemoryMessage,
+} from "./toolTranscript";
 import { broadcaster } from "./WebSocketBroadcaster";
 
 interface ToolContent {
@@ -45,6 +50,58 @@ export class ToolExecutor {
     // Most tool payload JSON should not enter model memory to avoid pattern pollution.
     // Keep completeTask payload in sub-tasks for robust result extraction.
     return conversation.type === "sub" && toolName === "completeTask";
+  }
+
+  private shouldPersistToolTranscriptToMemory(conversation: Conversation): boolean {
+    return conversation.type === "main";
+  }
+
+  private persistToolTranscriptToMemory(params: {
+    conversation: Conversation;
+    toolName: string;
+    toolCallId?: string;
+    arguments: unknown;
+    result?: unknown;
+    summary?: string;
+    error?: string;
+    isError?: boolean;
+    updateTime: number;
+  }): void {
+    const {
+      conversation,
+      toolName,
+      toolCallId,
+      arguments: toolArguments,
+      result,
+      summary,
+      error,
+      isError,
+      updateTime,
+    } = params;
+
+    conversation.memory.addMessage(
+      buildAssistantToolCallMemoryMessage({
+        toolName,
+        toolCallId,
+        arguments:
+          toolArguments && typeof toolArguments === "object" && !Array.isArray(toolArguments)
+            ? (toolArguments as Record<string, unknown>)
+            : {},
+        updateTime,
+      }),
+    );
+
+    conversation.memory.addMessage(
+      buildToolResultMemoryMessage({
+        toolName,
+        toolCallId,
+        ...(result !== undefined ? { result } : {}),
+        ...(typeof summary === "string" && summary.trim() ? { summary: summary.trim() } : {}),
+        ...(typeof error === "string" && error.trim() ? { error: error.trim() } : {}),
+        ...(isError ? { isError: true } : {}),
+        updateTime,
+      }),
+    );
   }
 
   private emitToolTransportMessage(
@@ -182,12 +239,19 @@ export class ToolExecutor {
     );
 
     // 执行工具
-    const { toolResult, message, params, websocketData, error } =
-      await conversation.toolService.executeToolCall({
-        toolName,
-        params: toolCall.arguments,
-        context: this.createExecutionContext(conversation, abortSignal),
-      });
+    const {
+      toolResult,
+      continuationResult,
+      continuationSummary,
+      message,
+      params,
+      websocketData,
+      error,
+    } = await conversation.toolService.executeToolCall({
+      toolName,
+      params: toolCall.arguments,
+      context: this.createExecutionContext(conversation, abortSignal),
+    });
     if (conversation.isAborted || abortSignal?.aborted) {
       logger.info(`[ToolExecutor] 工具返回后检测到中断，丢弃结果: ${toolName}`);
       return;
@@ -214,6 +278,24 @@ export class ToolExecutor {
         false,
         this.toolCallUpdateTimes.get(toolCallKey) ?? callUpdateTime,
       );
+
+      if (this.shouldPersistToolTranscriptToMemory(conversation)) {
+        this.persistToolTranscriptToMemory({
+          conversation,
+          toolName,
+          toolCallId: toolCall.toolCallId,
+          arguments: params,
+          result: continuationResult ?? toolResult,
+          summary:
+            continuationSummary ||
+            summarizeToolResultStatusForMemory(toolName, continuationResult ?? toolResult) ||
+            undefined,
+          error,
+          isError: true,
+          updateTime: this.toolCallUpdateTimes.get(toolCallKey) ?? callUpdateTime,
+        });
+      }
+
       this.toolCallUpdateTimes.delete(toolCallKey);
 
       logger.info(`[ToolExecutor] 工具错误已记录，将在 CompletionHandler 中添加到 memory`);
@@ -224,6 +306,8 @@ export class ToolExecutor {
         params,
         toolCall.toolCallId,
         toolResult,
+        continuationResult ?? toolResult,
+        continuationSummary,
         websocketData,
         message,
         type,
@@ -241,14 +325,16 @@ export class ToolExecutor {
     toolName: string,
     params: unknown,
     toolCallId: string | undefined,
-    result: unknown,
+    transportResult: unknown,
+    continuationResult: unknown,
+    continuationSummary: string | undefined,
     websocketData: unknown,
     message: string,
     type: ChatMessage["type"],
     updateTime: number,
   ): void {
     const toolPayload = {
-      result,
+      result: transportResult,
       params,
       toolName,
       toolCallId,
@@ -266,13 +352,29 @@ export class ToolExecutor {
     if (this.shouldPersistToolPayloadToMemory(conversation, toolName)) {
       broadcaster.persistMessageOnly(conversation, {
         role: "assistant",
-        content: buildAssistantMemoryToolContent(toolName, params, toolCallId, result),
+        content: buildAssistantMemoryToolContent(toolName, params, toolCallId, transportResult),
         type,
         partial: false,
       });
     }
 
-    const serializedResult = serializeToolResultForMemory(toolName, result);
+    if (this.shouldPersistToolTranscriptToMemory(conversation)) {
+      this.persistToolTranscriptToMemory({
+        conversation,
+        toolName,
+        toolCallId,
+        arguments: params,
+        result: continuationResult,
+        summary:
+          continuationSummary ||
+          summarizeToolResultStatusForMemory(toolName, continuationResult) ||
+          undefined,
+        updateTime,
+      });
+      return;
+    }
+
+    const serializedResult = serializeToolResultForMemory(toolName, transportResult);
     conversation.memory.addMessage({
       role: "system",
       content:
@@ -289,10 +391,19 @@ export class ToolExecutor {
     abortSignal?: AbortSignal,
   ): ToolExecutionContext {
     const sandboxManager = getSandboxManager();
+    const languageRuntimeHostManager = getGlobalState("languageRuntimeHostManager");
     return {
       taskId: conversation.id,
       parentId: conversation.parentId,
+      conversationContext: conversation.memory.context,
       getSandbox: () => sandboxManager.getOrCreate(conversation.parentId || conversation.id),
+      getLanguageRuntimeHost: languageRuntimeHostManager
+        ? () =>
+            languageRuntimeHostManager.getOrCreate(
+              conversation.parentId || conversation.id,
+              conversation.memory.context,
+            )
+        : undefined,
       getToolByName: (name: string) => conversation.toolService.getToolFromName(name),
       signal: abortSignal,
       postMessage: (msg: string | object) => {

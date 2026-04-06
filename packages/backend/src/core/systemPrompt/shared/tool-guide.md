@@ -26,6 +26,16 @@ Otherwise -> Use appropriate functional tool
 - Sub-task calling `completeTask` before the assigned problem is actually solved
 - Using tool names or JSON parameters that do not match definitions
 
+## Code Search vs Semantic Tools
+
+- If semantic tools such as `goToDefinition`, `findReferences`, or `getDiagnostics` are available, use them for precise symbol-level navigation and validation.
+- Use `goToDefinition` when you already know the `symbolName`, `filePath`, and approximate `line` / `column`, and want the exact implementation or type definition.
+- Use `findReferences` before changing shared functions, exported types, fields, or other public APIs so you understand the impact surface; pass the `symbolName` plus an approximate anchor location.
+- Use `getDiagnostics` after edits when you need semantic/type errors for the current file.
+- `goToDefinition` and `findReferences` first try to locate the exact `symbolName` near the provided anchor and fail if that nearby symbol cannot be found.
+- Do not use semantic tools as a replacement for broad text discovery.
+- If you do not yet know where a symbol/string/config appears, first use repository search tools such as `bash` with `rg`, plus `listFiles` and `readFile`, then switch to semantic tools once you have a concrete symbol location.
+
 ## Project Script Discipline
 
 - Before starting a dev server, running lint/test/build/typecheck, or issuing project-scoped shell commands, inspect repository facts first instead of guessing.
@@ -43,8 +53,12 @@ Otherwise -> Use appropriate functional tool
 
 ## Task Docs Discipline
 
-- In Spec Mode, treat `requirements.md` and `design.md` as progressively refined docs.
+- In Spec Mode, task docs are the explicit, living form of the UNIVERSAL SOP, not a parallel workflow.
+- `requirements.md` records task-goal decomposition.
+- `design.md` records the preliminary solution, tradeoffs, and validation plan.
+- `taskList.md` records the execution breakdown and current implementation path.
 - Prefer a loop of: read current doc -> gather evidence -> ask one focused follow-up if needed -> patch only the affected text with `updateTaskDocs`.
+- Patch docs not only after user answers, but after any meaningful new evidence, repo fact, or design decision that changes the explicit SOP record.
 - Do not regenerate the entire doc after every answer.
 - In the design phase, research both the local repo context and relevant external best practices before asking the user to choose between viable options.
 

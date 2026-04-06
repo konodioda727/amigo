@@ -384,6 +384,163 @@ describe("SdkMemoryRuntime", () => {
     expect(hits).toHaveLength(0);
   });
 
+  test("skips persistence when candidate confidence is below the minimum threshold", async () => {
+    setConversationPersistenceProvider({
+      ...noopProvider,
+      load: () => ({
+        taskId: "task-1",
+        fatherTaskId: undefined,
+        conversationStatus: "idle",
+        toolNames: [],
+        context: { userId: "user-1" },
+        modelConfigSnapshot: {
+          configId: "main-config",
+          model: "main-model",
+        },
+        autoApproveToolNames: [],
+        pendingToolCall: null,
+        subTasks: {},
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        messages: [],
+        websocketMessages: [],
+      }),
+    } as any);
+    setLlmFactory(() => ({
+      model: "main-model",
+      provider: "openai-compatible",
+      async stream() {
+        return (async function* () {
+          yield {
+            type: "text_delta" as const,
+            text: JSON.stringify({
+              candidates: [
+                {
+                  scope: "user",
+                  kind: "preference",
+                  topic: "response_language_preference",
+                  text: "用户偏好使用中文交流。",
+                  confidence: 0.62,
+                },
+              ],
+            }),
+          };
+        })();
+      },
+    }));
+
+    const store = createInMemoryMemoryStore();
+    const embeddings = createDeterministicMemoryEmbeddingProvider();
+    const runtime = new SdkMemoryRuntime({
+      longTerm: {
+        enabled: true,
+        store,
+        embeddings,
+      },
+    });
+
+    await runtime.handleUserMessage({
+      taskId: "task-1",
+      context: { userId: "user-1" },
+      message: {
+        role: "user",
+        type: "userSendMessage",
+        content: "以后默认用中文和我沟通。",
+        partial: false,
+        updateTime: Date.now(),
+      },
+    });
+
+    const hits = await store.query({
+      namespace: "long_term",
+      vector: await embeddings.embedQuery("中文沟通偏好"),
+      queryText: "中文沟通偏好",
+      topK: 4,
+      filter: { userId: "user-1" },
+    });
+
+    expect(hits).toHaveLength(0);
+  });
+
+  test("skips persistence for task-scoped taskdoc workflow instructions", async () => {
+    setConversationPersistenceProvider({
+      ...noopProvider,
+      load: () => ({
+        taskId: "task-1",
+        fatherTaskId: undefined,
+        conversationStatus: "idle",
+        toolNames: [],
+        context: { userId: "user-1" },
+        modelConfigSnapshot: {
+          configId: "main-config",
+          model: "main-model",
+        },
+        autoApproveToolNames: [],
+        pendingToolCall: null,
+        subTasks: {},
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        messages: [],
+        websocketMessages: [],
+      }),
+    } as any);
+    setLlmFactory(() => ({
+      model: "main-model",
+      provider: "openai-compatible",
+      async stream() {
+        return (async function* () {
+          yield {
+            type: "text_delta" as const,
+            text: JSON.stringify({
+              candidates: [
+                {
+                  scope: "user",
+                  kind: "constraint",
+                  topic: "taskdoc_workflow_preference",
+                  text: "在当前任务中，创建 taskdoc 前必须先询问用户，并且只做增量更新。",
+                  confidence: 0.97,
+                },
+              ],
+            }),
+          };
+        })();
+      },
+    }));
+
+    const store = createInMemoryMemoryStore();
+    const embeddings = createDeterministicMemoryEmbeddingProvider();
+    const runtime = new SdkMemoryRuntime({
+      longTerm: {
+        enabled: true,
+        store,
+        embeddings,
+      },
+    });
+
+    await runtime.handleUserMessage({
+      taskId: "task-1",
+      context: { userId: "user-1" },
+      message: {
+        role: "user",
+        type: "userSendMessage",
+        content:
+          "为什么现在模型还是不会在创建 taskdoc 前询问用户？也不会渐进式根据用户回答生成部分文档或做部分修改？",
+        partial: false,
+        updateTime: Date.now(),
+      },
+    });
+
+    const hits = await store.query({
+      namespace: "long_term",
+      vector: await embeddings.embedQuery("taskdoc workflow preference"),
+      queryText: "taskdoc workflow preference",
+      topK: 4,
+      filter: { userId: "user-1" },
+    });
+
+    expect(hits).toHaveLength(0);
+  });
+
   test("injects always-relevant long-term preferences even when the new query is unrelated", async () => {
     setConversationPersistenceProvider({
       ...noopProvider,

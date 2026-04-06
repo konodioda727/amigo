@@ -1,4 +1,5 @@
 import { createTool } from "./base";
+import { createToolResult } from "./result";
 
 export const AskFollowupQuestions = createTool({
   name: "askFollowupQuestion",
@@ -29,9 +30,11 @@ export const AskFollowupQuestions = createTool({
     },
   ],
   async invoke({ params }) {
-    return {
-      message: `已向用户提出后续问题: ${params.question}`,
-      toolResult: "",
-    };
+    const message = `已向用户提出后续问题: ${params.question}`;
+    return createToolResult("", {
+      transportMessage: message,
+      continuationSummary: "【已向用户提问】",
+      continuationResult: params.question,
+    });
   },
 });

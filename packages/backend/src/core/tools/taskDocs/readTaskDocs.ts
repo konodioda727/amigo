@@ -5,6 +5,23 @@ import { createTool } from "../base";
 import { createToolResult } from "../result";
 import { addLineNumbers, DOC_TYPE_TO_FILENAME, getTaskDocsPath } from "./utils";
 
+const PHASE_LABELS: Record<string, string> = {
+  requirements: "requirements.md",
+  design: "design.md",
+  taskList: "taskList.md",
+};
+
+const buildReadTaskDocsContinuationSummary = (docKeys: string[]): string => {
+  const labels = docKeys
+    .map((key) => PHASE_LABELS[key] || key)
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (labels.length === 0) {
+    return "【已阅读任务文档】";
+  }
+  return `【已阅读 ${labels.join(", ")}】`;
+};
+
 /**
  * 读取任务文档工具
  * 用于读取当前任务的文档
@@ -145,6 +162,7 @@ export const ReadTaskDocs = createTool({
         },
         {
           transportMessage: successMsg,
+          continuationSummary: buildReadTaskDocsContinuationSummary(foundDocs),
         },
       );
     } catch (error) {

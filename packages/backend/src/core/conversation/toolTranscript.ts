@@ -1,6 +1,7 @@
 import type { ChatMessage } from "@amigo-llm/types";
 import {
   normalizeToolResultForContinuationMemory,
+  serializeListFilesResultForModel,
   serializeToolResultForContinuationMemory,
 } from "./toolResultSerialization";
 
@@ -114,6 +115,27 @@ export const parseToolResultMessage = (message: ChatMessage): ToolResultPayload 
 };
 
 export const serializeToolResultPayloadForModel = (payload: ToolResultPayload): string => {
+  if (payload.toolName === "listFiles") {
+    const lines = [`toolName: ${payload.toolName}`];
+    if (payload.toolCallId) {
+      lines.push(`toolCallId: ${payload.toolCallId}`);
+    }
+    const serializedListFilesResult = serializeListFilesResultForModel(payload.result);
+    if (serializedListFilesResult) {
+      lines.push(serializedListFilesResult.replace(/^toolName: listFiles\n?/, ""));
+    }
+    if (payload.error) {
+      lines.push(`error: ${payload.error}`);
+    }
+    if (payload.isError) {
+      lines.push("isError: true");
+    }
+    if (payload.summary?.trim()) {
+      lines.push(`summary: ${payload.summary.trim()}`);
+    }
+    return lines.filter(Boolean).join("\n");
+  }
+
   const parts: Record<string, unknown> = {
     toolName: payload.toolName,
   };

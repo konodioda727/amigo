@@ -1,4 +1,5 @@
 import path from "node:path";
+import type { LspConfig } from "@amigo-llm/backend";
 import { createAmigoApp } from "./app";
 
 const isNonFatalStreamError = (reason: unknown) => {
@@ -46,11 +47,44 @@ const DEFAULT_QDRANT_MEMORY_CONFIG = {
     enabled: true,
     topK: 6,
     minScore: 0.15,
+    minConfidence: 0.8,
   },
   retrieval: {
     hybrid: true,
   },
 } as const;
+
+const DEFAULT_AMIGO_LSP_CONFIG: LspConfig = {
+  idleShutdownMs: 5 * 60 * 1000,
+  servers: [
+    {
+      id: "typescript",
+      languageIds: ["typescript", "typescriptreact", "javascript", "javascriptreact"],
+      fileExtensions: [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"],
+      command: "typescript-language-server",
+      args: ["--stdio"],
+      rootMarkers: ["tsconfig.json", "jsconfig.json", "package.json", ".git"],
+      capabilities: {
+        diagnostics: true,
+        definition: true,
+        references: true,
+      },
+    },
+    {
+      id: "python",
+      languageIds: ["python"],
+      fileExtensions: [".py"],
+      command: "pyright-langserver",
+      args: ["--stdio"],
+      rootMarkers: ["pyrightconfig.json", "pyproject.toml", "requirements.txt", ".git"],
+      capabilities: {
+        diagnostics: true,
+        definition: true,
+        references: true,
+      },
+    },
+  ],
+};
 
 const start = async () => {
   const app = await createAmigoApp({
@@ -74,6 +108,7 @@ const start = async () => {
         }
       : {}),
     qdrantMemory: DEFAULT_QDRANT_MEMORY_CONFIG,
+    lsp: DEFAULT_AMIGO_LSP_CONFIG,
   });
   app.server.start();
 

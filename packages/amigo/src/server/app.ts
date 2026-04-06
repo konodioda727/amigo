@@ -4,9 +4,11 @@ import {
   bindGithubContextToTask,
   CUSTOMED_TOOLS,
   conversationRepository,
+  createFileSystemRuleProvider,
   getBaseTools,
   getGlobalState,
   type LoggerConfig,
+  type LspConfig,
   logger,
   type MemoryConfig,
   type ModelConfig,
@@ -30,13 +32,13 @@ import { evaluateAmigoSubTaskWaitReview } from "./harness/codingSubTaskPolicy";
 import { createAmigoHttpHandler } from "./http/appHttpHandler";
 import { ConversationChannelRouter } from "./integrations/channels/router";
 import { createFeishuBridge, type FeishuBridge } from "./integrations/feishu/bridge";
+import { createEditFileDiagnosticsProvider } from "./languageDiagnostics/editFileDiagnosticsProvider";
 import { createQdrantMemoryConfig, type QdrantMemoryConfigOptions } from "./memory/qdrantMemory";
 import {
   resolveUserScopedMemoryExtractorModelSelection,
   resolveUserScopedModelConfig,
   warmUserModelConfigStore,
 } from "./modelConfigs/store";
-import { AMIGO_APP_SYSTEM_PROMPT_APPENDIX } from "./prompts/amigoAppPrompt";
 import { AmigoAppServer } from "./runtime/appServer";
 import { SkillHubMarketClient } from "./skills/skillHubMarket";
 import { SkillStore } from "./skills/skillStore";
@@ -49,6 +51,7 @@ export interface AmigoAppOptions {
   cachePath?: string;
   loggerConfig?: Partial<LoggerConfig>;
   modelConfigs?: Record<string, ModelConfig>;
+  lsp?: LspConfig | null;
   sandboxConfig?: SandboxOptions;
   previewHostConfig?: PreviewHostConfig;
   ossConfig?: OssUploadConfig | null;
@@ -300,6 +303,10 @@ export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<Ami
             })
           : undefined
         : undefined;
+  const hasLspConfig = Boolean(options.lsp && options.lsp.servers.length > 0);
+  const ruleProvider = createFileSystemRuleProvider({
+    rootDir: path.resolve(import.meta.dir, "prompts", "systemPrompt"),
+  });
   let builder = new AmigoServerBuilder().port(port).cachePath(cachePath);
   if (options.loggerConfig) {
     builder = builder.loggerConfig(options.loggerConfig);
@@ -310,7 +317,9 @@ export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<Ami
     };
     builder = persistenceAwareBuilder.conversationPersistenceProvider(persistenceProvider);
   }
-  for (const tool of getUserCodingAgentTools(automationStore, automationScheduler)) {
+  for (const tool of getUserCodingAgentTools(automationStore, automationScheduler, {
+    enableLanguageIntelligence: hasLspConfig,
+  })) {
     builder = builder.registerTool(tool as never);
   }
   if (memoryConfig) {
@@ -326,8 +335,8 @@ export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<Ami
     builder = builder.modelConfigs(modelConfigs);
   }
 
-  const runtimeServer = builder
-    .appendSystemPrompt(AMIGO_APP_SYSTEM_PROMPT_APPENDIX)
+  let runtimeBuilder = builder
+    .rules({ provider: ruleProvider })
     .subTaskWaitReviewEvaluator(evaluateAmigoSubTaskWaitReview)
     .userModelConfigResolver(resolveUserScopedModelConfig)
     .sandboxManager(sandboxManager)
@@ -354,8 +363,18 @@ export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<Ami
     })
     .onConversationMessage(async (payload) => {
       await channelRouter.dispatchConversationMessage(payload);
-    })
-    .build();
+    });
+
+  if (hasLspConfig) {
+    runtimeBuilder = runtimeBuilder
+      .lsp({
+        ...options.lsp!,
+        servers: [...options.lsp!.servers],
+      })
+      .editFileDiagnosticsProvider(createEditFileDiagnosticsProvider());
+  }
+
+  const runtimeServer = runtimeBuilder.build();
 
   const httpHandler = createAmigoHttpHandler({
     sandboxManager,

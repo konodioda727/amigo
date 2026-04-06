@@ -8,10 +8,13 @@ import { DefaultCreateDesignDocRenderer } from "./tools/DefaultCreateDesignDocRe
 import { DefaultEditFileRenderer } from "./tools/DefaultEditFileRenderer";
 import { DefaultExecuteTaskListRenderer } from "./tools/DefaultExecuteTaskListRenderer";
 import { DefaultListDesignDocsRenderer } from "./tools/DefaultListDesignDocsRenderer";
+import { DefaultListFilesRenderer } from "./tools/DefaultListFilesRenderer";
 import { DefaultReadDesignDocRenderer } from "./tools/DefaultReadDesignDocRenderer";
 import { DefaultReadFileRenderer } from "./tools/DefaultReadFileRenderer";
+import { DefaultReadRulesRenderer } from "./tools/DefaultReadRulesRenderer";
 import { DefaultReadSkillBundleRenderer } from "./tools/DefaultReadSkillBundleRenderer";
 import { DefaultReadTaskDocsRenderer } from "./tools/DefaultReadTaskDocsRenderer";
+import { DefaultRunChecksRenderer } from "./tools/DefaultRunChecksRenderer";
 import { DefaultUpdateTaskDocsRenderer } from "./tools/DefaultUpdateTaskDocsRenderer";
 import { DefaultUpsertAutomationRenderer } from "./tools/DefaultUpsertAutomationRenderer";
 import { ToolAccordion } from "./tools/ToolAccordion";
@@ -25,7 +28,9 @@ const toolRendererMap: {
   >,
   bash: DefaultBashRenderer as React.FC<ToolMessageRendererProps<"bash">>,
   editFile: DefaultEditFileRenderer as React.FC<ToolMessageRendererProps<"editFile">>,
+  listFiles: DefaultListFilesRenderer as React.FC<ToolMessageRendererProps<"listFiles">>,
   readFile: DefaultReadFileRenderer as React.FC<ToolMessageRendererProps<"readFile">>,
+  readRules: DefaultReadRulesRenderer as React.FC<ToolMessageRendererProps<"readRules">>,
   updateTaskDocs: DefaultUpdateTaskDocsRenderer as React.FC<
     ToolMessageRendererProps<"updateTaskDocs">
   >,
@@ -102,6 +107,14 @@ export const DefaultToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
     return (
       <DefaultReadSkillBundleRenderer
         {...(props as unknown as React.ComponentProps<typeof DefaultReadSkillBundleRenderer>)}
+      />
+    );
+  }
+
+  if (String(message.toolName) === "runChecks") {
+    return (
+      <DefaultRunChecksRenderer
+        {...(props as unknown as React.ComponentProps<typeof DefaultRunChecksRenderer>)}
       />
     );
   }

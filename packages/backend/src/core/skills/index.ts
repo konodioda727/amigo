@@ -94,6 +94,9 @@ const addLineNumbers = (content: string, startLine: number) =>
     .map((line, index) => `${String(startLine + index).padStart(4, " ")}| ${line}`)
     .join("\n");
 
+const buildReadSkillBundleContinuationSummary = (skillId: string, filePath: string): string =>
+  `【已阅读 ${skillId}/${filePath}】`;
+
 const isProbablyBinary = (content: Buffer): boolean => content.includes(0);
 
 type ReadSkillBundleToolParams = {
@@ -282,6 +285,7 @@ export const createReadSkillBundleTool = (provider: SkillProvider): ToolInterfac
         endLine: safeEndLine,
         resourceManifest: manifest,
       },
+      continuationSummary: buildReadSkillBundleContinuationSummary(resolvedSkill.id, targetPath),
     };
   },
 });

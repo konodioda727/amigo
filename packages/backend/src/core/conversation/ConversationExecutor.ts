@@ -69,6 +69,7 @@ export class ConversationExecutor {
     conversation.status = "tool_executing";
     conversation.pendingToolCall = null;
     conversation.userInput = "";
+    let currentTool = pending.toolName;
 
     const controller = new AbortController();
     this.currentAbortController = controller;
@@ -90,9 +91,28 @@ export class ConversationExecutor {
       return;
     }
 
+    const queuedToolCalls = ((
+      pending as typeof pending & {
+        queuedToolCalls?: Parameters<StreamHandler["processToolCalls"]>[1];
+      }
+    ).queuedToolCalls || []) as Parameters<StreamHandler["processToolCalls"]>[1];
+
+    if (queuedToolCalls.length > 0) {
+      currentTool = await this.streamHandler.processToolCalls(
+        conversation,
+        queuedToolCalls,
+        controller.signal,
+      );
+
+      if (conversation.isAborted || controller.signal.aborted || conversation.pendingToolCall) {
+        logger.info(logs.onStop);
+        return;
+      }
+    }
+
     const completion = await this.completionHandler.handleStreamCompletion(
       conversation,
-      pending.toolName,
+      currentTool,
       this.toolExecutor.getLastToolHadError(),
       this.toolExecutor.getLastToolError(),
     );

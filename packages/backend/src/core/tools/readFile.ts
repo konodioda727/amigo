@@ -2,10 +2,14 @@ import type { ReadFileResult } from "@amigo-llm/types";
 import type { Sandbox } from "@/core/sandbox";
 import { logger } from "@/utils/logger";
 import { createTool } from "./base";
+import { createToolResult } from "./result";
 
 const normalizeReadFilePath = (filePath: string) => filePath.trim().replace(/^(\.\/)+/, "");
 
 const escapeShellPath = (filePath: string) => filePath.replaceAll("'", "'\\''");
+
+const CONTINUATION_FILE_CONTENT_LIMIT = 4_000;
+const CONTINUATION_TOTAL_CONTENT_LIMIT = 12_000;
 
 const addLineNumbers = (content: string, startLine: number) =>
   content
@@ -74,15 +78,83 @@ const readSingleFile = async (
   };
 };
 
-const createInvalidParamsResult = (message: string) => ({
-  message,
-  toolResult: {
-    success: false,
-    files: [],
-    filePaths: [],
-    message,
-  } satisfies ReadFileResult,
-});
+const createInvalidParamsResult = (message: string) =>
+  createToolResult(
+    {
+      success: false,
+      files: [],
+      filePaths: [],
+      message,
+    } satisfies ReadFileResult,
+    {
+      transportMessage: message,
+      continuationSummary: message,
+    },
+  );
+
+const buildReadFileContinuationSummary = (filePaths: string[]): string => {
+  const normalizedPaths = filePaths.map((filePath) => filePath.trim()).filter(Boolean);
+  if (normalizedPaths.length === 0) {
+    return "【已阅读文件】";
+  }
+
+  const preview =
+    normalizedPaths.length <= 3
+      ? normalizedPaths.join(", ")
+      : `${normalizedPaths.slice(0, 3).join(", ")} 等 ${normalizedPaths.length} 个文件`;
+  return `【已阅读 ${preview}】`;
+};
+
+const truncateReadFileContent = (content: string, maxChars: number): string => {
+  if (content.length <= maxChars) {
+    return content;
+  }
+
+  const headChars = Math.max(0, Math.floor(maxChars * 0.7));
+  const tailChars = Math.max(0, maxChars - headChars);
+  const omittedChars = content.length - headChars - tailChars;
+  return [
+    content.slice(0, headChars),
+    `\n...（已截断，中间省略 ${omittedChars} 字符）...\n`,
+    content.slice(content.length - tailChars),
+  ].join("");
+};
+
+const buildReadFileContinuationResult = (
+  transportResult: ReadFileResult,
+  summaryMessage: string,
+): ReadFileResult => {
+  let remainingBudget = CONTINUATION_TOTAL_CONTENT_LIMIT;
+  const files = transportResult.files.map((file) => {
+    if (!file.success || !file.content.trim()) {
+      return { ...file };
+    }
+
+    const fileBudget = Math.max(0, Math.min(CONTINUATION_FILE_CONTENT_LIMIT, remainingBudget));
+    if (fileBudget <= 0) {
+      return {
+        ...file,
+        content: "",
+        message: `${file.message}（正文已在 continuation 中省略）`,
+      };
+    }
+
+    const truncatedContent = truncateReadFileContent(file.content, fileBudget);
+    remainingBudget = Math.max(0, remainingBudget - truncatedContent.length);
+    return {
+      ...file,
+      content: truncatedContent,
+      message: truncatedContent === file.content ? file.message : `${file.message}（正文已截断）`,
+    };
+  });
+
+  return {
+    success: transportResult.success,
+    filePaths: [...transportResult.filePaths],
+    files,
+    message: summaryMessage,
+  };
+};
 
 /**
  * ReadFile 工具
@@ -149,27 +221,37 @@ export const ReadFile = createTool({
 
       logger.info(`[ReadFile] ${summaryMessage}: ${filePaths.join(", ")}`);
 
-      return {
+      const transportResult = {
+        success: allSucceeded,
+        files,
+        filePaths,
         message: summaryMessage,
-        toolResult: {
-          success: allSucceeded,
-          files,
-          filePaths,
-          message: summaryMessage,
-        } satisfies ReadFileResult,
-      };
+      } satisfies ReadFileResult;
+
+      return createToolResult(transportResult, {
+        transportMessage: summaryMessage,
+        continuationSummary: buildReadFileContinuationSummary(filePaths),
+        continuationResult: buildReadFileContinuationResult(transportResult, summaryMessage),
+      });
     } catch (error) {
       const errorMsg = `读取文件失败: ${error instanceof Error ? error.message : String(error)}`;
       logger.error(`[ReadFile] ${errorMsg}`);
-      return {
+      const transportResult = {
+        success: false,
+        files: filePaths.map((filePath) => buildFailureResult(filePath, errorMsg)),
+        filePaths,
         message: errorMsg,
-        toolResult: {
+      } satisfies ReadFileResult;
+      return createToolResult(transportResult, {
+        transportMessage: errorMsg,
+        continuationSummary: errorMsg,
+        continuationResult: {
           success: false,
           files: filePaths.map((filePath) => buildFailureResult(filePath, errorMsg)),
           filePaths,
           message: errorMsg,
         } satisfies ReadFileResult,
-      };
+      });
     }
   },
 });

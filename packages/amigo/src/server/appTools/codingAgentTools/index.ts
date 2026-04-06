@@ -13,10 +13,12 @@ import {
   upsertLayoutOptionsTool,
   upsertThemeOptionsTool,
 } from "../designDraftTools";
+import { LANGUAGE_INTELLIGENCE_TOOLS } from "./languageIntelligenceTools";
 
 export const getUserCodingAgentTools = (
   automationStore: AutomationStore,
   automationScheduler: AutomationScheduler,
+  options?: { enableLanguageIntelligence?: boolean },
 ) => [
   runChecksTool,
   readDesignSessionTool,
@@ -28,6 +30,7 @@ export const getUserCodingAgentTools = (
   orchestrateFinalDesignDraftTool,
   readDraftCritiqueTool,
   readFinalDesignDraftTool,
+  ...(options?.enableLanguageIntelligence ? LANGUAGE_INTELLIGENCE_TOOLS : []),
   createUpsertAutomationTool(automationStore, automationScheduler),
 ];
 
@@ -42,5 +45,8 @@ export const USER_CODING_AGENT_AUTO_APPROVE_TOOLS = [
   "orchestrateFinalDesignDraft",
   "readDraftCritique",
   "readFinalDesignDraft",
+  "goToDefinition",
+  "findReferences",
+  "getDiagnostics",
   "upsertAutomation",
 ] as const;

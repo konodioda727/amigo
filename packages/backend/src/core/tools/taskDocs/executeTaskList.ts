@@ -25,6 +25,7 @@ import {
 import { logger } from "@/utils/logger";
 import { createTool } from "../base";
 import { asyncToolJobRegistry } from "../base/asyncJobRegistry";
+import { createToolResult } from "../result";
 import { reviewSubTaskCompletion } from "../reviewSubTask";
 import { buildDependencyResultContext } from "./dependencyContext";
 import { getTaskDocsPath, parseToolsFromDescription } from "./utils";
@@ -38,6 +39,8 @@ const MAX_INTERNAL_REVIEW_ROUNDS = 2;
 const FORBIDDEN_SUB_TASK_TOOLS = ["updateTaskDocs", "readTaskDocs", "executeTaskList"];
 const normalizeDescription = (description: string) =>
   description.replace(/\(In Progress\)$/, "").trim();
+
+const EXECUTE_TASK_LIST_CONTINUATION_SUMMARY = "【任务列表执行中】";
 
 const getTaskKey = (description: string) => getTaskId(description) || description;
 
@@ -561,22 +564,42 @@ const startNewTask = ({
   })();
 };
 
-const toolError = (message: string) => ({
-  message,
-  toolResult: {
-    success: false,
-    message,
-  },
-});
+const toolError = (message: string) =>
+  createToolResult(
+    {
+      success: false,
+      message,
+    },
+    {
+      transportMessage: message,
+      continuationSummary: message,
+      continuationResult: {
+        success: false,
+        message,
+      },
+    },
+  );
 
-const toolSuccess = (message: string, extra?: Record<string, unknown>) => ({
-  message,
-  toolResult: {
-    success: true,
-    message,
-    ...extra,
-  },
-});
+const toolSuccess = (message: string, extra?: Record<string, unknown>) =>
+  createToolResult(
+    {
+      success: true,
+      message,
+      ...extra,
+    },
+    {
+      transportMessage: message,
+      continuationSummary: EXECUTE_TASK_LIST_CONTINUATION_SUMMARY,
+      continuationResult: {
+        success: true,
+        message,
+        ...(typeof extra?.status === "string" ? { status: extra.status } : {}),
+        ...(typeof extra?.pending === "number" ? { pending: extra.pending } : {}),
+        ...(typeof extra?.executionId === "string" ? { executionId: extra.executionId } : {}),
+        ...(typeof extra?.async === "boolean" ? { async: extra.async } : {}),
+      },
+    },
+  );
 
 const readTaskList = (filePath: string) => {
   const content = readFileSync(filePath, "utf-8");
@@ -718,7 +741,7 @@ const runWithConcurrency = async <T>(
   );
 };
 
-const runTaskScheduler = async ({
+export const runTaskScheduler = async ({
   allTasks,
   runningTaskIds,
   completedTaskIds,
@@ -1070,9 +1093,8 @@ export const ExecuteTaskList = createTool({
       const startedMsg = started
         ? `已启动异步执行（${pendingTasks.length} 个任务），执行编号: ${job.id}`
         : `任务列表已在执行中（执行编号: ${job.id}）`;
-      return {
-        message: startedMsg,
-        toolResult: {
+      return createToolResult(
+        {
           success: true,
           message: startedMsg,
           async: true,
@@ -1083,7 +1105,21 @@ export const ExecuteTaskList = createTool({
           executed: started,
           alreadyRunning: !started,
         },
-      };
+        {
+          transportMessage: startedMsg,
+          continuationSummary: EXECUTE_TASK_LIST_CONTINUATION_SUMMARY,
+          continuationResult: {
+            success: true,
+            message: startedMsg,
+            async: true,
+            status: started ? "started" : "already_running",
+            executionId: job.id,
+            pending: pendingTasks.length,
+            executed: started,
+            alreadyRunning: !started,
+          },
+        },
+      );
     } catch (error) {
       const errorMsg = `执行任务列表失败: ${error instanceof Error ? error.message : String(error)}`;
       logger.error(`[ExecuteTaskList] ${errorMsg}`);

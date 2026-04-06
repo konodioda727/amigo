@@ -94,13 +94,13 @@ BETTER_AUTH_TRUSTED_ORIGINS=https://amigo.example.com
 
 参考：
 
-- [ops/deploy/amigo.env.example](/Users/lawkaiqing/code/amigo/ops/deploy/amigo.env.example)
+- [ops/deploy/amigo.env.example](your-path-to-amigo/ops/deploy/amigo.env.example)
 
 ## systemd 配置
 
 服务文件参考：
 
-- [ops/systemd/amigo.service](/Users/lawkaiqing/code/amigo/ops/systemd/amigo.service)
+- [ops/systemd/amigo.service](your-path-to-amigo/ops/systemd/amigo.service)
 
 首次安装：
 
@@ -131,7 +131,7 @@ journalctl -u amigo -n 200 --no-pager
 
 基础站点参考：
 
-- [ops/caddy/Caddyfile.example](/Users/lawkaiqing/code/amigo/ops/caddy/Caddyfile.example)
+- [ops/caddy/Caddyfile.example](your-path-to-amigo/ops/caddy/Caddyfile.example)
 
 核心思路：
 
@@ -151,7 +151,7 @@ GitHub 仓库里至少配置：
 
 部署流水线：
 
-- [deploy.yml](/Users/lawkaiqing/code/amigo/.github/workflows/deploy.yml)
+- [deploy.yml](your-path-to-amigo/.github/workflows/deploy.yml)
 
 ## 部署产物
 

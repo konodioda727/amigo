@@ -28,6 +28,13 @@ interface AppMessageComposerProps {
 export const canSwitchTaskModel = (taskId: string | undefined, taskStatus: string): boolean =>
   !taskId || taskStatus !== "streaming";
 
+export const getTaskModelKey = (context: unknown): string => {
+  const taskModel = resolveTaskModelContext(context);
+  return taskModel?.model && taskModel.modelConfigId
+    ? `${taskModel.modelConfigId}::${taskModel.model}`
+    : "";
+};
+
 export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }) => {
   const { config } = useWebSocketContext();
   const { mainTaskId, taskContextMaps, taskContextUsageMaps, tasks } = useTasks();
@@ -129,10 +136,10 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
       defaultModel: modelSettings?.defaultModel || null,
       activeTaskModel,
     });
-    if (nextKey) {
+    if (nextKey && nextKey !== selectedModelKey) {
       setSelectedModelKey(nextKey);
     }
-  }, [activeTaskModel, availableModels, modelSettings?.defaultModel]);
+  }, [activeTaskModel, availableModels, modelSettings?.defaultModel, selectedModelKey]);
 
   const handleCancelBootstrap = async () => {
     if (!pendingBootstrap) {

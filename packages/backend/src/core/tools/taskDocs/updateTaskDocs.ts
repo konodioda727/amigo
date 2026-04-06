@@ -10,6 +10,23 @@ import {
   validateTaskListContent,
 } from "./utils";
 
+const buildUpdateTaskDocsContinuationSummary = (phase: string): string => {
+  const fileName = DOC_TYPE_TO_FILENAME[phase] || phase;
+  return `【已更新 ${fileName}】`;
+};
+
+const buildUpdateTaskDocsContinuationResult = (params: {
+  success: boolean;
+  filePath: string;
+  message: string;
+  linesWritten?: number;
+}) => ({
+  success: params.success,
+  filePath: params.filePath,
+  message: params.message,
+  ...(typeof params.linesWritten === "number" ? { linesWritten: params.linesWritten } : {}),
+});
+
 type UpdateTaskDocsOperation =
   | {
       kind: "write";
@@ -219,7 +236,7 @@ const countWrittenLines = (operation: UpdateTaskDocsOperation): number =>
 export const UpdateTaskDocs = createTool({
   name: "updateTaskDocs",
   description:
-    "对当前任务文档（requirements/design/taskList）做受保护的渐进式更新。支持整篇重写、按唯一 oldString/newString 精确替换，或基于 startLine/endLine 的受保护局部替换。",
+    "对当前任务文档（requirements/design/taskList）做受保护的渐进式更新。Spec Mode 下，这些文档是通用 SOP 的显式落地：requirements=任务目标拆解，design=初步方案与权衡，taskList=执行分解。支持整篇重写、按唯一 oldString/newString 精确替换，或基于 startLine/endLine 的受保护局部替换。",
   whenToUse:
     "创建或更新任务文档时使用。文档不存在时会自动创建；通常先 readTaskDocs 获取带行号内容，再用本工具做最小修改。",
   params: [
@@ -390,6 +407,13 @@ export const UpdateTaskDocs = createTool({
         },
         {
           transportMessage: successMsg,
+          continuationSummary: buildUpdateTaskDocsContinuationSummary(phase),
+          continuationResult: buildUpdateTaskDocsContinuationResult({
+            success: true,
+            filePath,
+            message: successMsg,
+            linesWritten,
+          }),
         },
       );
     } catch (invokeError) {

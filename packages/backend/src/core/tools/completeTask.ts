@@ -12,7 +12,17 @@ import {
 } from "../templates/checklistParser";
 import { createTool } from "./base";
 import { asyncToolJobRegistry } from "./base/asyncJobRegistry";
+import { createToolResult } from "./result";
 import { getTaskDocsPath } from "./taskDocs/utils";
+
+const COMPLETE_TASK_CONTINUATION_SUMMARY = "【任务已完成】";
+
+const buildCompleteTaskResult = (message: string, result: string, summary?: string) =>
+  createToolResult(result, {
+    transportMessage: message,
+    continuationSummary: COMPLETE_TASK_CONTINUATION_SUMMARY,
+    continuationResult: summary?.trim() || message,
+  });
 
 /**
  * 完成工具
@@ -71,19 +81,21 @@ export const CompleteTask = createTool({
       logger.warn(
         `[completeTask] 阻止子任务 ${context.taskId} 过早完成：${errorMessage.replace(/\n/g, " | ")}`,
       );
-      return {
-        message: errorMessage,
-        toolResult: result,
+      return createToolResult(result, {
+        transportMessage: errorMessage,
+        continuationSummary: errorMessage,
+        continuationResult: errorMessage,
         error: errorMessage,
-      };
+      });
     }
 
     if (!context.parentId) {
       logger.info(`[completeTask] 主任务 ${context.taskId} 完成，直接返回最终结果`);
-      return {
-        message: params.summary?.trim() || "任务已完成",
-        toolResult: result,
-      };
+      return buildCompleteTaskResult(
+        params.summary?.trim() || "任务已完成",
+        result,
+        params.summary,
+      );
     }
 
     const subTaskId = context.taskId;
@@ -100,10 +112,7 @@ export const CompleteTask = createTool({
       if (!parentConversation) {
         logger.warn(`[completeTask] 未找到父任务 ${parentTaskId}`);
         // 即使找不到父任务，也返回结果
-        return {
-          message: "任务完成（警告：未找到父任务）",
-          toolResult: result,
-        };
+        return buildCompleteTaskResult("任务完成（警告：未找到父任务）", result, params.summary);
       }
 
       // 从父任务的子任务状态中找到对应的任务索引
@@ -128,10 +137,11 @@ export const CompleteTask = createTool({
         taskListContent = readFileSync(taskListPath, "utf-8");
       } catch (error) {
         logger.warn(`[completeTask] 无法读取父任务的 taskList 文件: ${error}`);
-        return {
-          message: "任务完成（警告：无法读取父任务 taskList）",
-          toolResult: result,
-        };
+        return buildCompleteTaskResult(
+          "任务完成（警告：无法读取父任务 taskList）",
+          result,
+          params.summary,
+        );
       }
 
       const normalizeDescription = (description: string) =>
@@ -156,10 +166,11 @@ export const CompleteTask = createTool({
             subTaskId,
           });
         }
-        return {
-          message: "任务完成（警告：未找到 taskList 项）",
-          toolResult: result,
-        };
+        return buildCompleteTaskResult(
+          "任务完成（警告：未找到 taskList 项）",
+          result,
+          params.summary,
+        );
       }
 
       const finalDescription = normalizedTarget || normalizeDescription(targetItem.description);
@@ -242,17 +253,15 @@ export const CompleteTask = createTool({
         },
       });
 
-      return {
-        message: "任务完成，已更新父任务待办列表",
-        toolResult: result,
-      };
+      return buildCompleteTaskResult("任务完成，已更新父任务待办列表", result, params.summary);
     } catch (error) {
       logger.error(`[completeTask] 更新父任务 taskList 失败: ${error}`);
       // 即使更新失败，也返回结果
-      return {
-        message: `任务完成（警告：更新父任务失败 - ${error}）`,
-        toolResult: result,
-      };
+      return buildCompleteTaskResult(
+        `任务完成（警告：更新父任务失败 - ${error}）`,
+        result,
+        params.summary,
+      );
     }
   },
 });

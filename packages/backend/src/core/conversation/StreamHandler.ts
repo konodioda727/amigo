@@ -57,6 +57,7 @@ export class StreamHandler {
       let reasoningFinalized = false;
       let toolCallStarted = false;
       let currentTool = "message";
+      const completedToolCalls: ResolvedToolCall[] = [];
 
       for await (const event of stream) {
         if (
@@ -151,12 +152,6 @@ export class StreamHandler {
           event.name,
           event.toolCallId,
         );
-        const toolCall: NativeToolCall = {
-          toolCallId: event.toolCallId,
-          name: event.name,
-          arguments: event.arguments || {},
-        };
-
         if (!reasoningFinalized) {
           this.transport.emitFinalThink(conversation, reasoningBuffer, reasoningUpdateTime);
           reasoningFinalized = true;
@@ -167,38 +162,21 @@ export class StreamHandler {
         reasoningUpdateTime = null;
         reasoningFinalized = false;
 
-        if (this.shouldAutoApprove(conversation, event.name)) {
-          conversation.status = "tool_executing";
-          await this.toolExecutor.executeToolCall(
-            conversation,
-            toolCall,
-            currentType,
-            abortController.signal,
-            toolDraftUpdateTime,
-          );
-        } else {
-          logger.info(`[StreamHandler] Pausing for confirmation of tool: ${event.name}`);
-          conversation.status = "waiting_tool_confirmation";
-          const pendingUpdateTime = toolDraftUpdateTime ?? Date.now();
-          conversation.pendingToolCall = {
-            toolName: event.name,
-            params: toolCall.arguments,
-            toolCallId: toolCall.toolCallId,
-            type: currentType,
-            updateTime: pendingUpdateTime,
-          };
-          broadcaster.broadcastConversation(conversation, {
-            type: "waiting_tool_call",
-            data: {
-              toolName: event.name,
-              params: toolCall.arguments,
-              updateTime: pendingUpdateTime,
-            },
-          });
-        }
+        completedToolCalls.push({
+          toolName: event.name,
+          params: event.arguments || {},
+          toolCallId: event.toolCallId,
+          type: currentType,
+          updateTime: toolDraftUpdateTime ?? Date.now(),
+        });
+      }
 
-        contextCompressionManager.syncContextUsage(conversation);
-        return currentTool;
+      if (completedToolCalls.length > 0) {
+        currentTool = await this.processToolCalls(
+          conversation,
+          completedToolCalls,
+          abortController.signal,
+        );
       }
 
       if (!reasoningFinalized) {
@@ -230,6 +208,52 @@ export class StreamHandler {
     }
   }
 
+  async processToolCalls(
+    conversation: Conversation,
+    toolCalls: ResolvedToolCall[],
+    abortSignal?: AbortSignal,
+  ): Promise<string> {
+    let currentTool = "message";
+
+    for (let index = 0; index < toolCalls.length; index += 1) {
+      const toolCall = toolCalls[index];
+      if (!toolCall) {
+        continue;
+      }
+
+      currentTool = toolCall.toolName;
+
+      if (!this.shouldAutoApprove(conversation, toolCall.toolName)) {
+        this.pauseForToolConfirmation(conversation, toolCall, toolCalls.slice(index + 1));
+        return currentTool;
+      }
+
+      conversation.status = "tool_executing";
+      await this.toolExecutor.executeToolCall(
+        conversation,
+        {
+          toolCallId: toolCall.toolCallId,
+          name: toolCall.toolName,
+          arguments:
+            toolCall.params &&
+            typeof toolCall.params === "object" &&
+            !Array.isArray(toolCall.params)
+              ? (toolCall.params as Record<string, unknown>)
+              : {},
+        } satisfies NativeToolCall,
+        toolCall.type,
+        abortSignal,
+        toolCall.updateTime,
+      );
+
+      if (conversation.isAborted || abortSignal?.aborted) {
+        break;
+      }
+    }
+
+    return currentTool;
+  }
+
   private shouldAutoApprove(conversation: Conversation, toolName: string): boolean {
     if (conversation.type === "sub") {
       // Spec workflow requires explicit user review before a sub-task can finalize.
@@ -248,6 +272,28 @@ export class StreamHandler {
       return toolName as ChatMessage["type"];
     }
     return "tool";
+  }
+
+  private pauseForToolConfirmation(
+    conversation: Conversation,
+    toolCall: ResolvedToolCall,
+    queuedToolCalls: ResolvedToolCall[],
+  ): void {
+    logger.info(`[StreamHandler] Pausing for confirmation of tool: ${toolCall.toolName}`);
+    conversation.status = "waiting_tool_confirmation";
+    conversation.pendingToolCall = {
+      ...toolCall,
+      queuedToolCalls: queuedToolCalls.length > 0 ? queuedToolCalls : undefined,
+    } as NonNullable<Conversation["pendingToolCall"]>;
+    broadcaster.broadcastConversation(conversation, {
+      type: "waiting_tool_call",
+      data: {
+        taskId: conversation.id,
+        toolName: toolCall.toolName,
+        params: toolCall.params,
+        updateTime: toolCall.updateTime,
+      },
+    });
   }
 
   /**
@@ -301,3 +347,11 @@ export class StreamHandler {
     await pWaitFor(() => !!conversation.userInput);
   }
 }
+
+type ResolvedToolCall = {
+  toolName: string;
+  params: unknown;
+  toolCallId?: string;
+  type: ChatMessage["type"];
+  updateTime?: number;
+};

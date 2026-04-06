@@ -1,3 +1,4 @@
+import type { BashResult } from "@amigo-llm/types";
 import type { Sandbox } from "@/core/sandbox";
 import { logger } from "@/utils/logger";
 import { createTool } from "./base";
@@ -27,6 +28,20 @@ function buildOutputPreview(output: string): string {
     `\n...(${omittedChars} chars truncated)...\n`,
     output.slice(-OUTPUT_PREVIEW_TAIL_CHARS),
   ].join("");
+}
+
+function buildContinuationResult(params: {
+  success: boolean;
+  output: string;
+  exitCode?: number;
+  message: string;
+}): BashResult {
+  return {
+    success: params.success,
+    output: buildOutputPreview(params.output),
+    ...(typeof params.exitCode === "number" ? { exitCode: params.exitCode } : {}),
+    message: params.message,
+  };
 }
 
 /**
@@ -69,7 +84,15 @@ export const Bash = createTool({
       const errorMsg = "命令不能为空";
       return createToolResult(
         { success: false, output: "", message: errorMsg },
-        { transportMessage: errorMsg },
+        {
+          transportMessage: errorMsg,
+          continuationSummary: errorMsg,
+          continuationResult: buildContinuationResult({
+            success: false,
+            output: "",
+            message: errorMsg,
+          }),
+        },
       );
     }
 
@@ -84,7 +107,15 @@ export const Bash = createTool({
         const errorMsg = "沙箱未运行，无法执行命令";
         return createToolResult(
           { success: false, output: "", message: errorMsg },
-          { transportMessage: errorMsg },
+          {
+            transportMessage: errorMsg,
+            continuationSummary: errorMsg,
+            continuationResult: buildContinuationResult({
+              success: false,
+              output: "",
+              message: errorMsg,
+            }),
+          },
         );
       }
 
@@ -153,6 +184,8 @@ echo EXIT_CODE:$?`;
 
       logger.info(`[Bash] ${statusText}: ${command}, exitCode: ${exitCode}`);
 
+      const continuationSummary = `命令已执行（退出码: ${exitCode}）`;
+
       return createToolResult(
         {
           success,
@@ -162,6 +195,13 @@ echo EXIT_CODE:$?`;
         },
         {
           transportMessage: resultMsg,
+          continuationSummary,
+          continuationResult: buildContinuationResult({
+            success,
+            output,
+            exitCode,
+            message: continuationSummary,
+          }),
         },
       );
     } catch (error) {
@@ -170,7 +210,15 @@ echo EXIT_CODE:$?`;
       logger.error(`[Bash] Full error:`, error);
       return createToolResult(
         { success: false, output: "", message: errorMsg },
-        { transportMessage: errorMsg },
+        {
+          transportMessage: errorMsg,
+          continuationSummary: errorMsg,
+          continuationResult: buildContinuationResult({
+            success: false,
+            output: "",
+            message: errorMsg,
+          }),
+        },
       );
     }
   },

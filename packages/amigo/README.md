@@ -1,6 +1,6 @@
 # Amigo App
 
-`amigo-app` 现在默认在服务端启动时启用一套本地 Qdrant-backed `longTerm memory`，地址固定为 `http://127.0.0.1:6333`。默认启动配置在 [index.ts](/Users/lawkaiqing/code/amigo/packages/amigo/src/server/index.ts)。
+`amigo-app` 现在默认在服务端启动时启用一套本地 Qdrant-backed `longTerm memory`，地址固定为 `http://127.0.0.1:6333`。默认启动配置在 [index.ts](your-path-to-amigo/packages/amigo/src/server/index.ts)。
 
 ## 默认行为
 
@@ -18,6 +18,7 @@ qdrantMemory: {
     enabled: true,
     topK: 6,
     minScore: 0.15,
+    minConfidence: 0.8,
   },
   retrieval: {
     hybrid: true,
@@ -43,7 +44,7 @@ SDK 现在把向量化和存储拆开暴露。
   - `query({ namespace, vector, topK, minScore, filter, hybrid, queryText })`
   - `delete(...)`
 
-相关类型和 helper 从 [sdk/index.ts](/Users/lawkaiqing/code/amigo/packages/backend/src/sdk/index.ts) 导出。
+相关类型和 helper 从 [sdk/index.ts](your-path-to-amigo/packages/backend/src/sdk/index.ts) 导出。
 
 ## App 侧接法
 
@@ -54,7 +55,7 @@ import {
   createDeterministicMemoryEmbeddingProvider,
   createInMemoryMemoryStore,
 } from "@amigo-llm/backend";
-import { createAmigoApp } from "/Users/lawkaiqing/code/amigo/packages/amigo/src/server/app";
+import { createAmigoApp } from "your-path-to-amigo/packages/amigo/src/server/app";
 
 const embeddings = createDeterministicMemoryEmbeddingProvider();
 const store = createInMemoryMemoryStore();
@@ -67,6 +68,7 @@ const app = await createAmigoApp({
       embeddings,
       topK: 6,
       minScore: 0.15,
+      minConfidence: 0.8,
     },
     retrieval: {
       hybrid: true,
@@ -78,7 +80,7 @@ const app = await createAmigoApp({
 ### 2. 传 `qdrantMemory`
 
 ```ts
-import { createAmigoApp } from "/Users/lawkaiqing/code/amigo/packages/amigo/src/server/app";
+import { createAmigoApp } from "your-path-to-amigo/packages/amigo/src/server/app";
 
 const app = await createAmigoApp({
   qdrantMemory: {
@@ -88,6 +90,7 @@ const app = await createAmigoApp({
       enabled: true,
       topK: 6,
       minScore: 0.15,
+      minConfidence: 0.8,
     },
     retrieval: {
       hybrid: true,
@@ -96,7 +99,7 @@ const app = await createAmigoApp({
 });
 ```
 
-`qdrantMemory` helper 定义在 [qdrantMemory.ts](/Users/lawkaiqing/code/amigo/packages/amigo/src/server/memory/qdrantMemory.ts)。
+`qdrantMemory` helper 定义在 [qdrantMemory.ts](your-path-to-amigo/packages/amigo/src/server/memory/qdrantMemory.ts)。
 
 ## 长期记忆抽取模型
 
@@ -108,6 +111,7 @@ const app = await createAmigoApp({
 - 对纯 SDK 接入，如果你给 `longTerm.extractor.model` 配了模型，SDK 会优先用这个模型做长期记忆判断和提取
 - 如果没配，SDK 会默认回退到当前会话的模型快照
 - 如果模型调用失败或返回空数组，本次就放弃写入，不做规则兜底
+- 运行时默认只持久化 `confidence >= 0.8` 的候选，且会额外过滤明显属于当前任务/当前轮工作流的内容（例如 taskdoc 生成顺序、局部增量修改要求）
 
 纯 SDK 配置示例：
 
@@ -118,6 +122,7 @@ longTerm: {
   embeddings,
   topK: 6,
   minScore: 0.15,
+  minConfidence: 0.8,
   extractor: {
     model: { configId: "memory-config", model: "gpt-4.1-mini" },
   },

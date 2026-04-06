@@ -19,15 +19,19 @@ export enum StorageType {
   TASK_STATUS = "taskStatus",
 }
 
-/**
- * 待确认的工具调用
- */
-export interface PendingToolCall {
+export interface QueuedToolCall {
   toolName: string;
   params: unknown;
   toolCallId?: string;
   type: ChatMessage["type"];
   updateTime?: number;
+}
+
+/**
+ * 待确认的工具调用
+ */
+export interface PendingToolCall extends QueuedToolCall {
+  queuedToolCalls?: QueuedToolCall[];
 }
 
 /**

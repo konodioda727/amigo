@@ -13,11 +13,6 @@ mock.module("@/utils/logger", () => ({
   },
 }));
 
-// Mock other dependencies to avoid runtime errors during import or execution
-mock.module("@/core/model", () => ({
-  getLlm: mock(),
-}));
-
 mock.module("@/core/conversation/ConversationRepository", () => ({
   conversationRepository: {
     get: mock(),

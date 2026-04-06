@@ -87,14 +87,17 @@ export {
   DefaultEditFileRenderer,
   DefaultErrorRenderer,
   DefaultInterruptRenderer,
+  DefaultListFilesRenderer,
   DefaultMessageRenderer,
   DefaultReadFileRenderer,
+  DefaultRunChecksRenderer,
   DefaultToolRenderer,
   DefaultUserMessageRenderer,
   defaultRenderers,
   EditFileResultBody,
   ReadFileResultBody,
   ToolAccordion,
+  ToolCodeBlock,
 } from "./components/renderers";
 
 export type {

@@ -4,6 +4,7 @@ import type { Sandbox } from "@/core/sandbox";
 export interface EditFileDiagnosticsProviderPayload {
   taskId: string;
   parentId?: string;
+  conversationContext?: unknown;
   filePath: string;
   beforeContent?: string;
   afterContent: string;

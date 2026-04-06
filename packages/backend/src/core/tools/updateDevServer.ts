@@ -8,6 +8,17 @@ import {
   normalizeSandboxToolWorkingDir,
 } from "./sandboxDependency";
 
+const buildUpdateDevServerContinuationSummary = (
+  status: "completed" | "waiting_for_dependencies" | "already_waiting_for_dependencies",
+): string => {
+  if (status === "completed") {
+    return "【开发预览已启动】";
+  }
+  return status === "waiting_for_dependencies"
+    ? "【开发预览等待依赖安装】"
+    : "【开发预览仍在等待依赖安装】";
+};
+
 export const UpdateDevServer = createTool({
   name: "updateDevServer",
   description: "同步启动或重启沙箱中的开发预览服务，并返回可直接打开的预览地址。",
@@ -93,6 +104,7 @@ export const UpdateDevServer = createTool({
         },
         {
           transportMessage: message,
+          continuationSummary: buildUpdateDevServerContinuationSummary(status),
         },
       );
     }
@@ -129,6 +141,7 @@ export const UpdateDevServer = createTool({
       },
       {
         transportMessage: `开发预览已启动，可通过 Preview 打开（端口 ${previewHostPort || 0}）。`,
+        continuationSummary: buildUpdateDevServerContinuationSummary("completed"),
       },
     );
   },

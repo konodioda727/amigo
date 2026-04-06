@@ -56,7 +56,9 @@ const MUTATING_TOOL_NAMES = new Set([
 ]);
 
 const RESOURCE_READ_TOOL_NAMES = new Set([
+  "listFiles",
   "readFile",
+  "readRules",
   "browserSearch",
   "readTaskDocs",
   "readDesignDoc",
@@ -105,6 +107,21 @@ const extractResourceKeys = (interaction: ToolInteraction): string[] => {
     );
   }
 
+  if (interaction.toolName === "listFiles") {
+    const directoryPath =
+      typeof interaction.arguments.directoryPath === "string"
+        ? interaction.arguments.directoryPath.trim()
+        : "";
+    if (directoryPath) {
+      return [`dir:${directoryPath}`];
+    }
+
+    const resultRecord = asRecord(interaction.result);
+    const resolvedDirectoryPath =
+      typeof resultRecord?.directoryPath === "string" ? resultRecord.directoryPath.trim() : "";
+    return resolvedDirectoryPath ? [`dir:${resolvedDirectoryPath}`] : ["dir:."];
+  }
+
   if (interaction.toolName === "browserSearch") {
     const query =
       typeof interaction.arguments.query === "string" ? interaction.arguments.query.trim() : "";
@@ -115,6 +132,12 @@ const extractResourceKeys = (interaction: ToolInteraction): string[] => {
     const phase =
       typeof interaction.arguments.phase === "string" ? interaction.arguments.phase.trim() : "";
     return phase ? [`taskdoc:${phase}`] : [];
+  }
+
+  if (interaction.toolName === "readRules") {
+    return uniqueStrings(
+      readStringArray(interaction.arguments.ids).map((ruleId) => `rule:${ruleId}`),
+    );
   }
 
   if (interaction.toolName === "readDesignDoc") {

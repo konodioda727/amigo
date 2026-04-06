@@ -1,11 +1,6 @@
-import { describe, expect, it, mock } from "bun:test";
-import { parseChecklist } from "@/core/templates/checklistParser";
-
-mock.module("@/core/model", () => ({
-  getLlm: mock(),
-}));
-
+import { describe, expect, it } from "bun:test";
 import { SubTaskInterruptedError } from "@/core/conversation";
+import { parseChecklist } from "@/core/templates/checklistParser";
 import { resolveSubTaskFailureState, runTaskScheduler } from "../executeTaskList";
 
 describe("resolveSubTaskFailureState", () => {

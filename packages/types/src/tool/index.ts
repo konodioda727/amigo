@@ -20,7 +20,10 @@ import {
 } from "./designDraft";
 import { EditFileSchema } from "./editFile";
 import { InstallDependenciesSchema } from "./installDependencies";
+import { ListFilesSchema } from "./listFiles";
 import { ReadFileSchema } from "./readFile";
+import { ReadRulesSchema } from "./readRules";
+import { RunChecksSchema } from "./runChecks";
 import { ExecuteTaskListSchema, ReadTaskDocsSchema, UpdateTaskDocsSchema } from "./taskDocs";
 import { UpdateDevServerSchema } from "./updateDevServer";
 
@@ -34,7 +37,9 @@ export const toolSchemas = z.discriminatedUnion("name", [
   ReadTaskDocsSchema,
   ExecuteTaskListSchema,
   EditFileSchema,
+  ListFilesSchema,
   ReadFileSchema,
+  ReadRulesSchema,
   ReadDesignSessionSchema,
   UpsertDesignSessionSchema,
   ReadLayoutOptionsSchema,
@@ -49,6 +54,7 @@ export const toolSchemas = z.discriminatedUnion("name", [
   ReadDraftCritiqueSchema,
   BashSchema,
   InstallDependenciesSchema,
+  RunChecksSchema,
   UpdateDevServerSchema,
 ]);
 
@@ -85,6 +91,9 @@ export type {
   InstallDependenciesParams,
   InstallDependenciesResult,
 } from "./installDependencies";
+export type { ListFilesParams, ListFilesResult } from "./listFiles";
+export type { ReadRulesParams, ReadRulesResult } from "./readRules";
+export type { RunChecksParams, RunChecksResult } from "./runChecks";
 export type {
   UpdateTaskDocsParams,
   UpdateTaskDocsResult,

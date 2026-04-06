@@ -4,6 +4,7 @@ export const DEFAULT_AUTO_APPROVE_TOOL_NAMES = [
   "askFollowupQuestion",
   "completeTask",
   "browserSearch",
+  "readRules",
   "readSkillBundle",
 ] as const;
 

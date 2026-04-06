@@ -116,7 +116,10 @@ export interface UseSendMessageReturn {
     modelConfigSnapshot?: UserSendMessageData<"createTask">["modelConfigSnapshot"],
   ) => void;
   sendInterrupt: (taskId?: string) => void;
-  sendResume: (taskId?: string) => void;
+  sendResume: (
+    taskId?: string,
+    modelConfigSnapshot?: UserSendMessageData<"resume">["modelConfigSnapshot"],
+  ) => void;
   sendLoadTask: (taskId: string) => void;
   sendConfirm: (taskId: string) => void;
   sendReject: (taskId: string) => void;

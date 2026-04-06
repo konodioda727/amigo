@@ -1,3 +1,4 @@
+import { buildListFilesTree } from "@/core/tools/listFilesTree";
 import { logger } from "@/utils/logger";
 
 const BROWSER_SEARCH_RESULT_PREVIEW_COUNT = 8;
@@ -106,6 +107,75 @@ const compactReadDesignDocResult = (result: unknown): unknown => {
   return compactResult;
 };
 
+const compactListFilesResult = (result: unknown): unknown => {
+  const record = asRecord(result);
+  if (!record) {
+    return result;
+  }
+
+  const compactResult: Record<string, unknown> = {};
+  const directoryPath =
+    typeof record.directoryPath === "string" && record.directoryPath.trim()
+      ? record.directoryPath
+      : ".";
+  const entries = Array.isArray(record.entries) ? record.entries : [];
+  const tree =
+    typeof record.tree === "string" && record.tree.trim()
+      ? record.tree
+      : buildListFilesTree(directoryPath, entries as never);
+
+  if (typeof record.success === "boolean") {
+    compactResult.success = record.success;
+  }
+  compactResult.directoryPath = directoryPath;
+  compactResult.tree = tree;
+  compactResult.entryCount = entries.length;
+  if (typeof record.truncated === "boolean") {
+    compactResult.truncated = record.truncated;
+  }
+  if (typeof record.maxDepth === "number") {
+    compactResult.maxDepth = record.maxDepth;
+  }
+  if (typeof record.includeHidden === "boolean") {
+    compactResult.includeHidden = record.includeHidden;
+  }
+  if (typeof record.maxEntries === "number") {
+    compactResult.maxEntries = record.maxEntries;
+  }
+  if (typeof record.message === "string") {
+    compactResult.message = record.message;
+  }
+
+  return compactResult;
+};
+
+const formatListFilesResultAsText = (result: unknown): string | null => {
+  const compact = asRecord(compactListFilesResult(result));
+  if (!compact) {
+    return null;
+  }
+
+  const directoryPath =
+    typeof compact.directoryPath === "string" && compact.directoryPath.trim()
+      ? compact.directoryPath
+      : ".";
+  const tree = typeof compact.tree === "string" ? compact.tree.trim() : "";
+  const lines = [`toolName: listFiles`, `directoryPath: ${directoryPath}`];
+
+  if (typeof compact.message === "string" && compact.message.trim()) {
+    lines.push(`message: ${compact.message.trim()}`);
+  }
+  if (typeof compact.truncated === "boolean") {
+    lines.push(`truncated: ${compact.truncated ? "true" : "false"}`);
+  }
+  if (typeof compact.entryCount === "number") {
+    lines.push(`entryCount: ${compact.entryCount}`);
+  }
+  lines.push("tree:");
+  lines.push(tree || `${directoryPath === "." ? "." : directoryPath}/`);
+  return lines.join("\n");
+};
+
 const stripTransientResultFields = (result: unknown): unknown => {
   const record = asRecord(result);
   if (!record) {
@@ -137,6 +207,9 @@ export const normalizeToolResultForMemory = (toolName: string, result: unknown):
   }
   if (toolName === "readDesignDoc") {
     return compactReadDesignDocResult(memorySafeResult);
+  }
+  if (toolName === "listFiles") {
+    return compactListFilesResult(memorySafeResult);
   }
   return memorySafeResult;
 };
@@ -257,6 +330,9 @@ export const buildAssistantMemoryToolContent = (
 
 export const serializeToolResultForMemory = (toolName: string, result: unknown): string => {
   try {
+    if (toolName === "listFiles") {
+      return formatListFilesResultAsText(result) || String(result);
+    }
     const normalized = normalizeToolResultForMemory(toolName, result);
     const serialized = JSON.stringify(normalized, null, 2);
     if (typeof serialized !== "string") {
@@ -265,7 +341,10 @@ export const serializeToolResultForMemory = (toolName: string, result: unknown):
     const maxLength =
       toolName === "browserSearch"
         ? 60_000
-        : toolName === "readDesignDoc" || toolName === "readFile" || toolName === "readSkillBundle"
+        : toolName === "readDesignDoc" ||
+            toolName === "readFile" ||
+            toolName === "readRules" ||
+            toolName === "readSkillBundle"
           ? 120_000
           : 20_000;
     if (serialized.length <= maxLength) {
@@ -283,6 +362,9 @@ export const serializeToolResultForContinuationMemory = (
   result: unknown,
 ): string => {
   try {
+    if (toolName === "listFiles") {
+      return formatListFilesResultAsText(stripTopLevelMessageField(result)) || String(result);
+    }
     const normalized = normalizeToolResultForContinuationMemory(toolName, result);
     const serialized = JSON.stringify(normalized, null, 2);
     if (typeof serialized !== "string") {
@@ -291,7 +373,10 @@ export const serializeToolResultForContinuationMemory = (
     const maxLength =
       toolName === "browserSearch"
         ? 60_000
-        : toolName === "readDesignDoc" || toolName === "readFile" || toolName === "readSkillBundle"
+        : toolName === "readDesignDoc" ||
+            toolName === "readFile" ||
+            toolName === "readRules" ||
+            toolName === "readSkillBundle"
           ? 120_000
           : 20_000;
     if (serialized.length <= maxLength) {
@@ -303,3 +388,6 @@ export const serializeToolResultForContinuationMemory = (
     return String(result);
   }
 };
+
+export const serializeListFilesResultForModel = (result: unknown): string | null =>
+  formatListFilesResultAsText(result);

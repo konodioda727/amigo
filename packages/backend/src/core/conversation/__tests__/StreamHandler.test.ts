@@ -120,4 +120,206 @@ describe("StreamHandler", () => {
       expect.any(Number),
     );
   });
+
+  it("executes multiple auto-approved tool calls in the same streamed turn", async () => {
+    const prepareMessages = mock(async () => []);
+    const syncContextUsage = mock();
+    (contextCompressionManager as any).prepareMessages = prepareMessages;
+    (contextCompressionManager as any).syncContextUsage = syncContextUsage;
+
+    const executeToolCall = mock(async () => {});
+    const handler = new StreamHandler({
+      resetToolError: mock(),
+      executeToolCall,
+    } as any);
+
+    const conversation = {
+      id: "stream-handler-multi-tool",
+      type: "main",
+      status: "streaming",
+      isAborted: false,
+      pendingToolCall: null,
+      memory: {
+        autoApproveToolNames: ["readFile", "editFile"],
+        addWebsocketMessage: mock(),
+      },
+      llm: {
+        model: "test-model",
+        stream: mock(async function* () {
+          yield {
+            type: "tool_call_delta",
+            name: "readFile",
+            toolCallId: "call-1",
+            partialArguments: { filePath: "README.md" },
+          };
+          yield {
+            type: "tool_call_delta",
+            name: "editFile",
+            toolCallId: "call-2",
+            partialArguments: { filePath: "README.md", oldString: "a", newString: "b" },
+          };
+          yield {
+            type: "tool_call_done",
+            name: "readFile",
+            toolCallId: "call-1",
+            arguments: { filePath: "README.md" },
+          };
+          yield {
+            type: "tool_call_done",
+            name: "editFile",
+            toolCallId: "call-2",
+            arguments: { filePath: "README.md", oldString: "a", newString: "b" },
+          };
+        }),
+      },
+      toolService: {
+        getToolDefinitions: () => [],
+      },
+    } as any;
+
+    const currentTool = await handler.handleStream(conversation, new AbortController());
+
+    expect(currentTool).toBe("editFile");
+    expect(executeToolCall).toHaveBeenCalledTimes(2);
+    expect(executeToolCall).toHaveBeenNthCalledWith(
+      1,
+      conversation,
+      {
+        toolCallId: "call-1",
+        name: "readFile",
+        arguments: { filePath: "README.md" },
+      },
+      "tool",
+      expect.any(AbortSignal),
+      expect.any(Number),
+    );
+    expect(executeToolCall).toHaveBeenNthCalledWith(
+      2,
+      conversation,
+      {
+        toolCallId: "call-2",
+        name: "editFile",
+        arguments: { filePath: "README.md", oldString: "a", newString: "b" },
+      },
+      "tool",
+      expect.any(AbortSignal),
+      expect.any(Number),
+    );
+    expect(conversation.status).toBe("tool_executing");
+    expect(conversation.pendingToolCall).toBeNull();
+  });
+
+  it("pauses on the first confirmation-required tool and keeps the remaining queue", async () => {
+    const prepareMessages = mock(async () => []);
+    const syncContextUsage = mock();
+    (contextCompressionManager as any).prepareMessages = prepareMessages;
+    (contextCompressionManager as any).syncContextUsage = syncContextUsage;
+
+    const executeToolCall = mock(async () => {});
+    const handler = new StreamHandler({
+      resetToolError: mock(),
+      executeToolCall,
+    } as any);
+
+    const broadcastConversation = broadcaster.broadcastConversation as ReturnType<typeof mock>;
+    broadcastConversation.mockClear();
+
+    const conversation = {
+      id: "stream-handler-confirmation-queue",
+      type: "main",
+      status: "streaming",
+      isAborted: false,
+      pendingToolCall: null,
+      memory: {
+        autoApproveToolNames: ["readFile"],
+        addWebsocketMessage: mock(),
+      },
+      llm: {
+        model: "test-model",
+        stream: mock(async function* () {
+          yield {
+            type: "tool_call_delta",
+            name: "readFile",
+            toolCallId: "call-1",
+            partialArguments: { filePath: "README.md" },
+          };
+          yield {
+            type: "tool_call_delta",
+            name: "bash",
+            toolCallId: "call-2",
+            partialArguments: { command: "npm test" },
+          };
+          yield {
+            type: "tool_call_delta",
+            name: "editFile",
+            toolCallId: "call-3",
+            partialArguments: { filePath: "README.md", oldString: "a", newString: "b" },
+          };
+          yield {
+            type: "tool_call_done",
+            name: "readFile",
+            toolCallId: "call-1",
+            arguments: { filePath: "README.md" },
+          };
+          yield {
+            type: "tool_call_done",
+            name: "bash",
+            toolCallId: "call-2",
+            arguments: { command: "npm test" },
+          };
+          yield {
+            type: "tool_call_done",
+            name: "editFile",
+            toolCallId: "call-3",
+            arguments: { filePath: "README.md", oldString: "a", newString: "b" },
+          };
+        }),
+      },
+      toolService: {
+        getToolDefinitions: () => [],
+      },
+    } as any;
+
+    const currentTool = await handler.handleStream(conversation, new AbortController());
+
+    expect(currentTool).toBe("bash");
+    expect(executeToolCall).toHaveBeenCalledTimes(1);
+    expect(executeToolCall).toHaveBeenNthCalledWith(
+      1,
+      conversation,
+      {
+        toolCallId: "call-1",
+        name: "readFile",
+        arguments: { filePath: "README.md" },
+      },
+      "tool",
+      expect.any(AbortSignal),
+      expect.any(Number),
+    );
+    expect(conversation.status).toBe("waiting_tool_confirmation");
+    expect(conversation.pendingToolCall).toEqual(
+      expect.objectContaining({
+        toolName: "bash",
+        params: { command: "npm test" },
+        toolCallId: "call-2",
+        queuedToolCalls: [
+          expect.objectContaining({
+            toolName: "editFile",
+            params: { filePath: "README.md", oldString: "a", newString: "b" },
+            toolCallId: "call-3",
+          }),
+        ],
+      }),
+    );
+    expect(broadcastConversation).toHaveBeenCalledWith(
+      conversation,
+      expect.objectContaining({
+        type: "waiting_tool_call",
+        data: expect.objectContaining({
+          toolName: "bash",
+          params: { command: "npm test" },
+        }),
+      }),
+    );
+  });
 });

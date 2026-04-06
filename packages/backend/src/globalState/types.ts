@@ -5,6 +5,7 @@ import type {
   SubTaskWaitReviewEvaluationHookPayload,
   SubTaskWaitReviewEvaluationResult,
 } from "../core/conversation/subTaskPolicyTypes";
+import type { LanguageRuntimeHostManager, LspConfig } from "../core/languageRuntime";
 import type { MemoryConfig, SdkMemoryRuntime } from "../core/memoryRuntime";
 import type {
   ModelConfig,
@@ -13,8 +14,10 @@ import type {
   ResolvedModelConfig,
 } from "../core/model/contextConfig";
 import type { ConversationPersistenceProvider } from "../core/persistence/types";
+import type { RuleProvider } from "../core/rules";
 import type { SandboxManager } from "../core/sandbox/types";
 import type { CreateTaskConfigResolver } from "../core/server";
+import type { EditFileDiagnosticsProvider } from "../core/tools/editFileDiagnostics";
 
 export type ConversationTypeKey = "main" | "sub";
 
@@ -34,10 +37,14 @@ export interface GlobalStateType {
   defaultAutoApproveToolNames?: string[];
   /** 通过 SDK 配置的全局追加系统提示词（用于 agent 特化） */
   extraSystemPrompt: string;
+  /** 按任务类型追加系统提示词 */
+  extraSystemPrompts?: Partial<Record<ConversationTypeKey, string>>;
   /** 使用 SDK 覆盖基础工具集合 */
   baseTools?: Partial<Record<ConversationTypeKey, ToolInterface<unknown>[]>>;
   /** 使用 SDK 覆盖默认 system prompt */
   systemPrompts?: Partial<Record<ConversationTypeKey, string>>;
+  /** 宿主环境规则提供器 */
+  ruleProvider?: RuleProvider;
   /** 可注入的 sandbox manager */
   sandboxManager?: SandboxManager;
   /** 可注入的会话 persistence provider */
@@ -55,6 +62,12 @@ export interface GlobalStateType {
   memoryConfig?: MemoryConfig;
   /** SDK 内置 memory runtime */
   memoryRuntime?: SdkMemoryRuntime;
+  /** editFile 后置诊断 provider */
+  editFileDiagnosticsProvider?: EditFileDiagnosticsProvider;
+  /** 语言运行时宿主管理器 */
+  languageRuntimeHostManager?: LanguageRuntimeHostManager;
+  /** LSP server 配置 */
+  lspConfig?: LspConfig;
   /** 会话创建完成后的 app 层 hook */
   onConversationCreate?: (payload: { taskId: string; context?: unknown }) => void | Promise<void>;
   /** 会话消息产生后的 app 层 hook */

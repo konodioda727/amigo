@@ -148,7 +148,10 @@ export function useSendMessage(): UseSendMessageReturn {
    * If no taskId is provided, uses the current main task.
    */
   const sendResume = useCallback(
-    (taskId?: string) => {
+    (
+      taskId?: string,
+      modelConfigSnapshot?: UserSendMessageData<"resume">["modelConfigSnapshot"],
+    ) => {
       const effectiveTaskId = resolveRequiredTaskId(
         taskId,
         "[useSendMessage] Cannot send resume: no task ID available",
@@ -161,6 +164,7 @@ export function useSendMessage(): UseSendMessageReturn {
         type: "resume",
         data: {
           taskId: effectiveTaskId,
+          modelConfigSnapshot,
         },
       });
     },

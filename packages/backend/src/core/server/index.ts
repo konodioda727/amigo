@@ -9,6 +9,7 @@ import type {
   SubTaskWaitReviewEvaluationHookPayload,
   SubTaskWaitReviewEvaluationResult,
 } from "../conversation/subTaskPolicyTypes";
+import type { LanguageRuntimeHostManager, LspConfig } from "../languageRuntime";
 import { type MemoryConfig, SdkMemoryRuntime } from "../memoryRuntime";
 import { type LlmFactory, setLlmFactory } from "../model";
 import type {
@@ -19,7 +20,9 @@ import type {
 } from "../model/contextConfig";
 import type { ConversationPersistenceProvider } from "../persistence/types";
 import type { MessageRegistry, ToolRegistry } from "../registry";
+import type { RuleProvider } from "../rules";
 import type { SandboxManager } from "../sandbox";
+import type { EditFileDiagnosticsProvider } from "../tools/editFileDiagnostics";
 import { ServerWebSocketMessageHandler } from "./webSocketMessageHandler";
 
 export interface ConversationWebSocketData {
@@ -71,6 +74,8 @@ export interface AmigoServerOptions {
   baseTools?: Partial<Record<"main" | "sub", ToolInterface<unknown>[]>>;
   /** 使用 SDK 覆盖默认 system prompt */
   systemPrompts?: Partial<Record<"main" | "sub", string>>;
+  /** 宿主环境规则提供器 */
+  ruleProvider?: RuleProvider;
   /** 可注入的 sandbox manager */
   sandboxManager?: SandboxManager;
   /** 可注入的会话 persistence provider */
@@ -102,6 +107,12 @@ export interface AmigoServerOptions {
   }) => ResolvedModelConfig | null;
   /** SDK 内置 memory 系统 */
   memory?: MemoryConfig;
+  /** editFile 后置诊断 provider */
+  editFileDiagnosticsProvider?: EditFileDiagnosticsProvider;
+  /** 可注入的语言运行时宿主管理器 */
+  languageRuntimeHostManager?: LanguageRuntimeHostManager;
+  /** LSP server 配置 */
+  lsp?: LspConfig;
 }
 
 /**
@@ -143,6 +154,7 @@ class AmigoServer {
     setGlobalState("extraSystemPrompt", options.extraSystemPrompt || "");
     setGlobalState("baseTools", options.baseTools || {});
     setGlobalState("systemPrompts", options.systemPrompts || {});
+    setGlobalState("ruleProvider", options.ruleProvider);
     setGlobalState("sandboxManager", options.sandboxManager);
     setGlobalState("conversationPersistenceProvider", options.conversationPersistenceProvider);
     const modelConfigs = options.modelConfigs ?? options.modelContextConfigs;
@@ -155,6 +167,9 @@ class AmigoServer {
     setGlobalState("subTaskWaitReviewEvaluator", options.subTaskWaitReviewEvaluator);
     setGlobalState("userModelConfigResolver", options.userModelConfigResolver);
     setGlobalState("memoryConfig", options.memory);
+    setGlobalState("editFileDiagnosticsProvider", options.editFileDiagnosticsProvider);
+    setGlobalState("languageRuntimeHostManager", options.languageRuntimeHostManager);
+    setGlobalState("lspConfig", options.lsp);
     setGlobalState(
       "memoryRuntime",
       options.memory ? new SdkMemoryRuntime(options.memory) : undefined,

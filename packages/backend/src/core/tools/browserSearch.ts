@@ -24,6 +24,7 @@ const MAX_PAGE_CONTENT_LENGTH = 5000;
 const MIN_HTTP_CONTENT_LENGTH = 120;
 const FETCH_CONCURRENCY = 4;
 const SEARCH_RESULT_LIMIT = 10;
+const CONTINUATION_RESULT_LIMIT = 5;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -227,6 +228,30 @@ const parseGoogleSearchHtml = (html: string): SearchResult[] => {
   }
 
   return results;
+};
+
+const buildBrowserSearchContinuationSummary = (query: string): string => `【已搜索 ${query}】`;
+
+const buildBrowserSearchContinuationResult = (
+  keyword: string,
+  searchUrl: string,
+  results: FetchedSearchResult[],
+) => {
+  const limitedResults = results.slice(0, CONTINUATION_RESULT_LIMIT).map((result) => ({
+    title: result.title,
+    url: result.url,
+    ...(result.snippet ? { snippet: result.snippet } : {}),
+    ...(result.error ? { error: result.error } : {}),
+  }));
+  const successCount = results.filter((result) => !result.error).length;
+  const failureCount = results.length - successCount;
+
+  return {
+    content: `搜索 "${keyword}" 完成，共 ${results.length} 条结果（成功 ${successCount}，失败 ${failureCount}）。`,
+    url: searchUrl,
+    title: `Google 搜索并抓取 - ${keyword}`,
+    results: limitedResults,
+  };
 };
 
 export const BrowserSearch = createTool({
@@ -483,6 +508,13 @@ export const BrowserSearch = createTool({
           },
           {
             transportMessage: `Google 搜索完成，但没有可抓取的搜索结果。关键词: ${keyword}`,
+            continuationSummary: buildBrowserSearchContinuationSummary(keyword),
+            continuationResult: {
+              content: emptyContent,
+              url: searchUrl,
+              title: `搜索结果 - ${keyword}`,
+              results: [],
+            },
           },
         );
       }
@@ -509,15 +541,19 @@ export const BrowserSearch = createTool({
         }),
       );
 
+      const resultRows = fetchedResults.filter(Boolean);
+
       return createToolResult(
         {
           content: "抓取网页内容完成。\n",
           url: searchUrl,
           title: `Google 搜索并抓取 - ${keyword}`,
-          results: fetchedResults.filter(Boolean),
+          results: resultRows,
         },
         {
           transportMessage: "网页搜索并抓取完成。",
+          continuationSummary: buildBrowserSearchContinuationSummary(keyword),
+          continuationResult: buildBrowserSearchContinuationResult(keyword, searchUrl, resultRows),
         },
       );
     } catch (error) {
@@ -530,6 +566,10 @@ export const BrowserSearch = createTool({
         },
         {
           transportMessage: `浏览器搜索失败: ${errorMessage}`,
+          continuationSummary: `搜索失败: ${query?.trim() || "unknown"}`,
+          continuationResult: {
+            content: `错误: ${errorMessage}`,
+          },
         },
       );
     }

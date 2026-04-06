@@ -35,6 +35,10 @@ describe("Bash", () => {
     expect(result.transport.message).toContain(tail);
     expect(result.transport.message).toContain("...(800 chars truncated)...");
     expect(result.transport.message).not.toContain(middle);
+    expect(result.continuation.summary).toBe("命令已执行（退出码: 1）");
+    expect(result.continuation.result.output).toContain(head);
+    expect(result.continuation.result.output).toContain(tail);
+    expect(result.continuation.result.output).toContain("...(800 chars truncated)...");
   });
 
   it("treats non-zero exits as completed command results", async () => {
@@ -49,5 +53,12 @@ describe("Bash", () => {
     expect(result.transport.result.exitCode).toBe(2);
     expect(result.transport.result.output).toBe("build failed");
     expect(result.transport.message).toBe("命令执行已完成\n退出码: 2\n输出:\nbuild failed");
+    expect(result.continuation.summary).toBe("命令已执行（退出码: 2）");
+    expect(result.continuation.result).toEqual({
+      success: true,
+      output: "build failed",
+      exitCode: 2,
+      message: "命令已执行（退出码: 2）",
+    });
   });
 });

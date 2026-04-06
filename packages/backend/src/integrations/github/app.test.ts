@@ -35,6 +35,7 @@ afterEach(() => {
 
 describe("resolveGithubGitAuth", () => {
   it("uses the direct env token and canonical https repo url for ssh remotes", async () => {
+    delete process.env.GITHUB_TOKEN;
     process.env.GH_TOKEN = "direct-token";
     const fetchSpy = mock(async () => {
       throw new Error("fetch should not be called when a direct token is configured");

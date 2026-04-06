@@ -20,6 +20,7 @@ export type QdrantMemoryConfigOptions = {
     enabled?: boolean;
     topK?: number;
     minScore?: number;
+    minConfidence?: number;
     extractor?: {
       systemPrompt?: string;
     };
@@ -280,6 +281,7 @@ export const createQdrantMemoryConfig = (
             embeddings,
             topK: options.longTerm?.topK || 6,
             minScore: options.longTerm?.minScore || 0.15,
+            minConfidence: options.longTerm?.minConfidence,
             ...(options.longTerm?.extractor ? { extractor: options.longTerm.extractor } : {}),
           },
         }

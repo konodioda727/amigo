@@ -65,9 +65,9 @@ describe("ReadFile", () => {
       context,
     });
 
-    expect(result.toolResult.success).toBe(true);
-    expect(result.toolResult.filePaths).toEqual(["/tmp/example.txt"]);
-    expect(result.toolResult.files).toEqual([
+    expect(result.transport.result.success).toBe(true);
+    expect(result.transport.result.filePaths).toEqual(["/tmp/example.txt"]);
+    expect(result.transport.result.files).toEqual([
       {
         success: true,
         content: "   1| alpha\n   2| beta",
@@ -76,6 +76,8 @@ describe("ReadFile", () => {
         totalLines: 2,
       },
     ]);
+    expect(result.continuation.summary).toBe("【已阅读 /tmp/example.txt】");
+    expect(result.continuation.result.files[0]?.content).toBe("   1| alpha\n   2| beta");
     expect(commands).toEqual([
       'test -f \'/tmp/example.txt\' && echo "exists" || echo "not_found"',
       "wc -l < '/tmp/example.txt'",
@@ -107,9 +109,9 @@ describe("ReadFile", () => {
       context,
     });
 
-    expect(result.toolResult.success).toBe(false);
-    expect(result.toolResult.filePaths).toEqual(["src/index.ts", "/tmp/missing.txt"]);
-    expect(result.toolResult.files).toEqual([
+    expect(result.transport.result.success).toBe(false);
+    expect(result.transport.result.filePaths).toEqual(["src/index.ts", "/tmp/missing.txt"]);
+    expect(result.transport.result.files).toEqual([
       {
         success: true,
         content: "   1| hello",
@@ -124,11 +126,39 @@ describe("ReadFile", () => {
         message: "文件不存在: /tmp/missing.txt",
       },
     ]);
+    expect(result.continuation.summary).toBe("【已阅读 src/index.ts, /tmp/missing.txt】");
     expect(commands).toEqual([
       'test -f \'src/index.ts\' && echo "exists" || echo "not_found"',
       "wc -l < 'src/index.ts'",
       "cat 'src/index.ts'",
       'test -f \'/tmp/missing.txt\' && echo "exists" || echo "not_found"',
     ]);
+  });
+
+  it("truncates oversized file content in continuation result while preserving transport result", async () => {
+    const longContent = Array.from({ length: 5000 }, (_, index) => `line ${index + 1}`).join("\n");
+    const context = createContext(async (cmd) => {
+      if (cmd.startsWith("test -f")) {
+        return "exists";
+      }
+      if (cmd.startsWith("wc -l")) {
+        return "5000\n";
+      }
+      if (cmd.startsWith("cat ")) {
+        return `${longContent}\n`;
+      }
+      return "";
+    });
+
+    const result = await ReadFile.invoke({
+      params: { filePaths: ["/tmp/huge.txt"] },
+      context,
+    });
+
+    expect(result.transport.result.files[0]?.content).toContain("line 1");
+    expect(result.transport.result.files[0]?.content.length).toBeGreaterThan(4000);
+    expect(result.continuation.result.files[0]?.content.length).toBeLessThanOrEqual(4100);
+    expect(result.continuation.result.files[0]?.content).toContain("已截断");
+    expect(result.continuation.result.files[0]?.message).toContain("正文已截断");
   });
 });

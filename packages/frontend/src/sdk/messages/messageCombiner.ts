@@ -318,6 +318,7 @@ const READ_TOOL_NAMES = new Set([
   "readDesignDoc",
   "readDesignDraft",
   "readFile",
+  "readRules",
   "readSkillBundle",
   "readTaskDocs",
 ]);
@@ -406,6 +407,24 @@ const buildReadSummary = (messages: FrontendToolMessageType<any>[]): ReadSummary
         } else {
           resourceCount += 1;
         }
+        break;
+      }
+      case "readRules": {
+        const ids = Array.isArray(params?.ids) ? params.ids : [];
+        const documents = Array.isArray(toolOutput?.documents) ? toolOutput.documents : [];
+        for (const id of ids) {
+          if (typeof id === "string" && id.trim()) {
+            resourceLabels.add(`规则: ${id.trim()}`);
+          }
+        }
+        for (const document of documents) {
+          if (typeof document?.title === "string" && document.title) {
+            resourceLabels.add(`规则: ${document.title}`);
+          } else if (typeof document?.id === "string" && document.id) {
+            resourceLabels.add(`规则: ${document.id}`);
+          }
+        }
+        resourceCount += Math.max(documents.length || ids.length, 1);
         break;
       }
       case "listDesignDocs":

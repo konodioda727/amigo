@@ -189,4 +189,72 @@ describe("ServerWebSocketMessageHandler.handleMessage model snapshot", () => {
     expect(setLlm).not.toHaveBeenCalled();
     expect(process).toHaveBeenCalled();
   });
+
+  it("applies a new model snapshot when resuming an aborted conversation", async () => {
+    const setLlm = mock();
+    const setModelConfigSnapshot = mock();
+    const setContext = mock();
+    const broadcastTaskStatusMapUpdated = mock();
+    const process = mock(async () => {});
+    const conversation = {
+      id: "task-1",
+      status: "aborted",
+      llm: { configId: "old-config", model: "old-model", provider: "mock-provider" },
+      memory: {
+        context: { userId: "user-1" },
+        setModelConfigSnapshot,
+        setContext,
+      },
+      setLlm,
+      broadcastTaskStatusMapUpdated,
+    };
+
+    getOrLoad.mockReturnValue(conversation);
+    getResolver.mockReturnValue({ process });
+
+    const handler = new ServerWebSocketMessageHandler();
+    const ws = {
+      data: { userId: "user-1" },
+      send: mock(),
+    } as any;
+
+    await handler.handleMessage(
+      ws,
+      JSON.stringify({
+        type: "resume",
+        data: {
+          taskId: "task-1",
+          modelConfigSnapshot: {
+            configId: "new-config",
+            model: "new-model",
+          },
+        },
+      }),
+    );
+
+    expect(getLlm).toHaveBeenCalledWith({
+      modelConfigSnapshot: {
+        configId: "new-config",
+        model: "new-model",
+      },
+      userId: "user-1",
+    });
+    expect(setLlm).toHaveBeenCalledWith({
+      configId: "new-config",
+      model: "new-model",
+      provider: "mock-provider",
+    });
+    expect(setModelConfigSnapshot).toHaveBeenCalledWith({
+      configId: "new-config",
+      model: "new-model",
+      provider: "mock-provider",
+    });
+    expect(setContext).toHaveBeenCalledWith({
+      userId: "user-1",
+      model: "new-model",
+      modelConfigId: "new-config",
+    });
+    expect(broadcastTaskStatusMapUpdated).toHaveBeenCalled();
+    expect(process).toHaveBeenCalled();
+  });
 });

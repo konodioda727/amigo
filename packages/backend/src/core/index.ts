@@ -12,9 +12,11 @@ export { AmigoServerBuilder } from "./builder";
 export type { ServerConfig } from "./config";
 // 服务器配置
 export { ServerConfigSchema, ValidationError } from "./config";
+export * from "./languageRuntime";
 export type { AmigoLlm, LlmFactory } from "./model";
 export * from "./persistence";
 // 注册表
 export { MessageRegistry, RegistrationError, ToolRegistry } from "./registry";
+export * from "./rules";
 // 服务器
 export { type AmigoServerOptions, default as AmigoServer } from "./server";

@@ -117,6 +117,79 @@ describe("ConversationExecutor waiting_tool_confirmation", () => {
     });
   });
 
+  it("continues draining queued tool calls after confirming a pending tool", async () => {
+    const executor = new ConversationExecutor();
+    const executeToolCall = mock(async () => {});
+    const processToolCalls = mock(async (conversation: any) => {
+      conversation.status = "tool_executing";
+      return "editFile";
+    });
+    const handleStreamCompletion = mock(async () => false);
+
+    (executor as any).toolExecutor.executeToolCall = executeToolCall;
+    (executor as any).streamHandler.processToolCalls = processToolCalls;
+    (executor as any).completionHandler.handleStreamCompletion = handleStreamCompletion;
+
+    const conversation = {
+      id: "main-task-confirm-queue",
+      type: "main",
+      status: "waiting_tool_confirmation",
+      isAborted: false,
+      userInput: "confirm",
+      pendingToolCall: {
+        toolName: "bash",
+        params: { command: "npm test" },
+        toolCallId: "call-2",
+        type: "tool",
+        updateTime: 10,
+        queuedToolCalls: [
+          {
+            toolName: "editFile",
+            params: { filePath: "README.md", oldString: "a", newString: "b" },
+            toolCallId: "call-3",
+            type: "tool",
+            updateTime: 11,
+          },
+        ],
+      },
+      toolService: {
+        getToolFromName: mock(() => undefined),
+      },
+      memory: {
+        addMessage: mock(),
+      },
+    } as any;
+
+    await executor.execute(conversation);
+
+    expect(executeToolCall).toHaveBeenCalledTimes(1);
+    expect(executeToolCall).toHaveBeenCalledWith(
+      conversation,
+      {
+        toolCallId: "call-2",
+        name: "bash",
+        arguments: { command: "npm test" },
+      },
+      "tool",
+      expect.any(AbortSignal),
+      10,
+    );
+    expect(processToolCalls).toHaveBeenCalledWith(
+      conversation,
+      [
+        {
+          toolName: "editFile",
+          params: { filePath: "README.md", oldString: "a", newString: "b" },
+          toolCallId: "call-3",
+          type: "tool",
+          updateTime: 11,
+        },
+      ],
+      expect.any(AbortSignal),
+    );
+    expect(handleStreamCompletion).toHaveBeenCalledWith(conversation, "editFile", false, null);
+  });
+
   it("injects queued continuations before the next active loop turn without re-entering execute", async () => {
     const executor = new ConversationExecutor();
     const handleStream = mock(async (conversation: any) => {

@@ -48,6 +48,8 @@ describe("updateTaskDocs", () => {
 
     expect(result.transport.result.success).toBe(true);
     expect(result.transport.result.updatedContent).toContain("MVP with admin dashboard");
+    expect(result.continuation.summary).toBe("【已更新 requirements.md】");
+    expect(result.continuation.result.updatedContent).toBeUndefined();
 
     const filePath = path.join(tempStoragePath, taskId, "taskDocs", "requirements.md");
     expect(readFileSync(filePath, "utf-8")).toContain("MVP with admin dashboard");
@@ -129,5 +131,6 @@ describe("updateTaskDocs", () => {
       "   4| - Constraint: no new backend",
     );
     expect(result.transport.result.documents.requirements?.totalLines).toBe(4);
+    expect(result.continuation.summary).toBe("【已阅读 requirements.md】");
   });
 });

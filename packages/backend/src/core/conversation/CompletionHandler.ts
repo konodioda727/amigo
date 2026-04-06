@@ -157,10 +157,12 @@ export class CompletionHandler {
       role: "system",
       content: `提醒：本轮输出未调用任何工具。
 
-每个回合都必须以工具调用结束：
-- 需要用户输入或确认？→ 使用 askFollowupQuestion
-- 任务已完成？→ 使用 completeTask
-- 需要继续工作？→ 使用相应的操作工具
+每个回合都必须以工具调用结束。请根据当前状态立刻二选一/三选一：
+- 已经可以回答用户当前问题，或已经拿到足够证据说明根因、现状、建议？→ 立即使用 completeTask
+- 只有在缺少用户本人才能提供的关键信息，或需要用户做明确取舍时？→ 使用 askFollowupQuestion
+- 仍然缺少仓库证据、日志、配置或代码上下文？→ 使用相应的操作工具继续调查
+
+不要为了“再确认一下”而重复 broad search 或重复阅读相同文件；证据足够就收口。调查结论要用 completeTask，不要把结论伪装成普通文本或 askFollowupQuestion。
 
 请立即调用正确的工具。`,
       type: "message",

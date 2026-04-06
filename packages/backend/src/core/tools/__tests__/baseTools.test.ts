@@ -8,6 +8,7 @@ import {
   DEFAULT_SUB_BASIC_TOOLS,
   getBaseTools,
   InstallDependencies,
+  ListFiles,
 } from "../index";
 
 describe("getBaseTools", () => {
@@ -36,5 +37,10 @@ describe("getBaseTools", () => {
   it("includes installDependencies in default tool sets", () => {
     expect(DEFAULT_MAIN_BASIC_TOOLS).toContain(InstallDependencies);
     expect(DEFAULT_SUB_BASIC_TOOLS).toContain(InstallDependencies);
+  });
+
+  it("includes listFiles in default tool sets", () => {
+    expect(DEFAULT_MAIN_BASIC_TOOLS).toContain(ListFiles);
+    expect(DEFAULT_SUB_BASIC_TOOLS).toContain(ListFiles);
   });
 });

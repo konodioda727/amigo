@@ -88,7 +88,7 @@ export class ServerWebSocketMessageHandler {
         this.sendSocketError(ws, "没有权限访问该会话", "UNAUTHORIZED");
         return;
       }
-      this.applyModelConfigSnapshotIfNeeded(conversation, parsedMessage);
+      this.applyModelConfigSnapshotIfNeeded(ws, conversation, parsedMessage);
       this.attachConnectionAndAck(ws, taskId, parsedMessage, conversation.status);
 
       const resolver = getResolver(parsedMessage.type as USER_SEND_MESSAGE_NAME, conversation);
@@ -336,6 +336,7 @@ export class ServerWebSocketMessageHandler {
   }
 
   private applyModelConfigSnapshotIfNeeded(
+    ws: ServerWebSocket<ConversationWebSocketData | undefined>,
     conversation: Awaited<ReturnType<ServerWebSocketMessageHandler["resolveConversation"]>>,
     parsedMessage: UserSendWebSocketMessage,
   ): void {
@@ -345,8 +346,8 @@ export class ServerWebSocketMessageHandler {
     }
 
     if (
-      parsedMessage.type === "userSendMessage" &&
-      !["idle", "completed", "aborted"].includes(conversation.status)
+      ["userSendMessage", "resume"].includes(parsedMessage.type) &&
+      !["idle", "completed", "aborted", "waiting_tool_confirmation"].includes(conversation.status)
     ) {
       return;
     }

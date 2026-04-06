@@ -52,6 +52,7 @@ export interface MemoryLongTermConfig {
   embeddings?: MemoryEmbeddingProvider;
   topK?: number;
   minScore?: number;
+  minConfidence?: number;
   extractor?: {
     model?: string | ModelSelection;
     resolveModelSelection?: (payload: {

@@ -14,6 +14,8 @@ import type {
   SubTaskWaitReviewEvaluationHookPayload,
   SubTaskWaitReviewEvaluationResult,
 } from "../conversation/subTaskPolicyTypes";
+import type { LanguageRuntimeHostManager, LspConfig } from "../languageRuntime";
+import { createLanguageRuntimeHostManagerFromSandboxManager } from "../languageRuntime";
 import type { MemoryConfig } from "../memoryRuntime";
 import type { LlmFactory } from "../model";
 import type {
@@ -24,6 +26,7 @@ import type {
 } from "../model/contextConfig";
 import type { ConversationPersistenceProvider } from "../persistence/types";
 import { MessageRegistry, ToolRegistry } from "../registry";
+import type { RuleProvider } from "../rules";
 import type { SandboxManager } from "../sandbox";
 import type { ConversationMessageHookPayload, CreateTaskConfigResolver } from "../server";
 import AmigoServer from "../server";
@@ -33,6 +36,8 @@ import {
   type SkillProvider,
   SkillRuntime,
 } from "../skills";
+import type { EditFileDiagnosticsProvider } from "../tools/editFileDiagnostics";
+import { createReadRulesTool, READ_RULES_TOOL_NAME } from "../tools/readRules";
 
 /**
  * Amigo 服务器流式构建器
@@ -62,6 +67,7 @@ export class AmigoServerBuilder {
   private _systemPrompts: Partial<Record<"main" | "sub", string>> = {};
   private _sandboxManager?: SandboxManager;
   private _conversationPersistenceProvider?: ConversationPersistenceProvider;
+  private _ruleProvider?: RuleProvider;
   private _modelConfigs?: Record<string, ModelConfig>;
   private _loggerConfig?: Partial<LoggerConfig>;
   private _onConversationCreate?: (payload: {
@@ -84,6 +90,9 @@ export class AmigoServerBuilder {
     selection: string | ModelSelection;
   }) => ResolvedModelConfig | null;
   private _memoryConfig?: MemoryConfig;
+  private _editFileDiagnosticsProvider?: EditFileDiagnosticsProvider;
+  private _languageRuntimeHostManager?: LanguageRuntimeHostManager;
+  private _lspConfig?: LspConfig;
 
   /**
    * 设置服务器端口
@@ -306,10 +315,44 @@ export class AmigoServerBuilder {
     return this;
   }
 
+  editFileDiagnosticsProvider(provider: EditFileDiagnosticsProvider): this {
+    this._editFileDiagnosticsProvider = provider;
+    return this;
+  }
+
+  languageRuntimeHostManager(manager: LanguageRuntimeHostManager): this {
+    this._languageRuntimeHostManager = manager;
+    return this;
+  }
+
+  lsp(config: LspConfig): this {
+    this._lspConfig = {
+      ...config,
+      servers: [...config.servers],
+    };
+    return this;
+  }
+
+  addLspServer(server: LspConfig["servers"][number]): this {
+    this._lspConfig = {
+      ...this._lspConfig,
+      servers: [...(this._lspConfig?.servers || []), server],
+    };
+    return this;
+  }
+
   skills(options: { provider: SkillProvider }): this {
     this._skillProvider = options.provider;
     if (!this._toolRegistry.has(READ_SKILL_BUNDLE_TOOL_NAME)) {
       this._toolRegistry.register(createReadSkillBundleTool(options.provider));
+    }
+    return this;
+  }
+
+  rules(options: { provider: RuleProvider }): this {
+    this._ruleProvider = options.provider;
+    if (!this._toolRegistry.has(READ_RULES_TOOL_NAME)) {
+      this._toolRegistry.register(createReadRulesTool(options.provider));
     }
     return this;
   }
@@ -363,6 +406,11 @@ export class AmigoServerBuilder {
             }
           }
         : undefined;
+    const languageRuntimeHostManager =
+      this._languageRuntimeHostManager ||
+      (this._sandboxManager
+        ? createLanguageRuntimeHostManagerFromSandboxManager(this._sandboxManager)
+        : undefined);
     return new AmigoServer({
       config: validatedConfig,
       toolRegistry: this._toolRegistry,
@@ -373,6 +421,7 @@ export class AmigoServerBuilder {
       extraSystemPrompt: this._extraSystemPrompt,
       baseTools: this._baseTools,
       systemPrompts: this._systemPrompts,
+      ruleProvider: this._ruleProvider,
       sandboxManager: this._sandboxManager,
       conversationPersistenceProvider: this._conversationPersistenceProvider,
       modelConfigs: this._modelConfigs,
@@ -384,6 +433,9 @@ export class AmigoServerBuilder {
       subTaskWaitReviewEvaluator: this._subTaskWaitReviewEvaluator,
       userModelConfigResolver: this._userModelConfigResolver,
       memory: this._memoryConfig,
+      editFileDiagnosticsProvider: this._editFileDiagnosticsProvider,
+      languageRuntimeHostManager,
+      lsp: this._lspConfig,
     });
   }
 }

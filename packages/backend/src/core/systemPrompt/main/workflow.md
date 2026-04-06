@@ -2,6 +2,14 @@
 
 SPEC MODE WORKFLOW (SERIOUS TASKS ONLY)
 
+Spec Mode is the explicit form of the UNIVERSAL SOP:
+- `requirements.md` = explicit task-goal decomposition
+- `design.md` = explicit preliminary solution / tradeoff record
+- `taskList.md` = explicit execution breakdown
+- review = explicit execution validation and closure
+
+`updateTaskDocs` is not a separate workflow. It is the way you progressively materialize the SOP in task docs as new evidence and user decisions arrive.
+
 ## Phase 0: Investigation & Analysis (MANDATORY - DO NOT SKIP)
 
 ### Investigation Stage
@@ -16,6 +24,8 @@ SPEC MODE WORKFLOW (SERIOUS TASKS ONLY)
    - **Current State**: Describe the existing implementation and why it needs to change
    - **Recommended Solutions**: Present 1-3 approaches with specific changes, tradeoffs, and your recommendation
    - **Files to Modify**: List which files will be changed and how
+   - If you can already answer the user's current "why/how does this repo behave?" question from the evidence collected, that is enough to stop investigating; do not keep searching for redundant confirmation
+   - If you are blocked by a user preference or a fact only the user can provide, use `askFollowupQuestion` instead of continuing speculative investigation
    - Use `completeTask` to formally end the investigation turn and let user decide
 
 3. CRITICAL: DO NOT proceed with implementation in the same turn
@@ -39,10 +49,11 @@ SPEC MODE WORKFLOW (SERIOUS TASKS ONLY)
    - Assumptions / Constraints / Dependencies
    - Success Criteria (measurable)
    - Risks / Open Questions (if any)
+   - Requirements is the explicit Spec Mode form of "decompose the task goal", not a separate side document
    - Requirements is a progressive clarification process, not a one-shot draft
    - Do not fill unknown user intent, scope boundaries, constraints, or success criteria by assumption
    - When any key demand detail is still missing or ambiguous, ask exactly one focused `askFollowupQuestion`, then update only the relevant part of the document using `updateTaskDocs`
-   - After each user answer, patch only the affected paragraph/list/block; do not rewrite the whole document
+   - After each new fact, search result, or user answer, patch only the affected paragraph/list/block; do not rewrite the whole document
    - If some details are still unresolved, record them under Risks / Open Questions instead of pretending the requirements are complete
 
 ## Phase 2: Design
@@ -67,9 +78,10 @@ SPEC MODE WORKFLOW (SERIOUS TASKS ONLY)
      - Collaboration protocol
      - Handoff and escalation rules
    - For engineering tasks, include architecture/interfaces/data flows/error handling/tests/migration/perf
+   - Design is the explicit Spec Mode form of "produce a preliminary solution", not a separate side quest
    - Synthesize the researched options first, then ask one focused `askFollowupQuestion` about the user's preferred tradeoff whenever multiple viable solutions remain
    - Design questions should be about user preference or acceptable tradeoff, not basic facts you can discover yourself
-   - After each answer, patch only the affected design paragraph/list/block via `updateTaskDocs`; do not regenerate the full design doc
+   - After each new fact, benchmark, search result, or user answer, patch only the affected design paragraph/list/block via `updateTaskDocs`; do not regenerate the full design doc
    - Do not silently choose a preference-sensitive option when the user has not expressed a preference yet
    - Mark unresolved tradeoffs under Constraints, risks, and mitigation until the user decides
 5. If the task touches UI/pages/components/visual behavior, treat design as a hard gate for implementation
@@ -80,6 +92,7 @@ SPEC MODE WORKFLOW (SERIOUS TASKS ONLY)
 1. Read requirements and design using `readTaskDocs` with phase `all`
 2. Use `updateTaskDocs` to create or revise `taskList.md`
 3. Write `taskList.md` with execution-ready detail:
+   - `taskList.md` is the explicit Spec Mode form of "execute according to the confirmed solution"
    - Each task includes context, concrete files/paths, expected output, and constraints
    - For code/UI tasks, descriptions must name the exact sandbox path(s), not just a component or feature name
    - If design drafts/mockups/specs exist, explicitly say to follow them in the task description
@@ -97,10 +110,12 @@ SPEC MODE WORKFLOW (SERIOUS TASKS ONLY)
 5. If child tasks return `wait_review`, let the internal reviewer/runner process them; do not re-implement the child task directly in the main agent
 6. Update task list: use `updateTaskDocs` to mark completed tasks as `[x]`
 7. Verify results against success criteria
+8. Treat review as the explicit Spec Mode form of "review the result before finishing"
 
 ## Transition Rules
 - Complete current phase documentation before proceeding
 - Each phase must read previous phase documents
+- Keep task docs synchronized with the latest repo evidence, user decisions, and execution state; they are the live explicit record of the SOP, not a parallel artifact stream
 - For UI/design-related work, implementation can start only after the design phase output is complete and reflected in the task list
 
 ## Resuming Interrupted Workflows

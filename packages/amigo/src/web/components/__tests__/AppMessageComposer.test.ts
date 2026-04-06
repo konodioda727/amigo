@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { canSwitchTaskModel } from "../AppMessageComposer";
+import { canSwitchTaskModel, getTaskModelKey } from "../AppMessageComposer";
 
 describe("canSwitchTaskModel", () => {
   test("allows switching before a task exists", () => {
@@ -16,5 +16,21 @@ describe("canSwitchTaskModel", () => {
     expect(canSwitchTaskModel("task-1", "waiting_tool_call")).toBe(true);
     expect(canSwitchTaskModel("task-1", "completed")).toBe(true);
     expect(canSwitchTaskModel("task-1", "error")).toBe(true);
+  });
+});
+
+describe("getTaskModelKey", () => {
+  test("returns a stable key for equivalent task contexts", () => {
+    expect(getTaskModelKey({ model: "gpt-5", modelConfigId: "openai-main" })).toBe(
+      "openai-main::gpt-5",
+    );
+    expect(getTaskModelKey({ model: "gpt-5", modelConfigId: "openai-main" })).toBe(
+      "openai-main::gpt-5",
+    );
+  });
+
+  test("returns empty when task model context is incomplete", () => {
+    expect(getTaskModelKey({ model: "gpt-5" })).toBe("");
+    expect(getTaskModelKey(null)).toBe("");
   });
 });

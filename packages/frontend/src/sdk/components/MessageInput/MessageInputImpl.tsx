@@ -40,6 +40,24 @@ import {
 import { createMentionSuggestion } from "./mentionSuggestion";
 import type { MessageInputProps, MessageInputRef } from "./types";
 
+export const resolveMessageInputButtonState = ({
+  taskStatus,
+  hasDraftContent,
+}: {
+  taskStatus: string;
+  hasDraftContent: boolean;
+}): "send" | "stop" | "resume" => {
+  if (taskStatus === "streaming") {
+    return "stop";
+  }
+
+  if (taskStatus === "interrupted" && !hasDraftContent) {
+    return "resume";
+  }
+
+  return "send";
+};
+
 export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
   (
     {
@@ -61,7 +79,6 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
     const { isConnected } = useConnection();
     const { mainTaskId, tasks } = useTasks();
     const [targetSessionId, setTargetSessionId] = useState<string | null>(null);
-    const [buttonState, setButtonState] = useState<"send" | "stop" | "resume">("send");
     const [pendingAttachments, setPendingAttachments] = useState<InputAttachment[]>([]);
     const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
     const [isImageDragActive, setIsImageDragActive] = useState(false);
@@ -132,16 +149,6 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
     useEffect(() => {
       pendingAttachmentsRef.current = pendingAttachments;
     }, [pendingAttachments]);
-
-    useEffect(() => {
-      if (taskStatus === "streaming") {
-        setButtonState("stop");
-      } else if (taskStatus === "interrupted") {
-        setButtonState("resume");
-      } else {
-        setButtonState("send");
-      }
-    }, [taskStatus]);
 
     useEffect(() => {
       return () => {
@@ -363,7 +370,12 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
       [enqueueFilesForUpload],
     );
 
-    const isAttachmentInteractionEnabled = !disabled && isConnected && buttonState === "send";
+    const hasDraftContent = !!editor?.getText().trim() || pendingAttachments.length > 0;
+    const buttonState = resolveMessageInputButtonState({
+      taskStatus,
+      hasDraftContent,
+    });
+    const isAttachmentInteractionEnabled = !disabled && isConnected && buttonState !== "stop";
 
     const handlePasteCapture = useCallback(
       (event: ClipboardEvent<HTMLDivElement>) => {
@@ -484,8 +496,8 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
       if (disabled) {
         return;
       }
-      sendResume(currentTaskId || undefined);
-    }, [currentTaskId, disabled, sendResume]);
+      sendResume(currentTaskId || undefined, modelConfigSnapshot);
+    }, [currentTaskId, disabled, modelConfigSnapshot, sendResume]);
 
     const handleClick = useCallback(() => {
       if (buttonState === "send") {

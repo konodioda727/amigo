@@ -261,6 +261,7 @@ export const normalizeEditFilePath = (filePath: string): string =>
 const runConfiguredEditFileDiagnostics = async (params: {
   taskId: string;
   parentId?: string;
+  conversationContext?: unknown;
   sandbox: Sandbox;
   filePath: string;
   beforeContent?: string;
@@ -296,6 +297,20 @@ const buildEditFileTransportMessage = (
 
   return `${successMsg}；${diagnostics.summary}`;
 };
+
+const buildEditFileContinuationSummary = (filePath: string): string => `【已修改 ${filePath}】`;
+
+const buildEditFileContinuationResult = (params: {
+  success: boolean;
+  filePath: string;
+  message: string;
+  linesWritten?: number;
+}) => ({
+  success: params.success,
+  filePath: params.filePath,
+  message: params.message,
+  ...(typeof params.linesWritten === "number" ? { linesWritten: params.linesWritten } : {}),
+});
 
 export async function buildEditFilePreview(
   sandbox: Sandbox,
@@ -522,6 +537,7 @@ export const EditFile = createTool({
         const diagnostics = await runConfiguredEditFileDiagnostics({
           taskId: context.taskId,
           parentId: context.parentId,
+          conversationContext: context.conversationContext,
           sandbox,
           filePath: cleanPath,
           beforeContent: originalContent,
@@ -540,7 +556,13 @@ export const EditFile = createTool({
           },
           {
             transportMessage: buildEditFileTransportMessage(successMsg, diagnostics),
-            continuationSummary: buildEditFileTransportMessage(successMsg, diagnostics),
+            continuationSummary: buildEditFileContinuationSummary(cleanPath),
+            continuationResult: buildEditFileContinuationResult({
+              success: true,
+              filePath: cleanPath,
+              message: successMsg,
+              linesWritten,
+            }),
             websocketData: buildEditFileWebsocketData(originalContent, updatedContent),
           },
         );
@@ -563,6 +585,7 @@ export const EditFile = createTool({
       const diagnostics = await runConfiguredEditFileDiagnostics({
         taskId: context.taskId,
         parentId: context.parentId,
+        conversationContext: context.conversationContext,
         sandbox,
         filePath: cleanPath,
         beforeContent: originalContent,
@@ -581,7 +604,13 @@ export const EditFile = createTool({
         },
         {
           transportMessage: buildEditFileTransportMessage(successMsg, diagnostics),
-          continuationSummary: buildEditFileTransportMessage(successMsg, diagnostics),
+          continuationSummary: buildEditFileContinuationSummary(cleanPath),
+          continuationResult: buildEditFileContinuationResult({
+            success: true,
+            filePath: cleanPath,
+            message: successMsg,
+            linesWritten,
+          }),
           websocketData: buildEditFileWebsocketData(originalContent, operation.content),
         },
       );

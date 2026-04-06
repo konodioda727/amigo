@@ -11,6 +11,16 @@ import {
   normalizeSandboxToolWorkingDir,
 } from "./sandboxDependency";
 
+const buildInstallDependenciesContinuationSummary = (params: {
+  status: "completed" | "started" | "already_running";
+  dependencyStatus: "pending" | "running" | "success" | "failed" | "not_required";
+}): string => {
+  if (params.status === "completed") {
+    return params.dependencyStatus === "not_required" ? "【无需安装依赖】" : "【依赖已就绪】";
+  }
+  return params.status === "started" ? "【已开始安装依赖】" : "【依赖安装进行中】";
+};
+
 export const InstallDependencies = createTool({
   name: "installDependencies",
   description:
@@ -75,6 +85,10 @@ export const InstallDependencies = createTool({
           },
         },
         continuation: {
+          summary: buildInstallDependenciesContinuationSummary({
+            status: "completed",
+            dependencyStatus,
+          }),
           result: {
             status: "completed",
             workingDir,
@@ -127,6 +141,10 @@ export const InstallDependencies = createTool({
       },
       {
         transportMessage: message,
+        continuationSummary: buildInstallDependenciesContinuationSummary({
+          status: started ? "started" : "already_running",
+          dependencyStatus,
+        }),
       },
     );
   },

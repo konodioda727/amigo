@@ -35,7 +35,7 @@ backend 只认持久化抽象，不认具体数据库。
 
 当前核心接口见：
 
-- [src/core/persistence/types.ts](/Users/lawkaiqing/code/amigo/packages/backend/src/core/persistence/types.ts)
+- [src/core/persistence/types.ts](your-path-to-amigo/packages/backend/src/core/persistence/types.ts)
 
 应用必须注入一个 `ConversationPersistenceProvider`。  
 backend 不再默认回退文件存储。

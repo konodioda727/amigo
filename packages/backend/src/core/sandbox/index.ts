@@ -12,6 +12,7 @@ import {
   resolveGithubGitAuth,
 } from "@/integrations/github";
 import { logger } from "@/utils/logger";
+import type { SpawnStdioProcessParams, StdioProcess, StdioProcessExit } from "../languageRuntime";
 import { getSandboxContainerName } from "./containerIdentity";
 import { normalizeEditorOpenFilePath } from "./editorFilePath";
 import { type ResolvedSandboxOptions, resolveSandboxOptions } from "./options";
@@ -152,6 +153,11 @@ function getForwardedSandboxEnvVars(githubAuth: GithubGitAuth | null): string[] 
   }
   return githubAuth ? [`GITHUB_TOKEN=${githubAuth.token}`] : [];
 }
+
+const toEnvList = (env?: Record<string, string>): string[] =>
+  Object.entries(env || {})
+    .map(([key, value]) => ([key.trim(), value].every(Boolean) ? `${key.trim()}=${value}` : ""))
+    .filter(Boolean);
 
 const findAvailableHostPort = async (): Promise<number> =>
   new Promise((resolve, reject) => {
@@ -328,6 +334,156 @@ export class Sandbox {
       );
       throw error;
     }
+  }
+
+  async spawnStdioProcess(params: SpawnStdioProcessParams): Promise<StdioProcess> {
+    if (!this.container) {
+      throw new Error("沙箱未运行，无法启动 stdio 进程");
+    }
+
+    if (params.signal?.aborted) {
+      const abortError = new Error("命令执行已取消");
+      abortError.name = "AbortError";
+      throw abortError;
+    }
+
+    const exec = await this.container.exec({
+      Cmd: [params.command, ...(params.args || [])],
+      AttachStdin: true,
+      AttachStdout: true,
+      AttachStderr: true,
+      WorkingDir: params.cwd?.trim() || "/sandbox",
+      ...(params.env ? { Env: toEnvList(params.env) } : {}),
+    });
+
+    const stream = await exec.start({ hijack: true, stdin: true });
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    docker?.modem.demuxStream(stream, stdout, stderr);
+
+    const stdoutListeners = new Set<(chunk: Uint8Array) => void>();
+    const stderrListeners = new Set<(chunk: Uint8Array) => void>();
+    const exitListeners = new Set<(event: StdioProcessExit) => void>();
+    const abortSignal = params.signal;
+    let onAbort: (() => void) | undefined;
+    let settled = false;
+
+    const emitExit = (event: StdioProcessExit) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (abortSignal && onAbort) {
+        abortSignal.removeEventListener("abort", onAbort);
+      }
+      exitListeners.forEach((listener) => {
+        listener(event);
+      });
+    };
+
+    stdout.on("data", (chunk: Buffer) => {
+      const value = new Uint8Array(chunk);
+      stdoutListeners.forEach((listener) => {
+        listener(value);
+      });
+    });
+
+    stderr.on("data", (chunk: Buffer) => {
+      const value = new Uint8Array(chunk);
+      stderrListeners.forEach((listener) => {
+        listener(value);
+      });
+    });
+
+    stream.on("end", () => {
+      void exec
+        .inspect()
+        .then((result) => {
+          emitExit({ code: result.ExitCode ?? 0 });
+        })
+        .catch((error) => {
+          logger.warn("[Sandbox] inspect stdio 进程退出状态失败:", error);
+          emitExit({});
+        });
+    });
+
+    stream.on("error", (error: Error) => {
+      logger.warn("[Sandbox] stdio 进程流异常:", error);
+      emitExit({});
+    });
+
+    stream.on("close", () => {
+      if (!settled) {
+        emitExit({});
+      }
+    });
+
+    onAbort = () => {
+      void processHandle.kill().catch((error) => {
+        logger.debug("[Sandbox] 终止 stdio 进程失败（可忽略）:", error);
+      });
+    };
+
+    const processHandle: StdioProcess = {
+      async write(data) {
+        if (settled) {
+          throw new Error("stdio 进程已结束，无法继续写入");
+        }
+
+        await new Promise<void>((resolve, reject) => {
+          stream.write(Buffer.isBuffer(data) ? data : Buffer.from(data), (error?: Error | null) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+            resolve();
+          });
+        });
+      },
+      async closeInput() {
+        if (settled) {
+          return;
+        }
+
+        await new Promise<void>((resolve) => {
+          stream.end(() => resolve());
+        });
+      },
+      async kill() {
+        if (settled) {
+          return;
+        }
+        try {
+          stream.destroy();
+        } finally {
+          emitExit({ signal: "SIGTERM" });
+        }
+      },
+      onStdout(listener) {
+        stdoutListeners.add(listener);
+        return () => {
+          stdoutListeners.delete(listener);
+        };
+      },
+      onStderr(listener) {
+        stderrListeners.add(listener);
+        return () => {
+          stderrListeners.delete(listener);
+        };
+      },
+      onExit(listener) {
+        exitListeners.add(listener);
+        return () => {
+          exitListeners.delete(listener);
+        };
+      },
+    };
+
+    if (abortSignal && onAbort) {
+      abortSignal.addEventListener("abort", onAbort, { once: true });
+    }
+
+    return processHandle;
   }
 
   async writeFile(
