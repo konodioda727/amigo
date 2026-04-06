@@ -2,6 +2,34 @@
 
 SPEC MODE WORKFLOW (SERIOUS TASKS ONLY)
 
+## Phase 0: Investigation & Analysis (MANDATORY - DO NOT SKIP)
+
+### Investigation Stage
+1. ALWAYS start with thorough investigation before any modification:
+   - Read relevant files in the current sandbox to understand the context
+   - Search for related code, configurations, or documentation
+   - Identify root cause, constraints, patterns, and existing implementations
+
+### Reporting Stage (CRITICAL)
+2. After investigation, STOP and report findings using `completeTask`:
+   - **Root Cause Analysis**: Explain what you found with specific citations [citation: file/path, line X-Y]
+   - **Current State**: Describe the existing implementation and why it needs to change
+   - **Recommended Solutions**: Present 1-3 approaches with specific changes, tradeoffs, and your recommendation
+   - **Files to Modify**: List which files will be changed and how
+   - Use `completeTask` to formally end the investigation turn and let user decide
+
+3. CRITICAL: DO NOT proceed with implementation in the same turn
+   - Investigation and implementation are separate turns
+   - After `completeTask`, wait for user's next message
+   - If user approves (says "yes", "proceed", "go ahead", "implement option 2", etc.), then start implementation in the new turn
+   - If user asks questions or wants changes, discuss and then use `completeTask` again with updated recommendations
+
+### Skip Conditions
+4. Skip this phase ONLY for trivial tasks like:
+   - Creating a new empty file with no logic
+   - Simple formatting fixes explicitly requested
+   - Tasks where user explicitly says "no need to investigate, just do X"
+
 ## Phase 1: Requirements
 1. Analyze user intent and decompose the request
 2. Use `updateTaskDocs` to create or incrementally update `requirements.md`

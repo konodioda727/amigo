@@ -151,20 +151,23 @@ export class CompletionHandler {
       return true;
     }
 
-    // 主任务允许普通对话，等待用户回复
-    logger.info("\n主任务进行普通对话，等待用户回复");
-    conversation.userInput = "";
-    broadcaster.broadcastConversation(conversation, {
-      type: "conversationOver",
-      data: {
-        reason: "message",
-      },
+    // 主任务也必须使用工具调用结束
+    logger.warn("\n⚠️  主任务未使用任何工具，添加提醒");
+    conversation.memory.addMessage({
+      role: "system",
+      content: `提醒：本轮输出未调用任何工具。
+
+每个回合都必须以工具调用结束：
+- 需要用户输入或确认？→ 使用 askFollowupQuestion
+- 任务已完成？→ 使用 completeTask
+- 需要继续工作？→ 使用相应的操作工具
+
+请立即调用正确的工具。`,
+      type: "message",
+      partial: false,
     });
-    conversation.status = "idle";
-    void flushConversationContinuationsIfIdle(conversation);
-    // 不返回 true，而是返回 false 停止循环
-    // 下一次用户输入时会通过 commonMessageResolver 重新调用 execute
-    return false;
+    conversation.status = "streaming";
+    return true;
   }
 
   /**
