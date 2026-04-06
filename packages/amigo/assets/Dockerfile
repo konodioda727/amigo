@@ -53,7 +53,6 @@ COPY code-server-open-file-extension /root/.local/share/code-server/extensions/a
 
 # Package managers and globally available developer tooling.
 RUN corepack enable \
-    && npm install -g pnpm \
     && mkdir -p "${PNPM_HOME}" \
     && pnpm config set registry "${NPM_CONFIG_REGISTRY}"
 
