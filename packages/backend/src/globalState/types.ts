@@ -1,10 +1,10 @@
 import type { ChatMessage, MessageDefinition, ToolInterface } from "@amigo-llm/types";
 import type {
-  SubTaskCompletionValidationHookPayload,
-  SubTaskValidationResult,
-  SubTaskWaitReviewEvaluationHookPayload,
-  SubTaskWaitReviewEvaluationResult,
-} from "../core/conversation/subTaskPolicyTypes";
+  TaskExecutionCompletionValidationHookPayload,
+  TaskExecutionValidationResult,
+  TaskExecutionVerificationHookPayload,
+  TaskExecutionVerificationResult,
+} from "../core/conversation/execution/taskExecutionPolicyTypes";
 import type { LanguageRuntimeHostManager, LspConfig } from "../core/languageRuntime";
 import type { MemoryConfig, SdkMemoryRuntime } from "../core/memoryRuntime";
 import type {
@@ -18,8 +18,7 @@ import type { RuleProvider } from "../core/rules";
 import type { SandboxManager } from "../core/sandbox/types";
 import type { CreateTaskConfigResolver } from "../core/server";
 import type { EditFileDiagnosticsProvider } from "../core/tools/editFileDiagnostics";
-
-export type ConversationTypeKey = "main" | "sub";
+import type { WorkflowPromptScope } from "../core/workflow";
 
 /**
  * GlobalState 类型
@@ -37,12 +36,12 @@ export interface GlobalStateType {
   defaultAutoApproveToolNames?: string[];
   /** 通过 SDK 配置的全局追加系统提示词（用于 agent 特化） */
   extraSystemPrompt: string;
-  /** 按任务类型追加系统提示词 */
-  extraSystemPrompts?: Partial<Record<ConversationTypeKey, string>>;
+  /** 按 workflow prompt scope 追加系统提示词 */
+  extraSystemPrompts?: Partial<Record<WorkflowPromptScope, string>>;
   /** 使用 SDK 覆盖基础工具集合 */
-  baseTools?: Partial<Record<ConversationTypeKey, ToolInterface<unknown>[]>>;
+  baseTools?: Partial<Record<WorkflowPromptScope, ToolInterface<unknown>[]>>;
   /** 使用 SDK 覆盖默认 system prompt */
-  systemPrompts?: Partial<Record<ConversationTypeKey, string>>;
+  systemPrompts?: Partial<Record<WorkflowPromptScope, string>>;
   /** 宿主环境规则提供器 */
   ruleProvider?: RuleProvider;
   /** 可注入的 sandbox manager */
@@ -78,14 +77,14 @@ export interface GlobalStateType {
   }) => void | Promise<void>;
   /** 在 createTask 真正创建会话前解析任务配置 */
   createTaskConfigResolver?: CreateTaskConfigResolver;
-  /** 子任务 completeTask 扩展校验 hook */
-  subTaskCompletionValidator?: (
-    payload: SubTaskCompletionValidationHookPayload,
-  ) => SubTaskValidationResult | Promise<SubTaskValidationResult>;
-  /** 子任务 wait_review 自动审阅 hook */
-  subTaskWaitReviewEvaluator?: (
-    payload: SubTaskWaitReviewEvaluationHookPayload,
-  ) => SubTaskWaitReviewEvaluationResult | Promise<SubTaskWaitReviewEvaluationResult>;
+  /** 执行子会话 completeTask 扩展校验 hook */
+  taskExecutionCompletionValidator?: (
+    payload: TaskExecutionCompletionValidationHookPayload,
+  ) => TaskExecutionValidationResult | Promise<TaskExecutionValidationResult>;
+  /** 执行子会话完成后的自动 verification hook */
+  taskExecutionVerificationEvaluator?: (
+    payload: TaskExecutionVerificationHookPayload,
+  ) => TaskExecutionVerificationResult | Promise<TaskExecutionVerificationResult>;
 }
 
 /**

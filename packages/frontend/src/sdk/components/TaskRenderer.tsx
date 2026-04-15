@@ -1,10 +1,11 @@
 import { AlertCircle, CheckCircle, ChevronDown, ChevronRight, Loader } from "lucide-react";
-import { type FC, useCallback, useEffect, useState } from "react";
+import { type FC, useCallback, useEffect, useMemo, useState } from "react";
 import { useWebSocketContext } from "../context/WebSocketContext";
 import { useMessages } from "../hooks/useMessages";
 import { useTasks } from "../hooks/useTasks";
 import type { DisplayMessageType } from "../messages/types";
 import { defaultRenderers } from "./renderers";
+import { buildTaskTimeline } from "./taskTimeline";
 
 /**
  * Props for the TaskRenderer component
@@ -98,12 +99,21 @@ export const TaskRenderer: FC<TaskRendererProps> = ({
     }
   }, [hasFollowupQuestion, isExpanded]);
 
+  const timelineNodes = useMemo(
+    () =>
+      buildTaskTimeline({
+        messages,
+        taskStatus,
+      }),
+    [messages, taskStatus],
+  );
+
   /**
    * Render a single message using the appropriate renderer
    */
   const renderMessage = useCallback(
-    (message: DisplayMessageType, index: number) => {
-      const isLatest = index === messages.length - 1;
+    (message: DisplayMessageType, index: number, totalCount: number) => {
+      const isLatest = index === totalCount - 1;
 
       // Get custom renderer from context
       const customRenderer = context.renderers?.[message.type];
@@ -133,7 +143,7 @@ export const TaskRenderer: FC<TaskRendererProps> = ({
         </div>
       );
     },
-    [messages, taskId, context.renderers],
+    [context.renderers],
   );
 
   // Get task title from first message or use task ID
@@ -198,7 +208,9 @@ export const TaskRenderer: FC<TaskRendererProps> = ({
             {/* Messages */}
             {messages.length > 0 && (
               <div className="space-y-2 mb-4">
-                {messages.map((message, index) => renderMessage(message, index))}
+                {timelineNodes.map((node, index) =>
+                  renderMessage(node.message, index, timelineNodes.length),
+                )}
               </div>
             )}
 

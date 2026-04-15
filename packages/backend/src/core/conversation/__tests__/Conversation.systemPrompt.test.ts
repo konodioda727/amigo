@@ -1,12 +1,21 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AmigoLlm } from "@/core/model";
-import type { RuleProvider } from "@/core/rules";
 import { ToolService } from "@/core/tools";
+import { createExecutionWorkerWorkflowState } from "@/core/workflow";
 import { setGlobalState } from "@/globalState";
 import { Conversation } from "../Conversation";
+
+mock.module("@/utils/logger", () => ({
+  logger: {
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
+  },
+}));
 
 describe("Conversation system prompt overrides", () => {
   let tempStorageRoot = "";
@@ -37,49 +46,101 @@ describe("Conversation system prompt overrides", () => {
     setGlobalState("systemPrompts", {});
   });
 
-  it("uses configured main system prompt and still appends extra prompt", () => {
-    const overridePrompt = "MAIN OVERRIDE PROMPT";
+  it("uses configured controller system prompt and still appends extra prompt", () => {
+    const overridePrompt = "CONTROLLER OVERRIDE PROMPT";
     const extraPrompt = "APPENDIX PROMPT";
     const toolService = new ToolService([], []);
 
-    setGlobalState("systemPrompts", { main: overridePrompt });
+    setGlobalState("systemPrompts", { controller: overridePrompt });
     setGlobalState("extraSystemPrompt", extraPrompt);
 
     const conversation = Conversation.create({
       toolService,
       llm: {} as unknown as AmigoLlm,
-      type: "main",
     });
 
     const systemPrompt = conversation.memory.initialSystemPrompt || "";
     expect(systemPrompt).toContain(overridePrompt);
     expect(systemPrompt).toContain(extraPrompt);
-    expect(conversation.memory.messages).toHaveLength(0);
+    expect(conversation.memory.messages).toHaveLength(1);
+    expect(conversation.memory.messages[0]?.role).toBe("user");
+    expect(conversation.memory.messages[0]?.type).toBe("system");
+    expect(conversation.memory.messages[0]?.content || "").toContain("[WorkflowState]");
   });
 
-  it("appends scoped extra prompts and context appendix for the matching conversation type", () => {
+  it("keeps worker prompts free of inherited appendices", () => {
     const toolService = new ToolService([], []);
 
     setGlobalState("extraSystemPrompts", {
-      main: "MAIN SCOPED PROMPT",
-      sub: "SUB SCOPED PROMPT",
+      controller: "CONTROLLER SCOPED PROMPT",
+      worker: "WORKER SCOPED PROMPT",
     });
 
     const conversation = Conversation.create({
       toolService,
       llm: {} as unknown as AmigoLlm,
-      type: "sub",
+      workflowState: createExecutionWorkerWorkflowState(),
       context: {
         systemPromptAppendix: {
-          sub: "SUB CONTEXT APPENDIX",
+          worker: "WORKER CONTEXT APPENDIX",
         },
       },
     });
 
     const systemPrompt = conversation.memory.initialSystemPrompt || "";
-    expect(systemPrompt).toContain("SUB SCOPED PROMPT");
-    expect(systemPrompt).toContain("SUB CONTEXT APPENDIX");
-    expect(systemPrompt).not.toContain("MAIN SCOPED PROMPT");
+    expect(systemPrompt).not.toContain("WORKER SCOPED PROMPT");
+    expect(systemPrompt).not.toContain("WORKER CONTEXT APPENDIX");
+    expect(systemPrompt).not.toContain("CONTROLLER SCOPED PROMPT");
+  });
+
+  it("still appends controller extras for controller prompts", () => {
+    const toolService = new ToolService([], []);
+
+    setGlobalState("extraSystemPrompts", {
+      controller: "CONTROLLER SCOPED PROMPT",
+      worker: "WORKER SCOPED PROMPT",
+    });
+
+    const conversation = Conversation.create({
+      toolService,
+      llm: {} as unknown as AmigoLlm,
+      context: {
+        systemPromptAppendix: {
+          controller: "CONTROLLER CONTEXT APPENDIX",
+        },
+      },
+    });
+
+    const systemPrompt = conversation.memory.initialSystemPrompt || "";
+    expect(systemPrompt).toContain("CONTROLLER SCOPED PROMPT");
+    expect(systemPrompt).toContain("CONTROLLER CONTEXT APPENDIX");
+    expect(systemPrompt).not.toContain("WORKER SCOPED PROMPT");
+  });
+
+  it("keeps worker prompts compact and execution-focused", () => {
+    const toolService = new ToolService([], []);
+
+    const workerConversation = Conversation.create({
+      toolService,
+      llm: {} as unknown as AmigoLlm,
+      workflowState: createExecutionWorkerWorkflowState(),
+    });
+    const controllerConversation = Conversation.create({
+      toolService,
+      llm: {} as unknown as AmigoLlm,
+    });
+
+    const workerPrompt = workerConversation.memory.initialSystemPrompt || "";
+    const controllerPrompt = controllerConversation.memory.initialSystemPrompt || "";
+
+    expect(workerPrompt).toContain("execution_worker");
+    expect(workerPrompt).toContain("执行子任务的 agent");
+    expect(workerPrompt).toContain("父任务继承下来的上下文");
+    expect(workerPrompt).toContain("不要把它当成文件编辑器");
+    expect(workerPrompt).toContain("只做分配给你的执行范围");
+    expect(workerPrompt).not.toContain("task docs");
+    expect(workerPrompt).not.toContain("sandbox's relevant directory structure");
+    expect(workerPrompt.length).toBeLessThan(controllerPrompt.length);
   });
 
   it("uses completeTask for main task turn endings", () => {
@@ -88,13 +149,13 @@ describe("Conversation system prompt overrides", () => {
     const conversation = Conversation.create({
       toolService,
       llm: {} as unknown as AmigoLlm,
-      type: "main",
     });
 
     const systemPrompt = conversation.memory.initialSystemPrompt || "";
-    expect(systemPrompt).toContain("call `completeTask`");
-    expect(systemPrompt).toContain("async tool");
-    expect(systemPrompt).toContain("background work has started");
+    expect(systemPrompt).toContain("`completeTask`");
+    expect(systemPrompt).toContain("每一轮回复都必须以工具调用结束");
+    expect(systemPrompt).toContain("必须先用 `bash` 实际运行必要检查");
+    expect(systemPrompt).toContain("正式交付最终结果");
   });
 
   it("keeps the main prompt tool-driven and completeTask-oriented without forcing tool preambles", () => {
@@ -103,43 +164,42 @@ describe("Conversation system prompt overrides", () => {
     const conversation = Conversation.create({
       toolService,
       llm: {} as unknown as AmigoLlm,
-      type: "main",
     });
 
     const systemPrompt = conversation.memory.initialSystemPrompt || "";
     expect(systemPrompt).not.toContain(
       "Before the first tool call of a new investigation/execution phase",
     );
-    expect(systemPrompt).toContain("call `completeTask`");
-    expect(systemPrompt).toContain("user-facing");
-    expect(systemPrompt).toContain("easy to read");
-    expect(systemPrompt).toContain("there is no required sub-task section template");
-    expect(systemPrompt).toContain("Every response MUST end with at least one tool call");
-    expect(systemPrompt).toContain("Plain assistant text alone is FORBIDDEN");
-    expect(systemPrompt).toContain("background work has started");
-    expect(systemPrompt).toContain("stop searching and use `completeTask`");
+    expect(systemPrompt).toContain("每一轮回复都必须以工具调用结束");
+    expect(systemPrompt).toContain("持久记忆以会话历史");
+    expect(systemPrompt).toContain("`taskList`");
+    expect(systemPrompt).toContain("taskList(action=execute)");
+    expect(systemPrompt).toContain("异步结果不一定在同一轮立即返回");
+    expect(systemPrompt).toContain("很短的 `bash` 等待");
+    expect(systemPrompt).toContain("`askFollowupQuestion`");
+    expect(systemPrompt).toContain("最高优先级指令");
+    expect(systemPrompt).not.toContain(
+      "explicitly ask the user for solution preferences/opinions through `askFollowupQuestion` before finalizing the plan",
+    );
   });
 
-  it("requires repository inspection before answering current-system behavior questions", () => {
+  it("keeps phase priority above generic investigation or questioning habits", () => {
     const toolService = new ToolService([], []);
 
     const conversation = Conversation.create({
       toolService,
       llm: {} as unknown as AmigoLlm,
-      type: "main",
     });
 
     const systemPrompt = conversation.memory.initialSystemPrompt || "";
-    expect(systemPrompt).toContain(
-      "questions about how the current repository/app/agent behaves: ALWAYS investigate first",
-    );
-    expect(systemPrompt).toContain(
-      "if the user is asking why the current app/agent/prompt/tool/workflow behaves a certain way, first inspect the relevant local files, prompts, configs, or logs in the sandbox",
-    );
-    expect(systemPrompt).toContain("Use `askFollowupQuestion` only when a real missing fact");
-    expect(systemPrompt).toContain(
-      'If you can already answer the user\'s current "why/how does this repo behave?" question from the evidence collected, that is enough to stop investigating',
-    );
+    expect(systemPrompt).toContain("运行时给出的 mode、phase、workflow notice 优先级最高");
+    expect(systemPrompt).toContain("用户到底要什么");
+    expect(systemPrompt).toContain("只有用户本人才能提供的事实、偏好或取舍会阻塞推进时");
+    expect(systemPrompt).toContain("checkpoint/compaction 和各阶段 `completeTask`");
+    expect(systemPrompt).toContain("先服从它，再参考通用规则");
+    expect(systemPrompt).toContain("向用户索取你可以自行查看的文件、日志、路径、代码或环境信息");
+    expect(systemPrompt).toContain("先修正并重试同一个工具");
+    expect(systemPrompt).toContain("先用 1-2 句高信息量正文说明你要做什么、为什么");
   });
 
   it("includes the universal SOP and mode-specific explicitness rules", () => {
@@ -148,54 +208,52 @@ describe("Conversation system prompt overrides", () => {
     const conversation = Conversation.create({
       toolService,
       llm: {} as unknown as AmigoLlm,
-      type: "main",
     });
 
     const systemPrompt = conversation.memory.initialSystemPrompt || "";
-    expect(systemPrompt).toContain("UNIVERSAL SOP");
-    expect(systemPrompt).toContain("Decompose the task goal");
-    expect(systemPrompt).toContain("Gather information before acting");
-    expect(systemPrompt).toContain("Produce a preliminary solution based on collected evidence");
-    expect(systemPrompt).toContain("Review the result before finishing");
-    expect(systemPrompt).toContain("All modes MUST follow the UNIVERSAL SOP defined in IDENTITY.");
-    expect(systemPrompt).toContain(
-      "The difference between modes is not whether this SOP exists, but whether it stays implicit or must be made explicit as task artifacts.",
+    expect(systemPrompt).toContain("工作方式");
+    expect(systemPrompt).toContain("用户真正要什么");
+    expect(systemPrompt).toContain("Fast Mode");
+    expect(systemPrompt).toContain("phased workflow");
+    expect(systemPrompt).toContain("先看真实工作区");
+    expect(systemPrompt).toContain("尽量用更少的轮次把用户请求做完");
+    expect(systemPrompt).toContain("最高优先级指令");
+    expect(systemPrompt).toContain("简单、低风险、连续性强的任务优先走 fast mode");
+    expect(systemPrompt).toContain("controller 在 phased workflow 中固定按完整阶段集推进");
+    expect(systemPrompt).toContain("`taskList`");
+    expect(systemPrompt).toContain("taskList(action=execute)");
+    expect(systemPrompt).toContain("design 阶段生成 `taskList`");
+    expect(systemPrompt).toContain("不强制拆成 requirements、design、execution、verification");
+    expect(systemPrompt).toContain("必须先用 `bash` 实际运行必要检查");
+    expect(systemPrompt).toContain("调用 `completeTask` 结束主任务");
+    expect(systemPrompt).not.toContain(
+      "questions about how the current system/workflow behaves: ALWAYS investigate first",
     );
-    expect(systemPrompt).toContain("`requirements.md` is the explicit task-goal decomposition");
-    expect(systemPrompt).toContain(
-      "`design.md` is the explicit preliminary solution and tradeoff record",
+    expect(systemPrompt).not.toContain(
+      "`findings.md` is the rolling record of confirmed facts, evidence, open questions, and decision impact",
     );
-    expect(systemPrompt).toContain("`taskList.md` is the explicit execution breakdown");
-    expect(systemPrompt).toContain(
-      "task docs are the explicit, living form of the UNIVERSAL SOP, not a parallel workflow",
+    expect(systemPrompt).not.toContain(
+      "在收敛方案前，必须调用 `askFollowupQuestion` 询问用户对方案、取舍、风格或优先级的偏好和意见",
     );
-    expect(systemPrompt).toContain(
-      "If the required facts and user decisions are already clear, you may continue through investigate -> solve -> review in one continuous execution flow",
-    );
-    expect(systemPrompt).toContain(
-      "force an extra approval round in Direct Mode unless the user must make a real decision",
-    );
-    expect(systemPrompt).toContain(
-      "If you're providing investigation findings or a preliminary solution before implementation, end with `completeTask`",
-    );
+    expect(systemPrompt).not.toContain("In discovery, do not batch findings until the end");
     expect(systemPrompt).not.toContain(
       "Both modes require investigation first, then `completeTask` to report, then wait for user approval before implementation.",
     );
   });
 
-  it("appends host rule references when a rule provider is configured", () => {
+  it("appends host rule references into the core prompt when a rule provider is configured", () => {
     const toolService = new ToolService([], []);
-    const ruleProvider: RuleProvider = {
-      getSystemPromptAppendix: ({ conversationType }) =>
-        conversationType === "main" ? "APP DIRECTORY APPENDIX" : undefined,
-      getPromptReferences: ({ conversationType }) =>
-        conversationType === "main"
+    const ruleProvider = {
+      getSystemPromptAppendix: ({ promptScope }) =>
+        promptScope === "controller" ? "APP DIRECTORY APPENDIX" : undefined,
+      getPromptReferences: ({ promptScope }) =>
+        promptScope === "controller"
           ? [
               {
                 id: "coding",
                 title: "Coding Rules",
                 whenToRead: "task involves code changes",
-                scopes: ["main"],
+                scopes: ["controller"],
               },
             ]
           : [],
@@ -207,7 +265,6 @@ describe("Conversation system prompt overrides", () => {
     const conversation = Conversation.create({
       toolService,
       llm: {} as unknown as AmigoLlm,
-      type: "main",
     });
 
     const systemPrompt = conversation.memory.initialSystemPrompt || "";

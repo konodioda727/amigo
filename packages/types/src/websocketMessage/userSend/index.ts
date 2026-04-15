@@ -8,7 +8,6 @@ import { UserSendMessageSchema as SocketMessageSchema } from "./message";
 import { RejectSchema } from "./reject";
 import { ResumeSchema } from "./resume";
 import { UpdateAutoApproveToolsSchema } from "./updateAutoApproveTools";
-import { UpdateTaskDocSchema } from "./updateTaskDoc";
 
 export const UserSendMessageSchema = z.discriminatedUnion("type", [
   SocketMessageSchema,
@@ -20,7 +19,6 @@ export const UserSendMessageSchema = z.discriminatedUnion("type", [
   RejectSchema,
   DeleteTaskSchema,
   UpdateAutoApproveToolsSchema,
-  UpdateTaskDocSchema,
 ]);
 
 /**

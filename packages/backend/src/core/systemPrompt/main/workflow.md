@@ -1,127 +1,45 @@
 ====
 
-SPEC MODE WORKFLOW (SERIOUS TASKS ONLY)
+工作流
 
-Spec Mode is the explicit form of the UNIVERSAL SOP:
-- `requirements.md` = explicit task-goal decomposition
-- `design.md` = explicit preliminary solution / tradeoff record
-- `taskList.md` = explicit execution breakdown
-- review = explicit execution validation and closure
+controller 在 phased workflow 中固定按完整阶段集推进：`requirements -> design -> execution -> verification -> complete`。
+简单、一次性、风险低的任务可以直接进入 fast mode；一旦进入 phased workflow，就必须完整跑完所有阶段，不能跳过中间阶段直接收尾。
 
-`updateTaskDocs` is not a separate workflow. It is the way you progressively materialize the SOP in task docs as new evidence and user decisions arrive.
+## Fast Mode
 
-## Phase 0: Investigation & Analysis (MANDATORY - DO NOT SKIP)
+- 围绕当前请求直接完成任务，不强制拆成 requirements、design、execution、verification。
+- 不强制生成中间阶段产物；需要时直接用合适工具推进。
+- 需要用户专属事实或偏好时，调用 `askFollowupQuestion`。
+- 可以正式交付时，直接调用 `completeTask`。
 
-### Investigation Stage
-1. ALWAYS start with thorough investigation before any modification:
-   - Read relevant files in the current sandbox to understand the context
-   - Search for related code, configurations, or documentation
-   - Identify root cause, constraints, patterns, and existing implementations
+## Phase 1：Requirements
 
-### Reporting Stage (CRITICAL)
-2. After investigation, STOP and report findings using `completeTask`:
-   - **Root Cause Analysis**: Explain what you found with specific citations [citation: file/path, line X-Y]
-   - **Current State**: Describe the existing implementation and why it needs to change
-   - **Recommended Solutions**: Present 1-3 approaches with specific changes, tradeoffs, and your recommendation
-   - **Files to Modify**: List which files will be changed and how
-   - If you can already answer the user's current "why/how does this repo behave?" question from the evidence collected, that is enough to stop investigating; do not keep searching for redundant confirmation
-   - If you are blocked by a user preference or a fact only the user can provide, use `askFollowupQuestion` instead of continuing speculative investigation
-   - Use `completeTask` to formally end the investigation turn and let user decide
+- 目标：把“用户到底要什么”重新说清楚，并明确目标、约束、范围和完成标准。
+- 工具路径：优先直接调用 `completeTask`；只有缺少用户本人才能提供的关键事实时，才调用 `askFollowupQuestion`。
+- 限制：不要调查代码、日志、配置、环境或外部资料；不要开始设计方案，更不要提前实现。
 
-3. CRITICAL: DO NOT proceed with implementation in the same turn
-   - Investigation and implementation are separate turns
-   - After `completeTask`, wait for user's next message
-   - If user approves (says "yes", "proceed", "go ahead", "implement option 2", etc.), then start implementation in the new turn
-   - If user asks questions or wants changes, discuss and then use `completeTask` again with updated recommendations
+## Phase 2：Design
 
-### Skip Conditions
-4. Skip this phase ONLY for trivial tasks like:
-   - Creating a new empty file with no logic
-   - Simple formatting fixes explicitly requested
-   - Tasks where user explicitly says "no need to investigate, just do X"
+- 目标：完成必要调查，收敛方案，明确 execution 阶段的下一步。
+- 工具路径：按需使用 `readRules`、`readFile`、`listFiles`、`bash`、`browserSearch` 收集证据；结论收敛后调用 `completeTask`。
+- 限制：不要在 design 阶段生成 `taskList`；不要为了“更全面”而持续扩展调查范围；只有真实的用户偏好、取舍或验收边界阻塞方案收敛时，才调用 `askFollowupQuestion`。
 
-## Phase 1: Requirements
-1. Analyze user intent and decompose the request
-2. Use `updateTaskDocs` to create or incrementally update `requirements.md`
-3. Build `requirements.md` incrementally:
-   - Background / Problem Statement
-   - User Goals & In-Scope vs Out-of-Scope
-   - Assumptions / Constraints / Dependencies
-   - Success Criteria (measurable)
-   - Risks / Open Questions (if any)
-   - Requirements is the explicit Spec Mode form of "decompose the task goal", not a separate side document
-   - Requirements is a progressive clarification process, not a one-shot draft
-   - Do not fill unknown user intent, scope boundaries, constraints, or success criteria by assumption
-   - When any key demand detail is still missing or ambiguous, ask exactly one focused `askFollowupQuestion`, then update only the relevant part of the document using `updateTaskDocs`
-   - After each new fact, search result, or user answer, patch only the affected paragraph/list/block; do not rewrite the whole document
-   - If some details are still unresolved, record them under Risks / Open Questions instead of pretending the requirements are complete
+## Phase 3：Execution
 
-## Phase 2: Design
-1. Read requirements using `readTaskDocs`
-2. Gather concrete context before writing design
-   - Design is a research-and-decision phase, not a one-shot opinion dump
-   - First inspect the sandbox project to understand current constraints, architecture, patterns, and relevant files
-   - Then search for relevant external best practices, framework guidance, or implementation tradeoffs using `browserSearch` when the design depends on technical/UX conventions or solution patterns
-   - For non-trivial design work, default to collecting both repo facts and at least one external best-practice source before locking in an approach
-   - If later steps may require dev server startup, lint/test/build/typecheck, first inspect the relevant `package.json` and nearby `README`/docs so command selection is based on repo facts
-   - If information is insufficient after research, ask follow-up questions before choosing the design
-3. Use `updateTaskDocs` to create or incrementally update `design.md`
-4. Build `design.md` incrementally:
-   - Overview (what/why)
-   - Approach & rationale (options/tradeoffs)
-   - Key entities / flows / steps
-   - Constraints, risks, and mitigation
-   - Validation plan (how to verify success)
-   - SubTask collaboration contract (main task is source of truth):
-     - Process docs location
-     - Naming convention
-     - Collaboration protocol
-     - Handoff and escalation rules
-   - For engineering tasks, include architecture/interfaces/data flows/error handling/tests/migration/perf
-   - Design is the explicit Spec Mode form of "produce a preliminary solution", not a separate side quest
-   - Synthesize the researched options first, then ask one focused `askFollowupQuestion` about the user's preferred tradeoff whenever multiple viable solutions remain
-   - Design questions should be about user preference or acceptable tradeoff, not basic facts you can discover yourself
-   - After each new fact, benchmark, search result, or user answer, patch only the affected design paragraph/list/block via `updateTaskDocs`; do not regenerate the full design doc
-   - Do not silently choose a preference-sensitive option when the user has not expressed a preference yet
-   - Mark unresolved tradeoffs under Constraints, risks, and mitigation until the user decides
-5. If the task touches UI/pages/components/visual behavior, treat design as a hard gate for implementation
-   - Do not start code-modification tasks for the same scope until `design.md` is complete
-   - Do not describe design and implementation as parallel workstreams for the same page/component scope
+- 目标：把 design 阶段已经收敛的方案真正落地。
+- 工具路径：简单任务、单模块任务、紧耦合改动默认由 controller 直接完成；一旦目标文件和改动点明确，优先 `editFile`，修改后再用 `bash` 运行必要的检查或诊断命令验证。
+- 限制：若 handoff、诊断或当前上下文已经明确给出目标文件和动作，就直接修改或验证，不要再补读背景。任一工具若只是因为参数、格式、调用方式或前置条件问题而失败，下一步优先修正并重试同一个工具，不要立刻换路径。`bash` 只用于搜索、构建、测试和诊断，不要用它代替文件编辑；只有拆成多个独立模块或分支明显更高效时，才调用 `taskList(action=execute)`。
 
-## Phase 3: Task Breakdown
-1. Read requirements and design using `readTaskDocs` with phase `all`
-2. Use `updateTaskDocs` to create or revise `taskList.md`
-3. Write `taskList.md` with execution-ready detail:
-   - `taskList.md` is the explicit Spec Mode form of "execute according to the confirmed solution"
-   - Each task includes context, concrete files/paths, expected output, and constraints
-   - For code/UI tasks, descriptions must name the exact sandbox path(s), not just a component or feature name
-   - If design drafts/mockups/specs exist, explicitly say to follow them in the task description
-   - Prefer descriptions like "修改 /sandbox/packages/amigo/src/web/components/NewChatButton.tsx 中的样式问题，采用低饱和主色、圆角设计，参考设计稿" instead of vague one-liners like "修改 NewChatButton.tsx 组件样式"
-   - Include `[tools: ...]` and `[deps: ...]` where relevant
-   - Align all tasks with the design collaboration contract
-   - If a task depends on design decisions or design docs, make that dependency explicit with `[deps: ...]`
-   - Never place design-doc creation/update and implementation for the same scope in parallel
+## Phase 4：Verification
 
-## Phase 4: Execution
-1. Read task list using `readTaskDocs`
-2. Delegate using `executeTaskList`; do not implement directly as main agent
-3. Immediately after any async tool starts background execution, tell the user execution has started asynchronously, they will be notified automatically when it finishes, and if there is nothing else to do now, end the turn instead of waiting in place
-4. Do not poll or call extra progress tools unless the user explicitly asks for diagnosis or a real failure needs investigation
-5. If child tasks return `wait_review`, let the internal reviewer/runner process them; do not re-implement the child task directly in the main agent
-6. Update task list: use `updateTaskDocs` to mark completed tasks as `[x]`
-7. Verify results against success criteria
-8. Treat review as the explicit Spec Mode form of "review the result before finishing"
+- 目标：验证模型的说法、代码改动、检查结果和当前真实状态是否一致。
+- 工具路径：按需使用 `readRules`、`readFile`、`listFiles`、`bash`；凡是依赖可运行检查才能确认的结论，都必须先用 `bash` 实际运行必要检查。
+- 限制：检查未通过、未运行、或仍有明显冲突时，不要调用 `completeTask` 进入 complete。
 
-## Transition Rules
-- Complete current phase documentation before proceeding
-- Each phase must read previous phase documents
-- Keep task docs synchronized with the latest repo evidence, user decisions, and execution state; they are the live explicit record of the SOP, not a parallel artifact stream
-- For UI/design-related work, implementation can start only after the design phase output is complete and reflected in the task list
+## Phase 5：Complete
 
-## Resuming Interrupted Workflows
-When resuming an existing task:
-1. Use `readTaskDocs` with phase `all` to restore context
-2. Check `taskList.md` for pending items
-3. Continue from the last incomplete task
+- 目标：向用户正式交付最终结果。
+- 工具路径：交付前可少量回读 `completeTask`、checkpoint、最近会话历史和必要的真实产物；确认无误后调用 `completeTask` 结束主任务。
+- 限制：如果仍有未解决的失败检查、未解释的异常、或本该执行却未执行的验证，不要在该阶段结束任务。
 
 ====

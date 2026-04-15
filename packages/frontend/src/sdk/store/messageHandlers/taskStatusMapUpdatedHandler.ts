@@ -6,8 +6,8 @@ export const handleTaskStatusMapUpdated = (
   store: WebSocketStore,
 ) => {
   const data = message.data as any;
-  if (data.taskId && data.subTasks) {
-    store.setTaskStatusMap(data.taskId, data.subTasks);
+  if (data.taskId && data.executionTasks) {
+    store.setTaskStatusMap(data.taskId, data.executionTasks);
   }
   if (data.taskId && Array.isArray(data.autoApproveToolNames)) {
     store.setTaskAutoApproveToolNames(data.taskId, data.autoApproveToolNames);
@@ -18,13 +18,8 @@ export const handleTaskStatusMapUpdated = (
   if (data.taskId && "context" in data) {
     store.setTaskContext(data.taskId, data.context);
   }
-  if (data.taskId === store.mainTaskId && data.documents && typeof data.documents === "object") {
-    const phases = ["requirements", "design", "taskList"] as const;
-    for (const phase of phases) {
-      if (typeof data.documents[phase] === "string") {
-        store.setDocContent(data.documents[phase], undefined, phase);
-      }
-    }
+  if (data.taskId && "workflowState" in data) {
+    store.setTaskWorkflowState(data.taskId, data.workflowState);
   }
   return true;
 };

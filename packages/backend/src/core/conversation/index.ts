@@ -1,31 +1,33 @@
+export { Conversation } from "./Conversation";
+export { ConversationRepository, conversationRepository } from "./ConversationRepository";
 export {
   clearConversationContinuations,
   enqueueConversationContinuation,
   flushConversationContinuationsBeforeNextTurn,
   flushConversationContinuationsIfIdle,
-} from "./asyncContinuations";
-export { CompletionHandler } from "./CompletionHandler";
-export { Conversation, type ConversationType } from "./Conversation";
-export { ConversationExecutor } from "./ConversationExecutor";
-export { ConversationRepository, conversationRepository } from "./ConversationRepository";
-export { StreamHandler } from "./StreamHandler";
+  hasConversationContinuations,
+} from "./context/asyncContinuations";
 export {
-  runSubTaskCompletionValidation,
-  runSubTaskWaitReviewEvaluation,
-} from "./subTaskPolicies";
+  runTaskExecutionCompletionValidation,
+  runTaskExecutionVerification,
+} from "./execution/taskExecutionPolicies";
 export type {
-  SubTaskCompletionValidationHookPayload,
-  SubTaskPolicyPayload,
-  SubTaskValidationResult,
-  SubTaskWaitReviewEvaluationHookPayload,
-  SubTaskWaitReviewEvaluationResult,
+  TaskExecutionCompletionValidationHookPayload,
+  TaskExecutionPayload,
+  TaskExecutionValidationResult,
+  TaskExecutionVerificationHookPayload,
+  TaskExecutionVerificationResult,
   ToolParamExtensionsConfig,
-} from "./subTaskPolicyTypes";
+} from "./execution/taskExecutionPolicyTypes";
+export { CompletionHandler } from "./lifecycle/CompletionHandler";
+export { ConversationExecutor } from "./lifecycle/ConversationExecutor";
+export { StreamHandler } from "./lifecycle/StreamHandler";
+export { ToolExecutor } from "./lifecycle/ToolExecutor";
+export { broadcaster, WebSocketBroadcaster } from "./lifecycle/WebSocketBroadcaster";
 export {
-  SubTaskInterruptedError,
-  type SubTaskParams,
-  TaskOrchestrator,
-  taskOrchestrator,
-} from "./TaskOrchestrator";
-export { ToolExecutor } from "./ToolExecutor";
-export { broadcaster, WebSocketBroadcaster } from "./WebSocketBroadcaster";
+  ConversationOrchestrator,
+  conversationOrchestrator,
+  ExecutionTaskInterruptedError,
+  type ExecutionTaskParams,
+  resolveObservedExecutionTaskStatus,
+} from "./orchestration/ConversationOrchestrator";

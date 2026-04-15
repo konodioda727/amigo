@@ -1,33 +1,24 @@
 import { z } from "zod";
-import type { ContextUsageStatus, SubTaskStatus } from "../../storage";
+import type { ContextUsageStatus, ExecutionTaskStatus } from "../../storage";
+import type { WorkflowState } from "../../workflow";
 
 export const TaskStatusMapUpdatedMessageSchema = z.object({
   type: z.literal("taskStatusMapUpdated"),
   data: z.object({
     taskId: z.string(),
-    subTasks: z.record(z.string(), z.any()), // Use any for now or a proper zod schema for SubTaskStatus
+    executionTasks: z.record(z.string(), z.any()), // Use any for now or a proper zod schema for ExecutionTaskStatus
     autoApproveToolNames: z.array(z.string()).optional(),
     contextUsage: z.any().optional(),
     context: z.any().optional(),
-    documents: z
-      .object({
-        requirements: z.string().optional(),
-        design: z.string().optional(),
-        taskList: z.string().optional(),
-      })
-      .optional(),
+    workflowState: z.any().optional(),
   }),
 });
 
 export type TaskStatusMapUpdatedData = {
   taskId: string;
-  subTasks: Record<string, SubTaskStatus>;
+  executionTasks: Record<string, ExecutionTaskStatus>;
   autoApproveToolNames?: string[];
   contextUsage?: ContextUsageStatus;
   context?: unknown;
-  documents?: {
-    requirements?: string;
-    design?: string;
-    taskList?: string;
-  };
+  workflowState?: WorkflowState;
 };

@@ -1,12 +1,14 @@
 import type {
   ContextUsageStatus,
+  ExecutionTaskStatus,
   SERVER_SEND_MESSAGE_NAME,
   ServerSendMessageData,
-  SubTaskStatus,
   USER_SEND_MESSAGE_NAME,
   UserMessageAttachment,
   UserSendMessageData,
   WebSocketMessage,
+  WorkflowMode,
+  WorkflowState,
 } from "@amigo-llm/types";
 import type { DisplayMessageType } from "../messages/types";
 import type {
@@ -73,10 +75,11 @@ export interface UseTasksReturn {
   tasks: Record<string, TaskState>;
   currentTaskId: string | null;
   mainTaskId: string | null;
-  taskStatusMaps: Record<string, Record<string, SubTaskStatus>>;
+  taskStatusMaps: Record<string, Record<string, ExecutionTaskStatus>>;
   taskAutoApproveToolNameMaps: Record<string, string[]>;
   taskContextUsageMaps: Record<string, ContextUsageStatus | undefined>;
   taskContextMaps: Record<string, unknown>;
+  taskWorkflowStateMaps: Record<string, WorkflowState | undefined>;
 
   // Task operations
   switchTask: (taskId: string) => void;
@@ -108,12 +111,14 @@ export interface UseSendMessageReturn {
     taskId?: string,
     attachments?: UserMessageAttachment[],
     modelConfigSnapshot?: UserSendMessageData<"userSendMessage">["modelConfigSnapshot"],
+    workflowMode?: WorkflowMode,
   ) => void;
   sendCreateTask: (
     message: string,
     attachments?: UserMessageAttachment[],
     context?: unknown,
     modelConfigSnapshot?: UserSendMessageData<"createTask">["modelConfigSnapshot"],
+    workflowMode?: WorkflowMode,
   ) => void;
   sendInterrupt: (taskId?: string) => void;
   sendResume: (

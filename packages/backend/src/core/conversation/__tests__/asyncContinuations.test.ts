@@ -3,8 +3,8 @@ import {
   clearConversationContinuations,
   enqueueConversationContinuation,
   flushConversationContinuationsIfIdle,
-} from "../asyncContinuations";
-import { broadcaster } from "../WebSocketBroadcaster";
+} from "../context/asyncContinuations";
+import { broadcaster } from "../lifecycle/WebSocketBroadcaster";
 
 mock.module("@/utils/logger", () => ({
   logger: {
@@ -15,7 +15,7 @@ mock.module("@/utils/logger", () => ({
   },
 }));
 
-mock.module("@/core/conversation/WebSocketBroadcaster", () => ({
+mock.module("@/core/conversation/lifecycle/WebSocketBroadcaster", () => ({
   broadcaster: {
     broadcast: mock(),
     broadcastConversation: mock(),
@@ -34,7 +34,7 @@ describe("asyncContinuations", () => {
       expect(conversation.userInput).toBe("__amigo_internal_dependency_continuation__");
       expect(addMessage).toHaveBeenCalledWith(
         expect.objectContaining({
-          role: "system",
+          role: "user",
           content: "依赖安装已完成。",
         }),
       );
@@ -55,7 +55,7 @@ describe("asyncContinuations", () => {
       reason: "dependency ready",
       injectBeforeNextTurn: (currentConversation) => {
         currentConversation.memory.addMessage({
-          role: "system",
+          role: "user",
           content: "依赖安装已完成。",
           type: "system",
           partial: false,

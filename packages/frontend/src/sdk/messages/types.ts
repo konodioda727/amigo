@@ -5,6 +5,7 @@ import type {
   ToolResult,
   UserMessageAttachment,
   WebSocketMessage,
+  WorkflowPhase,
 } from "@amigo-llm/types";
 
 /**
@@ -46,6 +47,7 @@ export interface FrontendToolMessageType<T extends ToolNames> extends MessageTyp
   websocketData?: unknown;
   toolCallId?: string;
   sourceUpdateTime?: number;
+  workflowPhase?: WorkflowPhase;
   error?: string;
   hasError?: boolean;
   partial?: boolean;

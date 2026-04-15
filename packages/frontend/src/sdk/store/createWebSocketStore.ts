@@ -1,11 +1,10 @@
 import { create, type StoreApi, type UseBoundStore } from "zustand";
 import { type ConnectionSlice, createConnectionSlice } from "./slices/connectionSlice";
-import { createDocSlice, type DocSlice } from "./slices/docSlice";
 import { createMentionSlice, type MentionSlice } from "./slices/mentionSlice";
 import { createMessageSlice, type MessageSlice } from "./slices/messageSlice";
 import { createTaskSlice, type TaskSlice } from "./slices/taskSlice";
 
-export type WebSocketStore = ConnectionSlice & TaskSlice & MessageSlice & MentionSlice & DocSlice;
+export type WebSocketStore = ConnectionSlice & TaskSlice & MessageSlice & MentionSlice;
 
 export interface WebSocketStoreConfig {
   // Connection configuration
@@ -43,14 +42,12 @@ export function createWebSocketStore(
     const taskSlice = createTaskSlice(...a);
     const messageSlice = createMessageSlice(...a);
     const mentionSlice = createMentionSlice(...a);
-    const docSlice = createDocSlice(...a);
 
     return {
       ...connectionSlice,
       ...taskSlice,
       ...messageSlice,
       ...mentionSlice,
-      ...docSlice,
 
       // Apply initial state if provided
       ...(config?.initialState?.mainTaskId && { mainTaskId: config.initialState.mainTaskId }),

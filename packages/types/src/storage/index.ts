@@ -1,5 +1,6 @@
 import type { ConversationStatus } from "../conversation";
 import type { ChatMessage } from "../websocketMessage";
+import type { WorkflowState } from "../workflow";
 
 /**
  * 存储类型
@@ -35,11 +36,11 @@ export interface PendingToolCall extends QueuedToolCall {
 }
 
 /**
- * 子任务状态
+ * 执行任务状态
  */
-export interface SubTaskStatus {
-  subTaskId?: string;
-  status: "idle" | "running" | "waiting_user_input" | "wait_review" | "completed" | "failed";
+export interface ExecutionTaskStatus {
+  executionTaskId?: string;
+  status: "idle" | "running" | "interrupted" | "completed" | "failed";
   description?: string;
   startedAt?: string;
   completedAt?: string;
@@ -70,8 +71,9 @@ export interface TaskStatusMetadata {
   context?: unknown;
   autoApproveToolNames?: string[];
   pendingToolCall?: PendingToolCall;
-  subTasks?: Record<string, SubTaskStatus>;
+  executionTasks?: Record<string, ExecutionTaskStatus>;
   contextUsage?: ContextUsageStatus;
+  workflowState?: WorkflowState;
   createdAt: string;
   updatedAt: string;
 }

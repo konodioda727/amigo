@@ -5,6 +5,11 @@ export const handleTaskHistory: MessageHandler = (message, store) => {
   const taskId = messageData.taskId || store.mainTaskId;
   const historyMessages = messageData.messages || [];
   const conversationStatus = messageData.conversationStatus;
+  const workflowState = messageData.workflowState;
+
+  if (taskId && workflowState) {
+    store.setTaskWorkflowState(taskId, workflowState);
+  }
 
   // taskHistory 包含完整的历史记录，应该替换而不是追加
   store.handleTaskHistory(taskId, historyMessages, conversationStatus);

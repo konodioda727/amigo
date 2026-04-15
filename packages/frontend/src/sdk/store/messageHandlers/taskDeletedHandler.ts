@@ -5,8 +5,8 @@ export function handleTaskDeleted(
   message: WebSocketMessage<"taskDeleted">,
   store: WebSocketStore,
 ): boolean {
-  const { taskId, deletedSubTaskIds } = message.data;
-  const allDeletedIds = [taskId, ...deletedSubTaskIds];
+  const { taskId, deletedChildTaskIds } = message.data;
+  const allDeletedIds = [taskId, ...deletedChildTaskIds];
   const remainingHistories = store.taskHistories.filter(
     (history) => !allDeletedIds.includes(history.taskId),
   );

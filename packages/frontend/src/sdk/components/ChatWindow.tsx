@@ -1,5 +1,5 @@
 import { ArrowDown } from "lucide-react";
-import React, { type FC, useRef, useState } from "react";
+import React, { type FC, useMemo, useRef, useState } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { AmigoLogo } from "../../components/AmigoLogo";
 import { useWebSocketContext } from "../context/WebSocketContext";
@@ -7,6 +7,8 @@ import { useMessages } from "../hooks/useMessages";
 import { useTasks } from "../hooks/useTasks";
 import type { DisplayMessageType } from "../messages/types";
 import { defaultRenderers } from "./renderers";
+import type { TaskTimelineNode } from "./taskTimeline";
+import { buildTaskTimeline } from "./taskTimeline";
 
 const AssistantAvatar: FC<{ className?: string; isAnimating?: boolean }> = ({
   className = "",
@@ -93,6 +95,14 @@ export const ChatWindow: FC<ChatWindowProps> = ({
   const effectiveTaskId = taskId ?? activeTaskId ?? mainTaskId;
   const status = effectiveTaskId ? getTaskStatus(effectiveTaskId) : "idle";
   const shouldShowInitialLoading = isCreatingConversation || status === "streaming";
+  const timelineNodes = useMemo(
+    () =>
+      buildTaskTimeline({
+        messages,
+        taskStatus: status,
+      }),
+    [messages, status],
+  );
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const [isAtBottom, setIsAtBottom] = useState(false);
@@ -114,7 +124,8 @@ export const ChatWindow: FC<ChatWindowProps> = ({
     });
   };
 
-  const getMessageKey = (message: DisplayMessageType, index: number) => {
+  const getTimelineNodeKey = (node: TaskTimelineNode, index: number) => {
+    const { message } = node;
     if (message.type === "tool") {
       return `tool-${message.toolCallId || message.toolName}-${message.updateTime}-${index}`;
     }
@@ -126,8 +137,8 @@ export const ChatWindow: FC<ChatWindowProps> = ({
   /**
    * Render a single message using the appropriate renderer
    */
-  const renderMessage = (message: DisplayMessageType, index: number) => {
-    const isLatest = index === messages.length - 1;
+  const renderMessage = (message: DisplayMessageType, index: number, totalCount: number) => {
+    const isLatest = index === totalCount - 1;
 
     // Get custom renderer from context
     const customRenderer = context.renderers?.[message.type];
@@ -145,6 +156,9 @@ export const ChatWindow: FC<ChatWindowProps> = ({
     // Fallback for unknown message types
     return <div className="text-red-500">Unknown message type: {message.type}</div>;
   };
+
+  const renderTimelineNode = (node: TaskTimelineNode, index: number) =>
+    renderMessage(node.message, index, timelineNodes.length);
 
   const isPendingUserMessage =
     lastMessage?.type === "userSendMessage" && lastMessage.status === "pending";
@@ -182,18 +196,18 @@ export const ChatWindow: FC<ChatWindowProps> = ({
             ref={virtuosoRef}
             className="w-full max-w-[1200px]"
             style={{ height: "100%", overflowAnchor: "none" }}
-            data={messages}
+            data={timelineNodes}
             defaultItemHeight={120}
             increaseViewportBy={{ top: 600, bottom: 1000 }}
             atBottomThreshold={AT_BOTTOM_THRESHOLD_PX}
-            computeItemKey={(index, message) => getMessageKey(message, index)}
+            computeItemKey={(index, node) => getTimelineNodeKey(node, index)}
             followOutput={(atBottom) => (atBottom ? "smooth" : false)}
             atBottomStateChange={setIsAtBottom}
             context={{ shouldShowTyping }}
             components={virtuosoComponents}
-            itemContent={(index, message) => {
+            itemContent={(index, node) => {
               const isFirst = index === 0;
-              const isLast = index === messages.length - 1;
+              const isLast = index === timelineNodes.length - 1;
 
               return (
                 <div
@@ -201,7 +215,7 @@ export const ChatWindow: FC<ChatWindowProps> = ({
                     " ",
                   )}
                 >
-                  {renderMessage(message, index)}
+                  {renderTimelineNode(node, index)}
                 </div>
               );
             }}

@@ -257,7 +257,7 @@ export const ThemeOptionsToolRenderer: React.FC<ToolMessageRendererProps<ToolNam
       setPersistedSelectedId(option.themeId);
       setLocalSelectedId(option.themeId);
       sendMessage(
-        `我已经选择主题方案 ${option.title}（${option.themeId}）。现在必须立即调用 orchestrateFinalDesignDraft 基于已选布局和这个主题生成 1 个最终界面草稿；不要先去 readFinalDesignDraft 或 readDraftCritique 查状态。先完成整页装配，再读取 final draft，最后再看 critique。`,
+        `我已经选择主题方案 ${option.title}（${option.themeId}）。现在必须立即调用 designDraft，参数 action="generate", draftId="final-draft", title="Final Draft"，基于已选布局和这个主题生成 1 个最终界面草稿；不要先去查状态。先完成整页装配，再读取 final draft，最后再看 critique。`,
       );
     } catch (error) {
       setSelectionError(error instanceof Error ? error.message : "选择主题失败");

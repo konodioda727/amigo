@@ -1,163 +1,73 @@
-import { randomUUID } from "node:crypto";
+import { inspect } from "node:util";
 import { logger } from "@amigo-llm/backend";
+import { asc, eq } from "drizzle-orm";
 import type {
-  ConversationStatus,
-  SERVER_SEND_MESSAGE_NAME,
-  USER_SEND_MESSAGE_NAME,
-  WebSocketMessage,
-} from "@amigo-llm/types";
-import type { RowDataPacket } from "mysql2/promise";
-import type { ModelConfigSnapshot } from "../../../../backend/src/core/model/contextConfig";
-import type {
+  ConversationContextSnapshotRecord,
   ConversationPersistenceProvider,
   ConversationPersistenceRecord,
 } from "../../../../backend/src/core/persistence/types";
+import { getDrizzleDb } from "./drizzle";
+import { ensureMysqlSchemaUpToDate } from "./mysql";
 import {
-  ensureMysqlSchemaUpToDate,
-  mysqlExecute,
-  mysqlQuery,
-  mysqlTransaction,
-  parseJsonColumn,
-} from "./mysql";
-
-const CHAT_PREFIX = "chat:";
-const WEBSOCKET_PREFIX = "ws:";
-
-type ConversationRow = RowDataPacket & {
-  id: string;
-  user_id: string;
-  parent_id: string | null;
-  status: string;
-  context_json: unknown;
-  created_at: string;
-  updated_at: string;
-};
-
-type ConversationStateRow = RowDataPacket & {
-  conversation_id: string;
-  initial_system_prompt: string | null;
-  tool_names_json: unknown;
-  model_config_json: unknown;
-  auto_approve_tool_names_json: unknown;
-  pending_tool_call_json: unknown;
-  subtasks_json: unknown;
-  context_usage_json: unknown;
-};
-
-type ConversationMessageRow = RowDataPacket & {
-  conversation_id: string;
-  seq: number;
-  role: string;
-  message_type: string;
-  content: string;
-  attachments_json: unknown;
-  partial: number | boolean;
-  source_update_time: string | null;
-};
-
-type PersistedWebSocketMessage = WebSocketMessage<
-  USER_SEND_MESSAGE_NAME | SERVER_SEND_MESSAGE_NAME
->;
+  buildConversationPersistenceRecord,
+  buildSessionTitle,
+  shouldSkipAutomationTriggeredConversation,
+} from "./mysqlConversationPersistenceMapper";
+import {
+  hasPersistableUserId,
+  persistConversationContextSnapshot,
+  persistConversationRecord,
+} from "./mysqlConversationPersistenceWriter";
+import { conversationMessagesTable, conversationStateTable, conversationsTable } from "./schema";
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 
-const parseDateTime = (value: unknown, fallback: string): string => {
-  if (value instanceof Date) {
-    return value.toISOString();
+const extractKnownErrorDetails = (
+  error: unknown,
+  prefix = "error",
+  details: Record<string, unknown> = {},
+): Record<string, unknown> => {
+  if (!isPlainObject(error)) {
+    details[`${prefix}.value`] = error;
+    return details;
   }
-  const raw = String(value || "").trim();
-  if (!raw) {
-    return fallback;
+
+  const knownKeys = [
+    "name",
+    "message",
+    "code",
+    "errno",
+    "sql",
+    "sqlState",
+    "sqlMessage",
+    "query",
+    "params",
+    "stack",
+  ] as const;
+
+  for (const key of knownKeys) {
+    if (key in error) {
+      details[`${prefix}.${key}`] = error[key];
+    }
   }
-  if (raw.includes("T")) {
-    return new Date(raw).toISOString();
+
+  if ("cause" in error && error.cause !== undefined) {
+    extractKnownErrorDetails(error.cause, `${prefix}.cause`, details);
   }
-  return new Date(`${raw.replace(" ", "T")}Z`).toISOString();
+
+  return details;
 };
 
-const parseUpdateTime = (value: unknown): number | undefined => {
-  const iso = parseDateTime(value, "");
-  if (!iso) {
-    return undefined;
-  }
-  const timestamp = Date.parse(iso);
-  return Number.isFinite(timestamp) ? timestamp : undefined;
-};
+const formatFlushErrorSummary = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
 
-const shouldSkipAutomationTriggeredConversation = (context: unknown): boolean =>
-  isPlainObject(context) && context.trigger === "automation";
-
-const buildSessionTitle = (record: ConversationPersistenceRecord): string | null => {
-  const firstUserMessage = record.websocketMessages.find(
-    (message: PersistedWebSocketMessage) => message.type === "userSendMessage",
-  );
-  if (!firstUserMessage || !isPlainObject(firstUserMessage.data)) {
-    return null;
-  }
-  const data = firstUserMessage.data as Record<string, unknown>;
-
-  const messageText = typeof data.message === "string" ? data.message.trim() : "";
-  if (messageText) {
-    return messageText;
-  }
-
-  const attachments = Array.isArray(data.attachments) ? data.attachments : [];
-  if (
-    attachments.length > 0 &&
-    isPlainObject(attachments[0]) &&
-    typeof attachments[0].name === "string"
-  ) {
-    return `[附件] ${attachments[0].name || "未命名文件"}`;
-  }
-
-  return `Task ${record.taskId}`;
-};
-
-const buildMessageRows = (record: ConversationPersistenceRecord) => {
-  const rows: Array<{
-    id: string;
-    seq: number;
-    role: string;
-    messageType: string;
-    content: string;
-    attachmentsJson: string;
-    partial: number;
-    sourceUpdateTime: Date | null;
-    createdAt: Date;
-  }> = [];
-
-  for (const [index, message] of record.messages.entries()) {
-    rows.push({
-      id: randomUUID(),
-      seq: index + 1,
-      role: message.role,
-      messageType: `${CHAT_PREFIX}${message.type}`,
-      content: message.content,
-      attachmentsJson: JSON.stringify(message.attachments || []),
-      partial: message.partial ? 1 : 0,
-      sourceUpdateTime: message.updateTime ? new Date(message.updateTime) : null,
-      createdAt: new Date(record.updatedAt),
-    });
-  }
-
-  for (const [index, message] of record.websocketMessages.entries()) {
-    rows.push({
-      id: randomUUID(),
-      seq: record.messages.length + index + 1,
-      role: "system",
-      messageType: `${WEBSOCKET_PREFIX}${message.type}`,
-      content: JSON.stringify(message.data || {}),
-      attachmentsJson: JSON.stringify([]),
-      partial: message.data?.partial ? 1 : 0,
-      sourceUpdateTime:
-        typeof message.data?.updateTime === "number" ? new Date(message.data.updateTime) : null,
-      createdAt: new Date(record.updatedAt),
-    });
-  }
-
-  return rows;
-};
+const inspectError = (error: unknown): string =>
+  inspect(error, {
+    depth: null,
+    showHidden: true,
+    getters: true,
+  });
 
 export class MysqlConversationPersistenceProvider implements ConversationPersistenceProvider {
   private readonly cache = new Map<string, ConversationPersistenceRecord>();
@@ -182,20 +92,27 @@ export class MysqlConversationPersistenceProvider implements ConversationPersist
 
   save(record: ConversationPersistenceRecord): boolean {
     this.cache.set(record.taskId, structuredClone(record));
-    if (!this.hasPersistableUserId(record.context)) {
+    if (!hasPersistableUserId(record.context)) {
       return true;
     }
     this.enqueueFlush(async () => {
-      await this.persistRecord(record);
-    });
+      await persistConversationRecord(record);
+    }, `save taskId=${record.taskId}`);
     return true;
+  }
+
+  recordModelContextSnapshot(record: ConversationContextSnapshotRecord): void {
+    this.enqueueFlush(async () => {
+      await persistConversationContextSnapshot(record);
+    }, `contextSnapshot conversationId=${record.conversationId} requestId=${record.requestId}`);
   }
 
   delete(taskId: string): boolean {
     const existed = this.cache.delete(taskId);
     this.enqueueFlush(async () => {
-      await mysqlExecute("DELETE FROM conversations WHERE id = ?", [taskId]);
-    });
+      await ensureMysqlSchemaUpToDate();
+      await getDrizzleDb().delete(conversationsTable).where(eq(conversationsTable.id, taskId));
+    }, `delete taskId=${taskId}`);
     return existed;
   }
 
@@ -232,217 +149,59 @@ export class MysqlConversationPersistenceProvider implements ConversationPersist
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   }
 
-  private enqueueFlush(task: () => Promise<void>): void {
+  private enqueueFlush(task: () => Promise<void>, label = "unknown"): void {
     this.flushChain = this.flushChain.then(task).catch((error) => {
       logger.error(
-        `[MysqlConversationPersistenceProvider] flush 失败: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `[MysqlConversationPersistenceProvider] flush 失败 (${label}): ${formatFlushErrorSummary(error)}`,
       );
-    });
-  }
-
-  private async hydrate(): Promise<void> {
-    await ensureMysqlSchemaUpToDate();
-
-    const [conversationRows, stateRows, messageRows] = await Promise.all([
-      mysqlQuery<ConversationRow>("SELECT * FROM conversations ORDER BY created_at ASC"),
-      mysqlQuery<ConversationStateRow>("SELECT * FROM conversation_state"),
-      mysqlQuery<ConversationMessageRow>(
-        "SELECT * FROM conversation_messages ORDER BY conversation_id ASC, seq ASC",
-      ),
-    ]);
-
-    const statesByConversationId = new Map(stateRows.map((row) => [row.conversation_id, row]));
-    const messagesByConversationId = new Map<string, ConversationMessageRow[]>();
-    for (const row of messageRows) {
-      const rows = messagesByConversationId.get(row.conversation_id) || [];
-      rows.push(row);
-      messagesByConversationId.set(row.conversation_id, rows);
-    }
-
-    for (const row of conversationRows) {
-      const state = statesByConversationId.get(row.id);
-      const storedMessages = messagesByConversationId.get(row.id) || [];
-      const messages: ConversationPersistenceRecord["messages"] = [];
-      const websocketMessages: ConversationPersistenceRecord["websocketMessages"] = [];
-
-      for (const messageRow of storedMessages) {
-        if (messageRow.message_type.startsWith(CHAT_PREFIX)) {
-          messages.push({
-            role: messageRow.role as "user" | "assistant" | "system",
-            type: messageRow.message_type.slice(CHAT_PREFIX.length) as
-              | USER_SEND_MESSAGE_NAME
-              | SERVER_SEND_MESSAGE_NAME
-              | "think"
-              | "interrupt"
-              | "askFollowupQuestion"
-              | "system"
-              | "compaction",
-            content: messageRow.content,
-            attachments: parseJsonColumn(messageRow.attachments_json, []),
-            partial: !!messageRow.partial,
-            ...(parseUpdateTime(messageRow.source_update_time)
-              ? { updateTime: parseUpdateTime(messageRow.source_update_time) }
-              : {}),
-          });
-          continue;
-        }
-
-        if (messageRow.message_type.startsWith(WEBSOCKET_PREFIX)) {
-          const data = parseJsonColumn<Record<string, unknown>>(messageRow.content, {});
-          websocketMessages.push({
-            type: messageRow.message_type.slice(
-              WEBSOCKET_PREFIX.length,
-            ) as PersistedWebSocketMessage["type"],
-            data: {
-              ...data,
-              partial: !!messageRow.partial,
-              ...(parseUpdateTime(messageRow.source_update_time)
-                ? { updateTime: parseUpdateTime(messageRow.source_update_time) }
-                : {}),
-            } as PersistedWebSocketMessage["data"],
-          });
-        }
-      }
-
-      this.cache.set(row.id, {
-        taskId: row.id,
-        ...(row.parent_id ? { fatherTaskId: row.parent_id } : {}),
-        conversationStatus: row.status as ConversationStatus,
-        ...(state?.initial_system_prompt?.trim()
-          ? { initialSystemPrompt: state.initial_system_prompt.trim() }
-          : {}),
-        toolNames: parseJsonColumn(state?.tool_names_json, []),
-        context: parseJsonColumn(row.context_json, {}),
-        modelConfigSnapshot: parseJsonColumn<ModelConfigSnapshot | undefined>(
-          state?.model_config_json,
-          undefined,
-        ),
-        autoApproveToolNames: parseJsonColumn(state?.auto_approve_tool_names_json, []),
-        pendingToolCall: parseJsonColumn(state?.pending_tool_call_json, null),
-        subTasks: parseJsonColumn(state?.subtasks_json, {}),
-        contextUsage: parseJsonColumn(state?.context_usage_json, undefined),
-        createdAt: parseDateTime(row.created_at, new Date(0).toISOString()),
-        updatedAt: parseDateTime(row.updated_at, new Date(0).toISOString()),
-        messages,
-        websocketMessages,
-      });
-    }
-  }
-
-  private async persistRecord(record: ConversationPersistenceRecord): Promise<void> {
-    const context = this.ensureContextUserId(record.context);
-    const userId = await this.resolveUserId(context);
-    const messageRows = buildMessageRows(record);
-    const createdAt = new Date(record.createdAt);
-    const updatedAt = new Date(record.updatedAt);
-    const lastUpdateTime =
-      record.websocketMessages.at(-1)?.data?.updateTime || record.messages.at(-1)?.updateTime;
-
-    await mysqlTransaction(async (connection) => {
-      await connection.execute(
-        `
-          INSERT INTO conversations (
-            id, user_id, parent_id, type, status, context_json, created_at, updated_at, last_message_at
-          ) VALUES (?, ?, ?, ?, ?, CAST(? AS JSON), ?, ?, ?)
-          ON DUPLICATE KEY UPDATE
-            user_id = VALUES(user_id),
-            parent_id = VALUES(parent_id),
-            type = VALUES(type),
-            status = VALUES(status),
-            context_json = VALUES(context_json),
-            updated_at = VALUES(updated_at),
-            last_message_at = VALUES(last_message_at)
-        `,
-        [
-          record.taskId,
-          userId,
-          record.fatherTaskId || null,
-          record.fatherTaskId ? "sub" : "main",
-          record.conversationStatus,
-          JSON.stringify(context || {}),
-          createdAt,
-          updatedAt,
-          lastUpdateTime ? new Date(lastUpdateTime) : updatedAt,
-        ],
+      logger.error(
+        "[MysqlConversationPersistenceProvider] flush 错误详情:",
+        extractKnownErrorDetails(error),
       );
-
-      await connection.execute(
-        `
-          INSERT INTO conversation_state (
-            conversation_id, initial_system_prompt, tool_names_json, model_config_json, auto_approve_tool_names_json,
-            pending_tool_call_json, subtasks_json, context_usage_json, created_at, updated_at
-          ) VALUES (?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?, ?)
-          ON DUPLICATE KEY UPDATE
-            initial_system_prompt = VALUES(initial_system_prompt),
-            tool_names_json = VALUES(tool_names_json),
-            model_config_json = VALUES(model_config_json),
-            auto_approve_tool_names_json = VALUES(auto_approve_tool_names_json),
-            pending_tool_call_json = VALUES(pending_tool_call_json),
-            subtasks_json = VALUES(subtasks_json),
-            context_usage_json = VALUES(context_usage_json),
-            updated_at = VALUES(updated_at)
-        `,
-        [
-          record.taskId,
-          record.initialSystemPrompt?.trim() || null,
-          JSON.stringify(record.toolNames || []),
-          JSON.stringify(record.modelConfigSnapshot || null),
-          JSON.stringify(record.autoApproveToolNames || []),
-          JSON.stringify(record.pendingToolCall),
-          JSON.stringify(record.subTasks || {}),
-          JSON.stringify(record.contextUsage || null),
-          createdAt,
-          updatedAt,
-        ],
+      logger.error(
+        `[MysqlConversationPersistenceProvider] flush 原始错误对象 (${label}): ${inspectError(error)}`,
       );
-
-      await connection.execute("DELETE FROM conversation_messages WHERE conversation_id = ?", [
-        record.taskId,
-      ]);
-      for (const row of messageRows) {
-        await connection.execute(
-          `
-            INSERT INTO conversation_messages (
-              id, conversation_id, seq, role, message_type, content, attachments_json,
-              partial, source_update_time, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, CAST(? AS JSON), ?, ?, ?)
-          `,
-          [
-            row.id,
-            record.taskId,
-            row.seq,
-            row.role,
-            row.messageType,
-            row.content,
-            row.attachmentsJson,
-            row.partial,
-            row.sourceUpdateTime,
-            row.createdAt,
-          ],
+      if (error instanceof Error && "cause" in error && error.cause !== undefined) {
+        logger.error(
+          `[MysqlConversationPersistenceProvider] flush 原始 cause (${label}): ${inspectError(error.cause)}`,
         );
       }
     });
   }
 
-  private ensureContextUserId(context: unknown): unknown {
-    return context;
-  }
+  private async hydrate(): Promise<void> {
+    await ensureMysqlSchemaUpToDate();
+    const db = getDrizzleDb();
 
-  private hasPersistableUserId(context: unknown): boolean {
-    return (
-      isPlainObject(context) &&
-      typeof context.userId === "string" &&
-      context.userId.trim().length > 0
-    );
-  }
+    const [conversationRows, stateRows, messageRows] = await Promise.all([
+      db.select().from(conversationsTable).orderBy(asc(conversationsTable.createdAt)),
+      db.select().from(conversationStateTable),
+      db
+        .select()
+        .from(conversationMessagesTable)
+        .orderBy(asc(conversationMessagesTable.conversationId), asc(conversationMessagesTable.seq)),
+    ]);
 
-  private async resolveUserId(context: unknown): Promise<string> {
-    if (this.hasPersistableUserId(context)) {
-      return context.userId.trim();
+    const statesByConversationId = new Map(stateRows.map((row) => [row.conversationId, row]));
+    const messagesByConversationId = new Map<string, (typeof messageRows)[number][]>();
+    for (const row of messageRows) {
+      const rows = messagesByConversationId.get(row.conversationId) || [];
+      rows.push(row);
+      messagesByConversationId.set(row.conversationId, rows);
     }
-    throw new Error("Conversation context 缺少 userId，无法持久化到 MySQL。");
+
+    for (const row of conversationRows) {
+      const state = statesByConversationId.get(row.id);
+      const storedMessages = messagesByConversationId.get(row.id) || [];
+      this.cache.set(
+        row.id,
+        buildConversationPersistenceRecord({
+          row,
+          state,
+          storedMessages,
+        }),
+      );
+    }
   }
 }
 

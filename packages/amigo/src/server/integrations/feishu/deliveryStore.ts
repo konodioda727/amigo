@@ -1,8 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import type { RowDataPacket } from "mysql2/promise";
-import { ensureMysqlSchemaUpToDate, isMysqlConfigured, mysqlExecute, mysqlQuery } from "../../db";
+import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/mysql2";
+import {
+  ensureMysqlSchemaUpToDate,
+  formatMysqlDateTime,
+  getDrizzleDb,
+  isMysqlConfigured,
+  mysqlTransaction,
+  outboundDeliveriesTable,
+} from "../../db";
+import * as schema from "../../db/schema";
 
 interface DeliveryRecord {
   deliveredAt: string;
@@ -76,14 +85,18 @@ export class FeishuDeliveryStore {
 
   private async loadFromDatabase(): Promise<void> {
     await ensureMysqlSchemaUpToDate();
-    const rows = await mysqlQuery<RowDataPacket & { dedupe_key: string; delivered_at: string }>(
-      "SELECT dedupe_key, delivered_at FROM outbound_deliveries WHERE provider = 'feishu'",
-    );
+    const rows = await getDrizzleDb()
+      .select({
+        dedupeKey: outboundDeliveriesTable.dedupeKey,
+        deliveredAt: outboundDeliveriesTable.deliveredAt,
+      })
+      .from(outboundDeliveriesTable)
+      .where(eq(outboundDeliveriesTable.provider, "feishu"));
     this.state = Object.fromEntries(
       rows.map((row) => [
-        row.dedupe_key,
+        row.dedupeKey,
         {
-          deliveredAt: row.delivered_at,
+          deliveredAt: row.deliveredAt || new Date(0).toISOString(),
         },
       ]),
     );
@@ -113,18 +126,23 @@ export class FeishuDeliveryStore {
     const state = this.requireState();
     if (isMysqlConfigured()) {
       await ensureMysqlSchemaUpToDate();
-      await mysqlExecute("DELETE FROM outbound_deliveries WHERE provider = 'feishu'", []);
-      for (const [deliveryKey, record] of Object.entries(state)) {
-        await mysqlExecute(
-          `
-            INSERT INTO outbound_deliveries (id, provider, dedupe_key, payload_json, delivered_at)
-            VALUES (?, 'feishu', ?, CAST(? AS JSON), ?)
-            ON DUPLICATE KEY UPDATE
-              delivered_at = VALUES(delivered_at)
-          `,
-          [randomUUID(), deliveryKey, JSON.stringify({ deliveryKey }), record.deliveredAt],
-        );
-      }
+      await mysqlTransaction(async (connection) => {
+        const db = drizzle(connection, { schema, mode: "default" });
+        await db
+          .delete(outboundDeliveriesTable)
+          .where(eq(outboundDeliveriesTable.provider, "feishu"));
+        const rows = Object.entries(state).map(([deliveryKey, record]) => ({
+          id: randomUUID(),
+          provider: "feishu",
+          dedupeKey: deliveryKey,
+          payloadJson: { deliveryKey },
+          deliveredAt: formatMysqlDateTime(new Date(record.deliveredAt)),
+          createdAt: formatMysqlDateTime(),
+        }));
+        if (rows.length > 0) {
+          await db.insert(outboundDeliveriesTable).values(rows);
+        }
+      });
       return;
     }
 

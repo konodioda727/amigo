@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { canSwitchTaskModel, getTaskModelKey } from "../AppMessageComposer";
+import { canSwitchTaskModel, getTaskModelKey, getTaskWorkflowMode } from "../AppMessageComposer";
 
 describe("canSwitchTaskModel", () => {
   test("allows switching before a task exists", () => {
@@ -32,5 +32,41 @@ describe("getTaskModelKey", () => {
   test("returns empty when task model context is incomplete", () => {
     expect(getTaskModelKey({ model: "gpt-5" })).toBe("");
     expect(getTaskModelKey(null)).toBe("");
+  });
+});
+
+describe("model key stability", () => {
+  test("task model keys remain equal across repeated object recreation", () => {
+    const first = getTaskModelKey({ model: "gpt-5", modelConfigId: "openai-main" });
+    const second = getTaskModelKey({ model: "gpt-5", modelConfigId: "openai-main" });
+
+    expect(first).toBe("openai-main::gpt-5");
+    expect(second).toBe(first);
+  });
+});
+
+describe("getTaskWorkflowMode", () => {
+  test("defaults to phased when workflow state is missing", () => {
+    expect(getTaskWorkflowMode(undefined)).toBe("phased");
+    expect(getTaskWorkflowMode(null)).toBe("phased");
+  });
+
+  test("reads fast mode from workflow state", () => {
+    expect(
+      getTaskWorkflowMode({
+        currentPhase: "complete",
+        agentRole: "controller",
+        mode: "fast",
+        visitedPhases: ["complete"],
+        skippedPhases: [],
+        phaseStates: {
+          requirements: { status: "skipped" },
+          design: { status: "skipped" },
+          execution: { status: "skipped" },
+          verification: { status: "skipped" },
+          complete: { status: "completed" },
+        },
+      }),
+    ).toBe("fast");
   });
 });

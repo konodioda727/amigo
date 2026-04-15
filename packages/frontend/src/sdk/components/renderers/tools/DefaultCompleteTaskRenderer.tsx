@@ -1,6 +1,8 @@
+import { AlertCircle } from "lucide-react";
 import type React from "react";
 import { Streamdown } from "streamdown";
 import type { ToolMessageRendererProps } from "../../../types/renderers";
+import { COMPLETE_TASK_PHASE_TITLES } from "../../taskTimeline";
 import { prepareStreamdownContent } from "../streamdownContent";
 import { ToolAccordion } from "./ToolAccordion";
 
@@ -54,6 +56,43 @@ export const CompleteTaskResultBody: React.FC<ToolMessageRendererProps<"complete
   );
 };
 
+const getCompleteTaskTitle = (message: ToolMessageRendererProps<"completeTask">["message"]) => {
+  const phaseTitle = message.workflowPhase
+    ? COMPLETE_TASK_PHASE_TITLES[message.workflowPhase]
+    : null;
+
+  if (message.partial === true) {
+    return phaseTitle ? `正在完成${phaseTitle}` : "正在完成任务";
+  }
+
+  if (message.workflowPhase === "complete") {
+    return "最终交付";
+  }
+
+  return phaseTitle ? `${phaseTitle}已完成` : "完成任务";
+};
+
+export const CompleteTaskTextNode: React.FC<ToolMessageRendererProps<"completeTask">> = ({
+  message,
+}) => {
+  if (message.hasError && message.error) {
+    return (
+      <div className="inline-flex max-w-[85%] items-start gap-2 px-2 py-1 text-sm text-error">
+        <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+        <span>{message.error}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="group -mb-5 max-w-[85%] text-neutral-900">
+      <div className="break-words overflow-hidden px-1">
+        <CompleteTaskResultBody message={message} isLatest={false} />
+      </div>
+    </div>
+  );
+};
+
 export const DefaultCompleteTaskRenderer: React.FC<ToolMessageRendererProps<"completeTask">> = ({
   message,
 }) => {
@@ -62,8 +101,17 @@ export const DefaultCompleteTaskRenderer: React.FC<ToolMessageRendererProps<"com
   const isCompleted = toolOutput !== undefined;
   const isLoading = partial === true;
 
+  if (message.workflowPhase === "complete") {
+    return <CompleteTaskTextNode message={message} isLatest={false} />;
+  }
+
   return (
-    <ToolAccordion title="完成任务" isLoading={isLoading} hasError={hasError} error={error}>
+    <ToolAccordion
+      title={getCompleteTaskTitle(message)}
+      isLoading={isLoading}
+      hasError={hasError}
+      error={error}
+    >
       {(isCompleted || hasPreview) && (
         <div className="text-sm">
           <CompleteTaskResultBody message={message} isLatest={false} />

@@ -2,17 +2,22 @@ import { describe, expect, it, mock } from "bun:test";
 import type { ToolExecutionContext } from "@amigo-llm/types";
 import { Bash } from "../bash";
 
-const buildToolContext = (rawOutput: string): ToolExecutionContext =>
+const buildToolContext = (
+  rawOutput: string,
+  overrides?: Partial<ToolExecutionContext>,
+): ToolExecutionContext =>
   ({
     taskId: "task-1",
     parentId: undefined,
     signal: undefined,
     postMessage: undefined,
+    agentRole: undefined,
     getToolByName: () => undefined,
     getSandbox: async () => ({
       isRunning: () => true,
       runCommand: mock(async () => rawOutput),
     }),
+    ...overrides,
   }) as ToolExecutionContext;
 
 describe("Bash", () => {
@@ -60,5 +65,18 @@ describe("Bash", () => {
       exitCode: 2,
       message: "命令已执行（退出码: 2）",
     });
+  });
+
+  it("blocks all roles from using bash as a file editor", async () => {
+    const result = await Bash.invoke({
+      params: {
+        command: "apply_patch <<'PATCH'\n*** Begin Patch\n*** End Patch\nPATCH",
+      },
+      context: buildToolContext(""),
+    });
+
+    expect(result.transport.result.success).toBe(false);
+    expect(result.transport.message).toContain("不要使用 bash 编辑文件");
+    expect(result.continuation.summary).toContain("不要使用 bash 编辑文件");
   });
 });

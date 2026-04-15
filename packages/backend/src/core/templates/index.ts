@@ -6,12 +6,16 @@
 // 导出 checklist 解析器
 export * from "./checklistParser";
 
-import { parseDependenciesFromDescription } from "./checklistParser";
+import {
+  parseDependenciesFromDescription,
+  parseDesignSectionRefsFromDescription,
+  parseFileRefsFromDescription,
+} from "./checklistParser";
 
 /**
  * 文档模板类型
  */
-export type DocumentPhase = "requirements" | "design" | "taskList";
+export type DocumentPhase = "requirements" | "design" | "execution" | "verification";
 
 /**
  * 需求文档模板参数
@@ -33,7 +37,7 @@ export interface DesignTemplateParams {
   solutionApproach?: string;
   technicalDecisions?: string;
   implementationStrategy?: string;
-  subTaskCollaboration?: string;
+  executionTaskCollaboration?: string;
 }
 
 /**
@@ -44,6 +48,8 @@ export interface TaskItem {
   description: string;
   completed: boolean;
   dependencies?: string[];
+  designSections?: string[];
+  files?: string[];
   parallel?: string[];
 }
 
@@ -74,10 +80,49 @@ export const REQUIRED_SECTIONS = {
     "Solution Approach",
     "Technical Decisions",
     "Implementation Strategy",
-    "SubTask Collaboration Contract",
+    "ExecutionTask Collaboration Contract",
   ],
-  taskList: ["Tasks"],
+  execution: ["Tasks"],
+  verification: [],
 } as const;
+
+export function generateFindingsTemplate(params: { taskName: string }): string {
+  return `# Findings: ${params.taskName}
+
+## Confirmed Facts
+- F1. {已确认事实 1}
+  - Source: {readFile/listFiles/browserSearch/...}
+  - Why it matters: {为什么影响后续判断}
+
+## Open Questions
+- Q1. {待确认问题 1}
+  - Needs user input: {yes/no}
+
+## Hypotheses
+- H1. {当前假设}
+  - Confidence: {low/medium/high}
+  - Evidence: {F1, F2}
+
+## Decision Impact
+- 当前信息是否足以支撑 design: {yes/no}
+- 若否，缺少什么: {缺失信息}
+`;
+}
+
+export function generateExecutionTemplate(params: TaskListTemplateParams): string {
+  return generateTaskListTemplate(params).replace(/^# Task List:/, "# Execution:");
+}
+
+export function generateVerificationTemplate(params: { taskName: string }): string {
+  return `# Verification: ${params.taskName}
+
+## Summary
+{最终结论}
+
+## Notes
+- {发现 1}
+`;
+}
 
 /**
  * 生成需求文档模板
@@ -125,11 +170,11 @@ export function generateDesignTemplate(params: DesignTemplateParams): string {
     solutionApproach = "{解决方案概述}",
     technicalDecisions = "{技术决策及理由}",
     implementationStrategy = "{实现策略}",
-    subTaskCollaboration = `### Ownership
-- 主任务负责定义并维护 subTask 协作规范，subTask 不得自行改写。
+    executionTaskCollaboration = `### Ownership
+- controller 负责定义并维护 executionTask 协作规范，executionTask 不得自行改写。
 
 ### Process Docs
-- 文档位置：{例如 taskDocs/process/}
+- 文档位置：{例如 tasks/process/}
 - 文档清单：{例如 handoff.md, decisions.md, progress.md}
 
 ### Naming Convention
@@ -137,14 +182,14 @@ export function generateDesignTemplate(params: DesignTemplateParams): string {
 - 任务条目命名：{例如 "Task X.Y: 动作 + 对象 + 输出"}
 
 ### Collaboration Protocol
-- 输入格式：{subTask 接收的信息结构}
-- 输出格式：{subTask 完成结果结构}
+- 输入格式：{executionTask 接收的信息结构}
+- 输出格式：{executionTask 完成结果结构}
 - 状态同步：{更新频率、更新位置、冲突处理}
 
 ### Handoff Rules
 - 完成定义：{何时视为完成}
 - 交付清单：{必须提交的文档/产物}
-- 异常升级：{无法继续时如何上报主任务}`,
+- 异常升级：{无法继续时如何上报 controller}`,
   } = params;
 
   return `# Design: ${taskName}
@@ -161,8 +206,8 @@ ${technicalDecisions}
 ## Implementation Strategy
 ${implementationStrategy}
 
-## SubTask Collaboration Contract
-${subTaskCollaboration}
+## ExecutionTask Collaboration Contract
+${executionTaskCollaboration}
 `;
 }
 
@@ -181,6 +226,23 @@ function formatTaskItem(task: TaskItem): string {
     line += ` (parallel with ${task.parallel.join(", ")})`;
   }
 
+  if (task.designSections && task.designSections.length > 0) {
+    const refs = task.designSections
+      .map((value) => value.replace(/^#+\s*/, "").trim())
+      .filter(Boolean)
+      .map((value) => `#${value}`);
+    if (refs.length > 0) {
+      line += ` [designSections: ${refs.join(", ")}]`;
+    }
+  }
+
+  if (task.files && task.files.length > 0) {
+    const fileRefs = task.files.map((value) => value.trim()).filter(Boolean);
+    if (fileRefs.length > 0) {
+      line += ` [files: ${fileRefs.join(", ")}]`;
+    }
+  }
+
   return line;
 }
 
@@ -197,8 +259,8 @@ export function generateTaskListTemplate(params: TaskListTemplateParams): string
       {
         name: "{阶段名称}",
         tasks: [
-          { id: "1.1", description: "{描述}", completed: false },
-          { id: "1.2", description: "{描述}", completed: false },
+          { id: "T1", description: "{描述}", completed: false },
+          { id: "T2", description: "{描述}", completed: false },
         ],
       },
     ],
@@ -256,8 +318,10 @@ export function generateTemplate(phase: DocumentPhase, taskName: string): string
       return generateRequirementsTemplate({ taskName });
     case "design":
       return generateDesignTemplate({ taskName });
-    case "taskList":
-      return generateTaskListTemplate({ taskName });
+    case "execution":
+      return generateExecutionTemplate({ taskName });
+    case "verification":
+      return generateVerificationTemplate({ taskName });
     default:
       throw new Error(`Unknown document phase: ${phase}`);
   }
@@ -304,15 +368,26 @@ function escapeRegExp(str: string): string {
  * @param content 文档内容
  * @returns 解析出的任务项数组
  */
-export function parseTaskListItems(
-  content: string,
-): { id: string; description: string; completed: boolean; dependencies: string[] }[] {
-  const tasks: { id: string; description: string; completed: boolean; dependencies: string[] }[] =
-    [];
+export function parseTaskListItems(content: string): {
+  id: string;
+  description: string;
+  completed: boolean;
+  dependencies: string[];
+  designSections: string[];
+  files: string[];
+}[] {
+  const tasks: {
+    id: string;
+    description: string;
+    completed: boolean;
+    dependencies: string[];
+    designSections: string[];
+    files: string[];
+  }[] = [];
 
-  // 匹配 checklist 格式: - [ ] Task X.Y: description 或 - [x] Task X.Y: description
+  // 匹配 checklist 格式: - [ ] Task <ID>: description 或 - [x] Task <ID>: description
   // 同时也捕获末尾的 [deps: ...]
-  const taskPattern = /^-\s+\[([ xX])\]\s+Task\s+([\d.]+):\s*(.+?)$/gm;
+  const taskPattern = /^-\s+\[([ xX])\]\s+Task\s+([A-Za-z0-9][A-Za-z0-9._-]*):\s*(.+?)$/gm;
 
   let match: RegExpExecArray | null = taskPattern.exec(content);
   while (match !== null) {
@@ -322,14 +397,22 @@ export function parseTaskListItems(
 
     if (id && rawDescription && checkmark) {
       const dependencies = parseDependenciesFromDescription(rawDescription);
+      const designSections = parseDesignSectionRefsFromDescription(rawDescription);
+      const files = parseFileRefsFromDescription(rawDescription);
       // 清理描述，去掉依赖部分
-      const description = rawDescription.replace(/\[deps:\s*[^\]]+\]/i, "").trim();
+      const description = rawDescription
+        .replace(/\[deps:\s*[^\]]+\]/i, "")
+        .replace(/\[designSections?:\s*[^\]]+\]/i, "")
+        .replace(/\[files:\s*[^\]]+\]/i, "")
+        .trim();
 
       tasks.push({
         id,
         description,
         completed: checkmark.toLowerCase() === "x",
         dependencies,
+        designSections,
+        files,
       });
     }
     match = taskPattern.exec(content);

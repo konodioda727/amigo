@@ -2,6 +2,22 @@ import type React from "react";
 import type { ToolMessageRendererProps } from "../../../types/renderers";
 import { ToolAccordion } from "./ToolAccordion";
 
+type EditFileParamOperation = {
+  filePath?: string;
+  oldString?: string;
+  newString?: string;
+};
+
+type EditFileResultOperation = {
+  filePath?: string;
+  message?: string;
+  linesWritten?: number;
+  diagnostics?: {
+    summary?: string;
+    errorCount?: number;
+  };
+};
+
 const getDiffSections = (beforeText: string, afterText: string) => {
   const beforeLines = beforeText.split("\n");
   const afterLines = afterText.split("\n");
@@ -68,28 +84,20 @@ const getPreviewContent = (message: ToolMessageRendererProps<"editFile">["messag
     };
   }
 
-  if (typeof message.params.content === "string") {
-    if (typeof message.params.expectedOriginalContent === "string") {
-      return {
-        beforeText: message.params.expectedOriginalContent,
-        afterText: message.params.content,
-        source: "params" as const,
-      };
-    }
-
-    return {
-      beforeText: "",
-      afterText: message.params.content,
-      source: "params" as const,
-    };
-  }
-
   if (
     typeof message.params.oldString === "string" &&
     typeof message.params.newString === "string"
   ) {
     return {
       beforeText: message.params.oldString,
+      afterText: message.params.newString,
+      source: "params" as const,
+    };
+  }
+
+  if (typeof message.params.newString === "string") {
+    return {
+      beforeText: "",
       afterText: message.params.newString,
       source: "params" as const,
     };
@@ -102,9 +110,86 @@ const getPreviewContent = (message: ToolMessageRendererProps<"editFile">["messag
   };
 };
 
+const getBatchParamOperations = (
+  message: ToolMessageRendererProps<"editFile">["message"],
+): EditFileParamOperation[] =>
+  Array.isArray(message.params.edits)
+    ? message.params.edits.filter((edit) => !!edit && typeof edit === "object")
+    : [];
+
+const getBatchResultOperations = (
+  message: ToolMessageRendererProps<"editFile">["message"],
+): EditFileResultOperation[] => {
+  const output = message.toolOutput;
+  if (!output || !Array.isArray(output.edits)) {
+    return [];
+  }
+
+  return output.edits.filter((edit) => !!edit && typeof edit === "object");
+};
+
+const BatchEditResultBody: React.FC<ToolMessageRendererProps<"editFile">> = ({ message }) => {
+  const resultEdits = getBatchResultOperations(message);
+  const paramEdits = getBatchParamOperations(message);
+  const items = resultEdits.length > 0 ? resultEdits : paramEdits;
+  const seenItemKeys = new Map<string, number>();
+
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="text-sm text-neutral-600">本次批量编辑涉及 {items.length} 个文件。</div>
+      <div className="overflow-hidden rounded-lg border border-neutral-200">
+        {items.map((edit, index) => {
+          const filePath =
+            typeof edit.filePath === "string" && edit.filePath.trim().length > 0
+              ? edit.filePath
+              : `文件 ${index + 1}`;
+          const messageText =
+            "message" in edit && typeof edit.message === "string" && edit.message.trim().length > 0
+              ? edit.message
+              : "已提交编辑";
+          const diagnosticsSummary =
+            "diagnostics" in edit &&
+            edit.diagnostics &&
+            typeof edit.diagnostics.summary === "string" &&
+            edit.diagnostics.summary.trim().length > 0
+              ? edit.diagnostics.summary
+              : "";
+          const itemKeyBase = [filePath, messageText, diagnosticsSummary].join("::");
+          const duplicateCount = seenItemKeys.get(itemKeyBase) ?? 0;
+          seenItemKeys.set(itemKeyBase, duplicateCount + 1);
+          const itemKey =
+            duplicateCount === 0 ? itemKeyBase : `${itemKeyBase}::duplicate-${duplicateCount}`;
+
+          return (
+            <div key={itemKey} className="border-b border-neutral-200 px-3 py-2 last:border-b-0">
+              <div className="font-mono text-xs text-neutral-800 break-all">{filePath}</div>
+              <div className="mt-1 text-sm text-neutral-600 break-words">{messageText}</div>
+              {diagnosticsSummary ? (
+                <div className="mt-1 text-xs text-neutral-500 break-words">
+                  {diagnosticsSummary}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 export const EditFileResultBody: React.FC<ToolMessageRendererProps<"editFile">> = ({ message }) => {
   const { beforeText, afterText, source } = getPreviewContent(message);
   const hasDiff = beforeText !== afterText;
+  const batchParamEdits = getBatchParamOperations(message);
+  const batchResultEdits = getBatchResultOperations(message);
+
+  if (source === "none" && (batchParamEdits.length > 0 || batchResultEdits.length > 0)) {
+    return <BatchEditResultBody message={message} isLatest={false} />;
+  }
 
   if (source === "none") {
     return null;
@@ -139,17 +224,21 @@ export const DefaultEditFileRenderer: React.FC<ToolMessageRendererProps<"editFil
 }) => {
   const { params, toolOutput, error, hasError, partial } = message;
   const hasPreview = getPreviewContent(message).source !== "none";
+  const batchEditCount = Array.isArray(params.edits) ? params.edits.length : 0;
   const isCompleted = toolOutput !== undefined;
   const isLoading = partial === true;
+  const title =
+    typeof params.filePath === "string" && params.filePath.trim().length > 0
+      ? `编辑文件: ${params.filePath}`
+      : batchEditCount > 0
+        ? `批量编辑文件: ${batchEditCount} 项`
+        : "编辑文件";
 
   return (
-    <ToolAccordion
-      title={`编辑文件: ${params.filePath}`}
-      isLoading={isLoading}
-      hasError={hasError}
-      error={error}
-    >
-      {(isCompleted || hasPreview) && <EditFileResultBody message={message} isLatest={false} />}
+    <ToolAccordion title={title} isLoading={isLoading} hasError={hasError} error={error}>
+      {(isCompleted || hasPreview || batchEditCount > 0) && (
+        <EditFileResultBody message={message} isLatest={false} />
+      )}
     </ToolAccordion>
   );
 };

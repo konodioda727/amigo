@@ -1,15 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { RowDataPacket } from "mysql2/promise";
+import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import {
+  automationRunsTable,
+  automationsTable,
   ensureMysqlSchemaUpToDate,
   formatMysqlDateTime,
+  getDrizzleDb,
   isMysqlConfigured,
   listNotificationChannels,
-  mysqlExecute,
-  mysqlQuery,
   parseJsonColumn,
 } from "../db";
 
@@ -138,22 +139,7 @@ const isNotificationAutomation = (input: { prompt: string; context?: unknown }) 
   return isPlainObject(input.context) && input.context.trigger === "automation_notification";
 };
 
-type AutomationRow = RowDataPacket & {
-  id: string;
-  user_id: string;
-  name: string;
-  prompt: string;
-  skill_ids_json: unknown;
-  context_json: unknown;
-  schedule_type: string;
-  schedule_json: unknown;
-  enabled: number | boolean;
-  next_run_at: string | null;
-  last_run_at: string | null;
-  last_error: string | null;
-  created_at: string;
-  updated_at: string;
-};
+type AutomationRow = typeof automationsTable.$inferSelect;
 
 const parseDateTime = (value: unknown): string | undefined => {
   if (value === null || value === undefined) {
@@ -180,16 +166,16 @@ const toMysqlDateTimeOrNull = (value: Date | string | null | undefined): string 
 
 const mapAutomationRow = (row: AutomationRow): AutomationDefinition => {
   const schedule = AutomationScheduleSchema.parse(
-    parseJsonColumn<AutomationSchedule>(row.schedule_json, {
+    parseJsonColumn<AutomationSchedule>(row.scheduleJson, {
       type: "interval",
       everyMinutes: 1,
     }),
   );
   const enabled = row.enabled === true || row.enabled === 1 || String(row.enabled) === "1";
   const skillIds = normalizeStringArray(
-    parseJsonColumn<string[]>(row.skill_ids_json, []).map((value) => String(value)),
+    parseJsonColumn<string[]>(row.skillIdsJson, []).map((value) => String(value)),
   );
-  const context = parseJsonColumn<Record<string, unknown> | null>(row.context_json, null);
+  const context = parseJsonColumn<Record<string, unknown> | null>(row.contextJson, null);
 
   return AutomationDefinitionSchema.parse({
     id: row.id,
@@ -199,11 +185,11 @@ const mapAutomationRow = (row: AutomationRow): AutomationDefinition => {
     ...(context ? { context } : {}),
     schedule,
     enabled,
-    ...(parseDateTime(row.last_run_at) ? { lastRunAt: parseDateTime(row.last_run_at) } : {}),
-    ...(parseDateTime(row.next_run_at) ? { nextRunAt: parseDateTime(row.next_run_at) } : {}),
-    ...(row.last_error?.trim() ? { lastError: row.last_error.trim() } : {}),
-    createdAt: parseDateTime(row.created_at) || new Date(0).toISOString(),
-    updatedAt: parseDateTime(row.updated_at) || new Date(0).toISOString(),
+    ...(parseDateTime(row.lastRunAt) ? { lastRunAt: parseDateTime(row.lastRunAt) } : {}),
+    ...(parseDateTime(row.nextRunAt) ? { nextRunAt: parseDateTime(row.nextRunAt) } : {}),
+    ...(row.lastError?.trim() ? { lastError: row.lastError.trim() } : {}),
+    createdAt: parseDateTime(row.createdAt) || new Date(0).toISOString(),
+    updatedAt: parseDateTime(row.updatedAt) || new Date(0).toISOString(),
   });
 };
 
@@ -228,12 +214,7 @@ export class AutomationStore {
   async list(userId?: string): Promise<AutomationDefinition[]> {
     if (isMysqlConfigured()) {
       await this.init();
-      const rows = userId?.trim()
-        ? await mysqlQuery<AutomationRow>(
-            "SELECT * FROM automations WHERE user_id = ? ORDER BY name ASC",
-            [userId.trim()],
-          )
-        : await mysqlQuery<AutomationRow>("SELECT * FROM automations ORDER BY name ASC");
+      const rows = await this.listAutomationRows(userId);
       return rows.map(mapAutomationRow);
     }
 
@@ -250,15 +231,7 @@ export class AutomationStore {
   async get(id: string, userId?: string): Promise<AutomationDefinition | null> {
     if (isMysqlConfigured()) {
       await this.init();
-      const rows = userId?.trim()
-        ? await mysqlQuery<AutomationRow>(
-            "SELECT * FROM automations WHERE id = ? AND user_id = ? LIMIT 1",
-            [id.trim(), userId.trim()],
-          )
-        : await mysqlQuery<AutomationRow>("SELECT * FROM automations WHERE id = ? LIMIT 1", [
-            id.trim(),
-          ]);
-      const row = rows[0];
+      const row = await this.readAutomationRow(id, userId);
       return row ? mapAutomationRow(row) : null;
     }
 
@@ -277,9 +250,9 @@ export class AutomationStore {
       const now = new Date();
       const nowIso = now.toISOString();
       const normalizedId = (input.id?.trim() || slugify(input.name)).trim();
-      const existing = await this.get(normalizedId, userId);
-      const enabled = input.enabled ?? true;
       const resolvedUserId = this.resolveAutomationUserId(input.context, userId);
+      const existing = await this.get(normalizedId, resolvedUserId);
+      const enabled = input.enabled ?? true;
       await this.assertNotificationChannelsConfigured(resolvedUserId, input);
       const context =
         input.context && isPlainObject(input.context)
@@ -290,13 +263,13 @@ export class AutomationStore {
 
       const payload = {
         id: normalizedId,
-        userId,
+        userId: resolvedUserId,
         name: input.name.trim(),
         prompt: input.prompt.trim(),
-        skillIdsJson: skillIds ? JSON.stringify(skillIds) : null,
-        contextJson: JSON.stringify(context),
+        skillIdsJson: skillIds || [],
+        contextJson: context,
         scheduleType: input.schedule.type,
-        scheduleJson: JSON.stringify(input.schedule),
+        scheduleJson: input.schedule,
         enabled: enabled ? 1 : 0,
         nextRunAt,
         lastRunAt: existing?.lastRunAt || null,
@@ -305,47 +278,41 @@ export class AutomationStore {
         updatedAt: now,
       };
 
-      await mysqlExecute(
-        `
-          INSERT INTO automations (
-            id, user_id, name, prompt, skill_ids_json, context_json, schedule_type, schedule_json,
-            enabled, next_run_at, last_run_at, last_error, created_at, updated_at
-          ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?, ?
-          )
-          ON DUPLICATE KEY UPDATE
-            user_id = VALUES(user_id),
-            name = VALUES(name),
-            prompt = VALUES(prompt),
-            skill_ids_json = VALUES(skill_ids_json),
-            context_json = VALUES(context_json),
-            schedule_type = VALUES(schedule_type),
-            schedule_json = VALUES(schedule_json),
-            enabled = VALUES(enabled),
-            next_run_at = VALUES(next_run_at),
-            last_run_at = VALUES(last_run_at),
-            last_error = VALUES(last_error),
-            created_at = VALUES(created_at),
-            updated_at = VALUES(updated_at)
-        `,
-        [
-          payload.id,
-          resolvedUserId,
-          payload.name,
-          payload.prompt,
-          payload.skillIdsJson || "[]",
-          payload.contextJson,
-          payload.scheduleType,
-          payload.scheduleJson,
-          payload.enabled,
-          toMysqlDateTimeOrNull(payload.nextRunAt),
-          toMysqlDateTimeOrNull(payload.lastRunAt),
-          payload.lastError,
-          toMysqlDateTime(payload.createdAt),
-          toMysqlDateTime(payload.updatedAt),
-        ],
-      );
+      await getDrizzleDb()
+        .insert(automationsTable)
+        .values({
+          id: payload.id,
+          userId: payload.userId,
+          name: payload.name,
+          prompt: payload.prompt,
+          skillIdsJson: payload.skillIdsJson,
+          contextJson: payload.contextJson,
+          scheduleType: payload.scheduleType,
+          scheduleJson: payload.scheduleJson,
+          enabled: payload.enabled,
+          nextRunAt: toMysqlDateTimeOrNull(payload.nextRunAt),
+          lastRunAt: toMysqlDateTimeOrNull(payload.lastRunAt),
+          lastError: payload.lastError,
+          createdAt: toMysqlDateTime(payload.createdAt),
+          updatedAt: toMysqlDateTime(payload.updatedAt),
+        })
+        .onDuplicateKeyUpdate({
+          set: {
+            userId: payload.userId,
+            name: payload.name,
+            prompt: payload.prompt,
+            skillIdsJson: payload.skillIdsJson,
+            contextJson: payload.contextJson,
+            scheduleType: payload.scheduleType,
+            scheduleJson: payload.scheduleJson,
+            enabled: payload.enabled,
+            nextRunAt: toMysqlDateTimeOrNull(payload.nextRunAt),
+            lastRunAt: toMysqlDateTimeOrNull(payload.lastRunAt),
+            lastError: payload.lastError,
+            createdAt: toMysqlDateTime(payload.createdAt),
+            updatedAt: toMysqlDateTime(payload.updatedAt),
+          },
+        });
 
       const saved = await this.get(normalizedId, resolvedUserId);
       if (!saved) {
@@ -389,13 +356,18 @@ export class AutomationStore {
   async remove(id: string, userId?: string): Promise<boolean> {
     if (isMysqlConfigured()) {
       await this.init();
-      const result = userId?.trim()
-        ? await mysqlExecute("DELETE FROM automations WHERE id = ? AND user_id = ?", [
-            id.trim(),
-            userId.trim(),
-          ])
-        : await mysqlExecute("DELETE FROM automations WHERE id = ?", [id.trim()]);
-      return result.affectedRows > 0;
+      const existing = await this.get(id.trim(), userId);
+      if (!existing) {
+        return false;
+      }
+      await getDrizzleDb()
+        .delete(automationsTable)
+        .where(
+          userId?.trim()
+            ? and(eq(automationsTable.id, id.trim()), eq(automationsTable.userId, userId.trim()))
+            : eq(automationsTable.id, id.trim()),
+        );
+      return true;
     }
 
     try {
@@ -418,53 +390,41 @@ export class AutomationStore {
       }
 
       const runAt = result.runAt || new Date();
-      const shouldRemainEnabled =
-        automation.enabled && automation.schedule.type !== "once";
-      await mysqlExecute(
-        `
-          UPDATE automations
-          SET enabled = ?,
-              next_run_at = ?,
-              last_run_at = ?,
-              last_error = ?,
-              updated_at = ?
-          WHERE id = ?
-        `,
-        [
-          shouldRemainEnabled ? 1 : 0,
-          shouldRemainEnabled
+      const shouldRemainEnabled = automation.enabled && automation.schedule.type !== "once";
+      await getDrizzleDb()
+        .update(automationsTable)
+        .set({
+          enabled: shouldRemainEnabled ? 1 : 0,
+          nextRunAt: shouldRemainEnabled
             ? toMysqlDateTime(computeNextRunAt(automation.schedule, runAt))
             : null,
-          toMysqlDateTime(runAt),
-          result.error?.trim() || null,
-          formatMysqlDateTime(),
-          id.trim(),
-        ],
-      );
+          lastRunAt: toMysqlDateTime(runAt),
+          lastError: result.error?.trim() || null,
+          updatedAt: formatMysqlDateTime(),
+        })
+        .where(eq(automationsTable.id, id.trim()));
 
       const runId = result.runId?.trim() || randomUUID();
-      await mysqlExecute(
-        `
-          INSERT INTO automation_runs (
-            id, automation_id, conversation_id, status, triggered_at, started_at, finished_at, error
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          ON DUPLICATE KEY UPDATE
-            conversation_id = VALUES(conversation_id),
-            status = VALUES(status),
-            finished_at = VALUES(finished_at),
-            error = VALUES(error)
-        `,
-        [
-          runId,
-          id.trim(),
-          result.conversationId || null,
-          result.error?.trim() ? "failed" : "completed",
-          toMysqlDateTime(runAt),
-          toMysqlDateTime(runAt),
-          toMysqlDateTime(runAt),
-          result.error?.trim() || null,
-        ],
-      );
+      await getDrizzleDb()
+        .insert(automationRunsTable)
+        .values({
+          id: runId,
+          automationId: id.trim(),
+          conversationId: result.conversationId || null,
+          status: result.error?.trim() ? "failed" : "completed",
+          triggeredAt: toMysqlDateTime(runAt),
+          startedAt: toMysqlDateTime(runAt),
+          finishedAt: toMysqlDateTime(runAt),
+          error: result.error?.trim() || null,
+        })
+        .onDuplicateKeyUpdate({
+          set: {
+            conversationId: result.conversationId || null,
+            status: result.error?.trim() ? "failed" : "completed",
+            finishedAt: toMysqlDateTime(runAt),
+            error: result.error?.trim() || null,
+          },
+        });
 
       return this.get(id);
     }
@@ -475,8 +435,7 @@ export class AutomationStore {
     }
 
     const runAt = result.runAt || new Date();
-    const shouldRemainEnabled =
-      automation.enabled && automation.schedule.type !== "once";
+    const shouldRemainEnabled = automation.enabled && automation.schedule.type !== "once";
     const nextAutomation: AutomationDefinition = {
       ...automation,
       lastRunAt: runAt.toISOString(),
@@ -523,14 +482,18 @@ export class AutomationStore {
     await this.init();
     const runId = randomUUID();
     const now = new Date();
-    await mysqlExecute(
-      `
-        INSERT INTO automation_runs (
-          id, automation_id, status, triggered_at, started_at
-        ) VALUES (?, ?, 'running', ?, ?)
-      `,
-      [runId, id.trim(), toMysqlDateTime(now), toMysqlDateTime(now)],
-    );
+    await getDrizzleDb()
+      .insert(automationRunsTable)
+      .values({
+        id: runId,
+        automationId: id.trim(),
+        status: "running",
+        triggeredAt: toMysqlDateTime(now),
+        startedAt: toMysqlDateTime(now),
+        conversationId: null,
+        finishedAt: null,
+        error: null,
+      });
     return runId;
   }
 
@@ -561,6 +524,31 @@ export class AutomationStore {
 
   private getFilePath(id: string): string {
     return path.join(this.automationsDir, `${id.trim()}.json`);
+  }
+
+  private async listAutomationRows(userId?: string): Promise<AutomationRow[]> {
+    const db = getDrizzleDb();
+    return userId?.trim()
+      ? db
+          .select()
+          .from(automationsTable)
+          .where(eq(automationsTable.userId, userId.trim()))
+          .orderBy(asc(automationsTable.name))
+      : db.select().from(automationsTable).orderBy(asc(automationsTable.name));
+  }
+
+  private async readAutomationRow(id: string, userId?: string): Promise<AutomationRow | null> {
+    const db = getDrizzleDb();
+    const rows = await db
+      .select()
+      .from(automationsTable)
+      .where(
+        userId?.trim()
+          ? and(eq(automationsTable.id, id.trim()), eq(automationsTable.userId, userId.trim()))
+          : eq(automationsTable.id, id.trim()),
+      )
+      .limit(1);
+    return rows[0] || null;
   }
 
   private async readFromFile(filePath: string): Promise<AutomationDefinition> {

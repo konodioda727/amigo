@@ -6,16 +6,12 @@ import { DefaultBrowserSearchRenderer } from "./tools/DefaultBrowserSearchRender
 import { DefaultCompleteTaskRenderer } from "./tools/DefaultCompleteTaskRenderer";
 import { DefaultCreateDesignDocRenderer } from "./tools/DefaultCreateDesignDocRenderer";
 import { DefaultEditFileRenderer } from "./tools/DefaultEditFileRenderer";
-import { DefaultExecuteTaskListRenderer } from "./tools/DefaultExecuteTaskListRenderer";
 import { DefaultListDesignDocsRenderer } from "./tools/DefaultListDesignDocsRenderer";
 import { DefaultListFilesRenderer } from "./tools/DefaultListFilesRenderer";
 import { DefaultReadDesignDocRenderer } from "./tools/DefaultReadDesignDocRenderer";
 import { DefaultReadFileRenderer } from "./tools/DefaultReadFileRenderer";
 import { DefaultReadRulesRenderer } from "./tools/DefaultReadRulesRenderer";
 import { DefaultReadSkillBundleRenderer } from "./tools/DefaultReadSkillBundleRenderer";
-import { DefaultReadTaskDocsRenderer } from "./tools/DefaultReadTaskDocsRenderer";
-import { DefaultRunChecksRenderer } from "./tools/DefaultRunChecksRenderer";
-import { DefaultUpdateTaskDocsRenderer } from "./tools/DefaultUpdateTaskDocsRenderer";
 import { DefaultUpsertAutomationRenderer } from "./tools/DefaultUpsertAutomationRenderer";
 import { ToolAccordion } from "./tools/ToolAccordion";
 
@@ -31,13 +27,6 @@ const toolRendererMap: {
   listFiles: DefaultListFilesRenderer as React.FC<ToolMessageRendererProps<"listFiles">>,
   readFile: DefaultReadFileRenderer as React.FC<ToolMessageRendererProps<"readFile">>,
   readRules: DefaultReadRulesRenderer as React.FC<ToolMessageRendererProps<"readRules">>,
-  updateTaskDocs: DefaultUpdateTaskDocsRenderer as React.FC<
-    ToolMessageRendererProps<"updateTaskDocs">
-  >,
-  readTaskDocs: DefaultReadTaskDocsRenderer as React.FC<ToolMessageRendererProps<"readTaskDocs">>,
-  executeTaskList: DefaultExecuteTaskListRenderer as React.FC<
-    ToolMessageRendererProps<"executeTaskList">
-  >,
   completeTask: DefaultCompleteTaskRenderer as React.FC<ToolMessageRendererProps<"completeTask">>,
 };
 
@@ -107,14 +96,6 @@ export const DefaultToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
     return (
       <DefaultReadSkillBundleRenderer
         {...(props as unknown as React.ComponentProps<typeof DefaultReadSkillBundleRenderer>)}
-      />
-    );
-  }
-
-  if (String(message.toolName) === "runChecks") {
-    return (
-      <DefaultRunChecksRenderer
-        {...(props as unknown as React.ComponentProps<typeof DefaultRunChecksRenderer>)}
       />
     );
   }

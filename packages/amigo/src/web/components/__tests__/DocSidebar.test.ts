@@ -15,7 +15,7 @@ describe("getTaskListStatusMap", () => {
       "1.1": {
         description: "Task 1.1: generate module draft",
         status: "running",
-        subTaskId: "sub-task-1",
+        executionTaskId: "sub-task-1",
       },
     } as any;
 

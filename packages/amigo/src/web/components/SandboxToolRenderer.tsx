@@ -1,6 +1,5 @@
 import {
   DefaultListFilesRenderer,
-  DefaultRunChecksRenderer,
   DefaultToolRenderer,
   EditFileResultBody,
   ReadFileResultBody,
@@ -23,14 +22,6 @@ import { LayoutOptionsToolRenderer } from "./toolRenderers/LayoutOptionsToolRend
 import { ModuleDraftToolRenderer } from "./toolRenderers/ModuleDraftToolRenderer";
 import { ThemeOptionsToolRenderer } from "./toolRenderers/ThemeOptionsToolRenderer";
 
-const dependencyStatusLabelMap: Record<string, string> = {
-  pending: "等待安装",
-  running: "安装中",
-  success: "已安装",
-  failed: "安装失败",
-  not_required: "无需安装",
-};
-
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
   value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -44,13 +35,7 @@ const readStringArray = (value: unknown): string[] => {
   return value.filter((item): item is string => typeof item === "string");
 };
 
-const statusFirstToolNames = new Set([
-  "installDependencies",
-  "listFiles",
-  "runChecks",
-  "runTest",
-  "updateDevServer",
-]);
+const statusFirstToolNames = new Set(["listFiles", "runTest", "updateDevServer"]);
 
 const readBusinessToolError = (toolName: string, toolOutput: unknown): string | undefined => {
   const output = asRecord(toolOutput);
@@ -160,15 +145,41 @@ export const SandboxToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
   if (toolName === "editFile") {
     const params = (message.params ?? {}) as Record<string, unknown>;
     const filePath = typeof params.filePath === "string" ? params.filePath : "";
-    const hasEditPreview = typeof params.content === "string" || typeof params.replace === "string";
+    const batchEdits = Array.isArray(params.edits)
+      ? params.edits.filter(
+          (edit): edit is { filePath?: string; oldString?: string; newString?: string } =>
+            !!edit && typeof edit === "object",
+        )
+      : [];
+    const singleBatchFilePath =
+      !filePath &&
+      batchEdits.length === 1 &&
+      typeof batchEdits[0]?.filePath === "string" &&
+      batchEdits[0].filePath.trim().length > 0
+        ? batchEdits[0].filePath
+        : "";
+    const resolvedFilePath = filePath || singleBatchFilePath;
+    const hasEditPreview =
+      (typeof params.oldString === "string" && typeof params.newString === "string") ||
+      typeof params.newString === "string" ||
+      batchEdits.length > 0;
     const action =
-      !message.partial && filePath ? (
-        <OpenEditorIconLink editorUrl={editorUrl} openFileUrl={openFileUrl} filePath={filePath} />
+      !message.partial && resolvedFilePath ? (
+        <OpenEditorIconLink
+          editorUrl={editorUrl}
+          openFileUrl={openFileUrl}
+          filePath={resolvedFilePath}
+        />
       ) : undefined;
+    const title = filePath
+      ? `编辑文件: ${filePath}`
+      : batchEdits.length > 0
+        ? `批量编辑文件: ${batchEdits.length} 项`
+        : "编辑文件";
 
     return (
       <ToolAccordion
-        title={`编辑文件: ${filePath}`}
+        title={title}
         action={action}
         isLoading={isLoading}
         hasError={message.hasError}
@@ -243,15 +254,7 @@ export const SandboxToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
           ? params.startCommand
           : "";
     const logPath = typeof toolOutput?.logPath === "string" ? toolOutput.logPath : "";
-    const jobId = typeof toolOutput?.jobId === "string" ? toolOutput.jobId : "";
-    const dependencyStatus =
-      typeof toolOutput?.dependencyStatus === "string" ? toolOutput.dependencyStatus : "";
-    const statusText =
-      status === "waiting_for_dependencies"
-        ? "依赖安装中，开发预览会在完成后自动启动"
-        : status === "already_waiting_for_dependencies"
-          ? "开发预览正在等待依赖安装完成"
-          : "开发预览已就绪";
+    const statusText = status === "completed" ? "开发预览已就绪" : "开发预览处理中";
 
     return (
       <ToolAccordion
@@ -266,13 +269,6 @@ export const SandboxToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
           <div>
             <span className="font-medium text-neutral-900">目录:</span> {workingDir}
           </div>
-          {dependencyStatus && (
-            <div>
-              <span className="font-medium text-neutral-900">依赖状态:</span>{" "}
-              {dependencyStatusLabelMap[dependencyStatus] || dependencyStatus}
-            </div>
-          )}
-          {jobId && <div className="text-xs text-neutral-500">任务编号: {jobId}</div>}
           {startCommand && (
             <div className="rounded-md bg-neutral-100 p-2 font-mono text-xs break-all">
               {startCommand}
@@ -284,83 +280,6 @@ export const SandboxToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
     );
   }
 
-  if (toolName === "installDependencies") {
-    const params = (message.params ?? {}) as Record<string, unknown>;
-    const toolOutput =
-      message.toolOutput && typeof message.toolOutput === "object"
-        ? (message.toolOutput as Record<string, unknown>)
-        : undefined;
-    const workingDir =
-      typeof toolOutput?.workingDir === "string"
-        ? toolOutput.workingDir
-        : typeof params.workingDir === "string"
-          ? params.workingDir
-          : ".";
-    const packageManager =
-      typeof toolOutput?.packageManager === "string" ? toolOutput.packageManager : "";
-    const installCommand =
-      typeof toolOutput?.installCommand === "string"
-        ? toolOutput.installCommand
-        : typeof params.installCommand === "string"
-          ? params.installCommand
-          : "";
-    const logPath = typeof toolOutput?.logPath === "string" ? toolOutput.logPath : "";
-    const status = typeof toolOutput?.status === "string" ? toolOutput.status : "";
-    const jobId = typeof toolOutput?.jobId === "string" ? toolOutput.jobId : "";
-    const dependencyStatus =
-      typeof toolOutput?.dependencyStatus === "string" ? toolOutput.dependencyStatus : "";
-    const statusText =
-      status === "started"
-        ? "依赖下载已开始，可先继续修改代码"
-        : status === "already_running"
-          ? "依赖正在下载中，可先继续修改代码"
-          : dependencyStatus === "not_required"
-            ? "当前目录无需安装依赖"
-            : "依赖已安装并可复用";
-
-    return (
-      <ToolAccordion
-        title="安装项目依赖"
-        isLoading={message.partial === true}
-        hasError={message.hasError}
-        error={message.error}
-      >
-        <div className="space-y-2 text-sm text-neutral-700">
-          <div className="font-medium text-neutral-900">{statusText}</div>
-          <div>
-            <span className="font-medium text-neutral-900">目录:</span> {workingDir}
-          </div>
-          {dependencyStatus && (
-            <div>
-              <span className="font-medium text-neutral-900">依赖状态:</span>{" "}
-              {dependencyStatusLabelMap[dependencyStatus] || dependencyStatus}
-            </div>
-          )}
-          {packageManager && (
-            <div>
-              <span className="font-medium text-neutral-900">包管理器:</span> {packageManager}
-            </div>
-          )}
-          {jobId && <div className="text-xs text-neutral-500">任务编号: {jobId}</div>}
-          {installCommand && (
-            <div className="rounded-md bg-neutral-100 p-2 font-mono text-xs break-all">
-              {installCommand}
-            </div>
-          )}
-          {logPath && <div className="text-xs text-neutral-500">日志: {logPath}</div>}
-        </div>
-      </ToolAccordion>
-    );
-  }
-
-  if (toolName === "runChecks" || toolName === "runTest") {
-    return (
-      <DefaultRunChecksRenderer
-        {...(normalizedProps as React.ComponentProps<typeof DefaultRunChecksRenderer>)}
-      />
-    );
-  }
-
   if (toolName === "listFiles") {
     return (
       <DefaultListFilesRenderer
@@ -369,15 +288,37 @@ export const SandboxToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
     );
   }
 
-  if (toolName === "readDesignSession" || toolName === "upsertDesignSession") {
+  if (
+    toolName === "designSession" ||
+    toolName === "readDesignSession" ||
+    toolName === "upsertDesignSession"
+  ) {
     return <DesignSessionToolRenderer {...normalizedProps} />;
   }
 
-  if (toolName === "readLayoutOptions" || toolName === "upsertLayoutOptions") {
+  if (
+    toolName === "readLayoutOptions" ||
+    toolName === "upsertLayoutOptions" ||
+    (toolName === "designOptions" &&
+      (((message.params as Record<string, unknown> | undefined)?.kind as string | undefined) ===
+        "layout" ||
+        ((message.toolOutput as Record<string, unknown> | undefined)?.kind as
+          | string
+          | undefined) === "layout"))
+  ) {
     return <LayoutOptionsToolRenderer {...normalizedProps} />;
   }
 
-  if (toolName === "readThemeOptions" || toolName === "upsertThemeOptions") {
+  if (
+    toolName === "readThemeOptions" ||
+    toolName === "upsertThemeOptions" ||
+    (toolName === "designOptions" &&
+      (((message.params as Record<string, unknown> | undefined)?.kind as string | undefined) ===
+        "theme" ||
+        ((message.toolOutput as Record<string, unknown> | undefined)?.kind as
+          | string
+          | undefined) === "theme"))
+  ) {
     return <ThemeOptionsToolRenderer {...normalizedProps} />;
   }
 
@@ -386,6 +327,7 @@ export const SandboxToolRenderer: React.FC<ToolMessageRendererProps<ToolNames>> 
   }
 
   if (
+    toolName === "designDraft" ||
     toolName === "readFinalDesignDraft" ||
     toolName === "orchestrateFinalDesignDraft" ||
     toolName === "readDraftCritique"

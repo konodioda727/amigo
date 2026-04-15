@@ -33,15 +33,13 @@ export const DefaultAskFollowupQuestionRenderer: React.FC<AskFollowupQuestionRen
   };
 
   return (
-    <div className="mb-4">
-      <div className="max-w-[85%] px-1 text-neutral-900">
-        <div className="px-1 py-1 text-sm leading-relaxed whitespace-pre-wrap">
-          {message.question}
-        </div>
+    <div className="group -mb-5 max-w-[85%] text-neutral-900">
+      <div className="px-1 text-sm leading-relaxed whitespace-pre-wrap">
+        <div className="px-1 py-1">{message.question}</div>
       </div>
 
       {message.sugestions && message.sugestions.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-2 px-3">
+        <div className="mt-2 flex flex-wrap gap-2 px-2">
           {message.sugestions.map((suggestion) => {
             const isSelected = selectedOption === suggestion;
             const isOtherSelected = selectedOption !== null && !isSelected;

@@ -1,9 +1,18 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import path from "node:path";
+import {
+  type CompleteTaskWebsocketData,
+  getNextWorkflowPhase,
+  normalizeWorkflowPhaseSequence,
+  type WorkflowAgentRole,
+  type WorkflowPhase,
+} from "@amigo-llm/types";
+import {
+  broadcaster,
+  conversationRepository,
+  hasConversationContinuations,
+} from "@/core/conversation";
+import { parseDesignExecutionHandoff } from "@/core/workflow/designExecutionHandoff";
 import { logger } from "@/utils/logger";
-import { hasConversationContinuations } from "../conversation/asyncContinuations";
-import { conversationRepository } from "../conversation/ConversationRepository";
-import { broadcaster } from "../conversation/WebSocketBroadcaster";
 import {
   getTaskId,
   parseChecklist,
@@ -13,38 +22,87 @@ import {
 import { createTool } from "./base";
 import { asyncToolJobRegistry } from "./base/asyncJobRegistry";
 import { createToolResult } from "./result";
-import { getTaskDocsPath } from "./taskDocs/utils";
+import { getTaskListPath } from "./taskList/utils";
 
 const COMPLETE_TASK_CONTINUATION_SUMMARY = "【任务已完成】";
+const buildPhaseAdvanceSummary = (phase: string) => `【当前阶段 ${phase}】`;
+const resolveCompletedPhase = ({
+  currentPhase,
+  agentRole,
+}: {
+  currentPhase?: WorkflowPhase;
+  agentRole?: WorkflowAgentRole;
+}): WorkflowPhase | undefined => {
+  if (currentPhase) {
+    return currentPhase;
+  }
 
-const buildCompleteTaskResult = (message: string, result: string, summary?: string) =>
+  if (agentRole === "execution_worker") {
+    return "execution";
+  }
+
+  if (agentRole === "verification_reviewer") {
+    return "verification";
+  }
+
+  return undefined;
+};
+
+const buildCompleteTaskWebsocketData = ({
+  kind,
+  completedPhase,
+  currentPhase,
+  agentRole,
+}: CompleteTaskWebsocketData): CompleteTaskWebsocketData => ({
+  kind,
+  ...(completedPhase ? { completedPhase } : {}),
+  ...(currentPhase ? { currentPhase } : {}),
+  ...(agentRole ? { agentRole } : {}),
+});
+
+const buildCompleteTaskResult = (
+  message: string,
+  result: string,
+  summary?: string,
+  websocketData?: CompleteTaskWebsocketData,
+) =>
   createToolResult(result, {
     transportMessage: message,
     continuationSummary: COMPLETE_TASK_CONTINUATION_SUMMARY,
     continuationResult: summary?.trim() || message,
+    ...(websocketData ? { websocketData } : {}),
+  });
+
+const buildToolErrorResult = (result: string, errorMessage: string) =>
+  createToolResult(result, {
+    transportMessage: errorMessage,
+    continuationSummary: errorMessage,
+    continuationResult: errorMessage,
+    error: errorMessage,
   });
 
 /**
  * 完成工具
- * 主任务用于收尾当前任务；子任务额外会自动更新父任务的 taskList。
+ * controller 用于收尾当前阶段或任务；execution worker 额外会自动更新父任务的 execution 文档。
  */
 export const CompleteTask = createTool({
   name: "completeTask",
   description:
-    "🎯 任务完成后，使用此工具标记当前任务结束并返回最终结论。主任务直接用它结束当前任务；子任务还会自动更新父任务的待办列表。",
+    "🎯 用于完成当前职责。controller 用它完成当前 workflow 阶段；在 complete 阶段调用时才真正结束整个任务。execution worker 用它提交执行结果，并自动更新父任务的待办列表。",
   whenToUse:
-    "仅在当前任务范围内的问题已真正解决、最终交付物已准备好、且没有未完成步骤/待验证项/阻塞项时调用。主任务应使用面向用户、易读的最终结果；子任务应使用严格结构化结果供父任务审阅。部分完成、仅汇报进度或未完成状态不要调用。",
+    "仅在当前职责已真正完成时调用。controller：requirements/design/execution/verification 阶段中，表示当前阶段已经完成并应切换到下一阶段；complete 阶段中，表示整个任务最终完成。execution worker：表示当前执行任务已实现并自查完成。部分完成、仅汇报进度或未完成状态不要调用。",
   params: [
     {
       name: "summary",
       optional: false,
-      description: "任务完成摘要。主任务用于简短面向用户总结；子任务用于父任务自动验收与通知。",
+      description:
+        "任务完成摘要。controller 用于简短面向用户总结；在 requirements 阶段应清楚概括整理后的用户需求和范围；execution worker 用于父任务自动验收与通知。",
     },
     {
       name: "result",
       optional: false,
       description:
-        "任务完成的详细结果。主任务：面向用户清晰说明最终结果，无固定格式要求。子任务：必须包含 `## 交付物`、`## 验证`、`## 遗留问题`、`## 下游说明` 四个二级标题。",
+        "任务完成的详细结果。controller：面向用户清晰说明阶段或最终结果；在 requirements 阶段必须把澄清后的用户需求、目标、约束和范围写清楚；在 design 阶段必须包含 `## 已确认事实`、`## 关键约束`、`## 实施计划` 三个二级标题，只有当仍有阻塞 execution 的事项时才额外填写 `## 未决问题`。execution worker：必须包含 `## 交付物`、`## 验证`、`## 遗留问题`、`## 下游说明` 四个二级标题。",
     },
     {
       name: "achievements",
@@ -70,16 +128,16 @@ export const CompleteTask = createTool({
     if (context.parentId && (pendingAsyncJobs.length > 0 || hasPendingContinuation)) {
       const pendingJobSummary = pendingAsyncJobs.map((job) => job.toolName).join("、");
       const errorMessage = [
-        "子任务仍有未完成的异步后续动作，暂时不能调用 completeTask。",
+        "执行任务仍有未完成的异步后续动作，暂时不能调用 completeTask。",
         pendingAsyncJobs.length > 0 ? `仍在运行的后台任务：${pendingJobSummary}` : undefined,
         hasPendingContinuation ? "仍有等待消费的 continuation 队列。" : undefined,
-        "请等待这些异步步骤回到当前子任务并执行完毕后，再提交 completeTask。",
+        "请等待这些异步步骤回到当前执行任务并执行完毕后，再提交 completeTask。",
       ]
         .filter(Boolean)
         .join("\n");
 
       logger.warn(
-        `[completeTask] 阻止子任务 ${context.taskId} 过早完成：${errorMessage.replace(/\n/g, " | ")}`,
+        `[completeTask] 阻止执行任务 ${context.taskId} 过早完成：${errorMessage.replace(/\n/g, " | ")}`,
       );
       return createToolResult(result, {
         transportMessage: errorMessage,
@@ -90,19 +148,107 @@ export const CompleteTask = createTool({
     }
 
     if (!context.parentId) {
+      const mainConversation =
+        conversationRepository.get(context.taskId) || conversationRepository.load(context.taskId);
+
+      if (context.agentRole === "controller" && context.currentPhase !== "complete") {
+        if (!mainConversation) {
+          const errorMessage = `未找到主任务 ${context.taskId}，无法推进 workflow 阶段`;
+          return buildToolErrorResult(result, errorMessage);
+        }
+
+        const phaseSequence = normalizeWorkflowPhaseSequence(
+          mainConversation.workflowState.phaseSequence,
+        );
+        const nextPhase = context.currentPhase
+          ? getNextWorkflowPhase(context.currentPhase, phaseSequence)
+          : undefined;
+        if (!nextPhase) {
+          const errorMessage = `当前阶段 ${context.currentPhase || "unknown"} 没有可推进的后续阶段`;
+          return buildToolErrorResult(result, errorMessage);
+        }
+
+        if (context.currentPhase === "design" && nextPhase === "execution") {
+          const parsedHandoff = parseDesignExecutionHandoff({
+            summary: params.summary?.trim() || "design 阶段完成",
+            result,
+          });
+          if (!parsedHandoff.ok) {
+            const errorMessage = [
+              "design 阶段尚未形成可直接执行的 handoff，暂时不能进入 execution。",
+              ...parsedHandoff.errors,
+              "请继续停留在 design，补齐缺失章节或收敛未决问题后再调用 completeTask。",
+            ].join("\n");
+            logger.warn(
+              `[completeTask] 阻止主任务 ${context.taskId} 从 design 进入 execution：${parsedHandoff.errors.join(" | ")}`,
+            );
+            return buildToolErrorResult(result, errorMessage);
+          }
+
+          mainConversation.setWorkflowState({
+            ...mainConversation.workflowState,
+            designExecutionHandoff: parsedHandoff.handoff,
+          });
+        }
+
+        mainConversation.advanceWorkflowPhase(nextPhase);
+        mainConversation.setLastCompleteTaskDisposition("phase_advanced");
+
+        const message = `阶段 ${context.currentPhase} 已完成，已进入 ${nextPhase}`;
+        logger.info(
+          `[completeTask] 主任务 ${context.taskId} 完成阶段 ${context.currentPhase}，切换到 ${nextPhase}`,
+        );
+        return createToolResult(result, {
+          transportMessage: message,
+          continuationSummary: buildPhaseAdvanceSummary(nextPhase),
+          continuationResult: params.summary?.trim() || message,
+          websocketData: buildCompleteTaskWebsocketData({
+            kind: "phase_complete",
+            completedPhase: resolveCompletedPhase({
+              currentPhase: context.currentPhase,
+              agentRole: context.agentRole,
+            }),
+            currentPhase: nextPhase,
+            agentRole: context.agentRole,
+          }),
+          checkpointResult: {
+            kind: "phase_complete",
+            summary: params.summary?.trim() || message,
+            result,
+            completedPhase: resolveCompletedPhase({
+              currentPhase: context.currentPhase,
+              agentRole: context.agentRole,
+            }),
+            currentPhase: nextPhase,
+            agentRole: context.agentRole,
+          },
+        });
+      }
+
+      mainConversation?.setLastCompleteTaskDisposition("task_completed");
       logger.info(`[completeTask] 主任务 ${context.taskId} 完成，直接返回最终结果`);
       return buildCompleteTaskResult(
         params.summary?.trim() || "任务已完成",
         result,
         params.summary,
+        buildCompleteTaskWebsocketData({
+          kind: "task_complete",
+          completedPhase: resolveCompletedPhase({
+            currentPhase: context.currentPhase,
+            agentRole: context.agentRole,
+          }),
+          currentPhase:
+            context.currentPhase || resolveCompletedPhase({ agentRole: context.agentRole }),
+          agentRole: context.agentRole,
+        }),
       );
     }
 
-    const subTaskId = context.taskId;
+    const executionTaskId = context.taskId;
     const parentTaskId = context.parentId;
 
     logger.info(
-      `[completeTask] 子任务 ${subTaskId} 完成，准备更新父任务 ${parentTaskId} 的 taskList`,
+      `[completeTask] 执行任务 ${executionTaskId} 完成，准备更新父任务 ${parentTaskId} 的 taskList`,
     );
 
     try {
@@ -112,35 +258,57 @@ export const CompleteTask = createTool({
       if (!parentConversation) {
         logger.warn(`[completeTask] 未找到父任务 ${parentTaskId}`);
         // 即使找不到父任务，也返回结果
-        return buildCompleteTaskResult("任务完成（警告：未找到父任务）", result, params.summary);
+        return buildCompleteTaskResult(
+          "任务完成（警告：未找到父任务）",
+          result,
+          params.summary,
+          buildCompleteTaskWebsocketData({
+            kind: "task_complete",
+            completedPhase: resolveCompletedPhase({
+              currentPhase: context.currentPhase,
+              agentRole: context.agentRole,
+            }),
+            currentPhase:
+              context.currentPhase || resolveCompletedPhase({ agentRole: context.agentRole }),
+            agentRole: context.agentRole,
+          }),
+        );
       }
 
-      // 从父任务的子任务状态中找到对应的任务索引
-      const subTasks = parentConversation.memory.subTasks;
+      // 从父任务的执行任务状态中找到对应的任务索引
+      const executionTasks = parentConversation.memory.executionTasks;
       let taskKey: string | undefined;
       let taskDescription: string | undefined;
 
-      for (const [key, status] of Object.entries(subTasks)) {
-        if (status.subTaskId === subTaskId) {
+      for (const [key, status] of Object.entries(executionTasks)) {
+        if (status.executionTaskId === executionTaskId) {
           taskKey = key;
           taskDescription = status.description;
           break;
         }
       }
 
-      // 读取父任务的 taskList 文件
-      const taskDocsPath = getTaskDocsPath(parentTaskId);
-      const taskListPath = path.join(taskDocsPath, "taskList.md");
-
+      // 读取父任务的 taskList
+      const taskListPath = getTaskListPath(parentTaskId);
       let taskListContent = "";
       try {
         taskListContent = readFileSync(taskListPath, "utf-8");
       } catch (error) {
-        logger.warn(`[completeTask] 无法读取父任务的 taskList 文件: ${error}`);
+        logger.warn(`[completeTask] 无法读取父任务的 taskList: ${error}`);
         return buildCompleteTaskResult(
           "任务完成（警告：无法读取父任务 taskList）",
           result,
           params.summary,
+          buildCompleteTaskWebsocketData({
+            kind: "task_complete",
+            completedPhase: resolveCompletedPhase({
+              currentPhase: context.currentPhase,
+              agentRole: context.agentRole,
+            }),
+            currentPhase:
+              context.currentPhase || resolveCompletedPhase({ agentRole: context.agentRole }),
+            agentRole: context.agentRole,
+          }),
         );
       }
 
@@ -158,26 +326,36 @@ export const CompleteTask = createTool({
       }
 
       if (!targetItem) {
-        logger.warn(`[completeTask] 未找到子任务 ${subTaskId} 对应的 taskList 项`);
+        logger.warn(`[completeTask] 未找到执行任务 ${executionTaskId} 对应的 taskList 条目`);
         if (taskDescription || taskKey) {
-          parentConversation.updateSubTaskStatus(taskDescription || taskKey || "", {
+          parentConversation.updateExecutionTaskStatus(taskDescription || taskKey || "", {
             status: "completed",
             completedAt: new Date().toISOString(),
-            subTaskId,
+            executionTaskId,
           });
         }
         return buildCompleteTaskResult(
-          "任务完成（警告：未找到 taskList 项）",
+          "任务完成（警告：未找到 taskList 条目）",
           result,
           params.summary,
+          buildCompleteTaskWebsocketData({
+            kind: "task_complete",
+            completedPhase: resolveCompletedPhase({
+              currentPhase: context.currentPhase,
+              agentRole: context.agentRole,
+            }),
+            currentPhase:
+              context.currentPhase || resolveCompletedPhase({ agentRole: context.agentRole }),
+            agentRole: context.agentRole,
+          }),
         );
       }
 
       const finalDescription = normalizedTarget || normalizeDescription(targetItem.description);
-      parentConversation.updateSubTaskStatus(finalDescription, {
+      parentConversation.updateExecutionTaskStatus(finalDescription, {
         status: "completed",
         completedAt: new Date().toISOString(),
-        subTaskId,
+        executionTaskId,
       });
       const updatedContent = updateChecklistItemContent(
         taskListContent,
@@ -194,25 +372,29 @@ export const CompleteTask = createTool({
       const parsedAfterComplete = parseChecklist(finalContent);
       const hasPendingTasks = parsedAfterComplete.items.some((item) => !item.completed);
       const parentIsRunning = activeConversationStatuses.has(parentConversation.status);
-      const hasRunningSubTasks = Object.values(parentConversation.memory.subTasks).some(
-        (subTaskStatus) =>
-          subTaskStatus.status === "running" ||
-          subTaskStatus.status === "waiting_user_input" ||
-          subTaskStatus.status === "wait_review",
-      );
+      const hasBlockingExecutionTasks = Object.values(
+        parentConversation.memory.executionTasks,
+      ).some((executionTaskStatus) => {
+        const status = executionTaskStatus.status as string;
+        return (
+          status === "running" ||
+          status === "failed" ||
+          status === "interrupted" ||
+          status === "waiting_user_input"
+        );
+      });
 
-      if (hasPendingTasks && !parentIsRunning && !hasRunningSubTasks) {
-        const executeTaskListTool =
-          parentConversation.toolService.getToolFromName("executeTaskList");
-        if (!executeTaskListTool) {
-          logger.warn("[completeTask] 父任务缺少 executeTaskList 工具，无法自动续跑 taskList");
+      if (hasPendingTasks && !parentIsRunning && !hasBlockingExecutionTasks) {
+        const taskListTool = parentConversation.toolService.getToolFromName("taskList");
+        if (!taskListTool) {
+          logger.warn("[completeTask] 父任务缺少 taskList 工具，无法自动续跑 execution");
         } else {
           logger.info(
-            `[completeTask] 父任务 ${parentTaskId} 当前未运行，自动触发 executeTaskList 继续执行剩余任务`,
+            `[completeTask] 父任务 ${parentTaskId} 当前未运行，自动触发 taskList(execute) 继续执行剩余任务`,
           );
           try {
-            await executeTaskListTool.invoke({
-              params: {},
+            await taskListTool.invoke({
+              params: { action: "execute" },
               context: {
                 taskId: parentConversation.id,
                 parentId: parentConversation.parentId,
@@ -231,7 +413,7 @@ export const CompleteTask = createTool({
             });
           } catch (resumeError) {
             logger.error(
-              `[completeTask] 自动触发父任务 executeTaskList 失败: ${
+              `[completeTask] 自动触发父任务 taskList(execute) 失败: ${
                 resumeError instanceof Error ? resumeError.message : String(resumeError)
               }`,
             );
@@ -240,7 +422,7 @@ export const CompleteTask = createTool({
       }
 
       // 通知父任务
-      const completedTaskLabel = taskKey ? `Task ${taskKey}` : "子任务";
+      const completedTaskLabel = taskKey ? `Task ${taskKey}` : "执行任务";
       const notificationMessage = `${completedTaskLabel} 已完成`;
 
       broadcaster.broadcast(parentTaskId, {
@@ -253,7 +435,21 @@ export const CompleteTask = createTool({
         },
       });
 
-      return buildCompleteTaskResult("任务完成，已更新父任务待办列表", result, params.summary);
+      return buildCompleteTaskResult(
+        "任务完成，已更新父任务 taskList",
+        result,
+        params.summary,
+        buildCompleteTaskWebsocketData({
+          kind: "task_complete",
+          completedPhase: resolveCompletedPhase({
+            currentPhase: context.currentPhase,
+            agentRole: context.agentRole,
+          }),
+          currentPhase:
+            context.currentPhase || resolveCompletedPhase({ agentRole: context.agentRole }),
+          agentRole: context.agentRole,
+        }),
+      );
     } catch (error) {
       logger.error(`[completeTask] 更新父任务 taskList 失败: ${error}`);
       // 即使更新失败，也返回结果
@@ -261,6 +457,16 @@ export const CompleteTask = createTool({
         `任务完成（警告：更新父任务失败 - ${error}）`,
         result,
         params.summary,
+        buildCompleteTaskWebsocketData({
+          kind: "task_complete",
+          completedPhase: resolveCompletedPhase({
+            currentPhase: context.currentPhase,
+            agentRole: context.agentRole,
+          }),
+          currentPhase:
+            context.currentPhase || resolveCompletedPhase({ agentRole: context.agentRole }),
+          agentRole: context.agentRole,
+        }),
       );
     }
   },

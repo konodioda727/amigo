@@ -20,6 +20,10 @@ export interface ChecklistItem {
   indentLevel: number;
   /** 依赖的任务描述或 ID 列表 */
   dependencies: string[];
+  /** 当前任务绑定的 design.md 章节锚点 */
+  designSectionRefs: string[];
+  /** 当前任务绑定的相关文件路径 */
+  fileRefs: string[];
 }
 
 /**
@@ -48,14 +52,18 @@ export interface ChecklistParseResult {
  */
 const CHECKLIST_PATTERN = /^(\s*)-\s+\[([ xX])\]\s+(.+)$/;
 
+export const TASK_LIST_ID_PATTERN = /[A-Za-z0-9][A-Za-z0-9._-]*/;
+
 /**
- * 提取任务 ID (例如从 "Task 1.1: ..." 中提取 "1.1")
+ * 提取任务 ID (例如从 "Task T1: ..." 中提取 "T1")
  * @param description 任务描述
  * @returns 任务 ID 或 null
  */
 export function getTaskId(description: string): string | null {
   const normalized = description.replace(/[*_`]/g, "").trim();
-  const match = normalized.match(/^Task\s+([\d.]+)\s*[:：]?\s*/i);
+  const match = normalized.match(
+    new RegExp(`^Task\\s+(${TASK_LIST_ID_PATTERN.source})\\s*[:：]\\s*`, "i"),
+  );
   return match ? match[1] || null : null;
 }
 
@@ -68,14 +76,60 @@ export function getTaskId(description: string): string | null {
 export function parseDependenciesFromDescription(description: string): string[] {
   // 匹配 [deps: ...]
   const depsMatch = description.match(/\[deps:\s*([^\]]+)\]/);
-  if (depsMatch && depsMatch[1]) {
+  if (depsMatch?.[1]) {
+    const normalizedDeps = depsMatch[1].trim();
+    if (!normalizedDeps || /^(none|null|nil|n\/a|na|无|没有|暂无)$/i.test(normalizedDeps)) {
+      return [];
+    }
+
     return depsMatch[1]
       .split(",")
       .map((d) => d.replace(/Task\s+/i, "").trim())
-      .filter((d) => d.length > 0);
+      .filter((d) => d.length > 0 && !/^(none|null|nil|n\/a|na|无|没有|暂无)$/i.test(d));
   }
 
   return [];
+}
+
+/**
+ * 解析描述中的 design 章节锚点
+ * 支持 [designSection: #Heading] / [designSections: #Heading A, #Heading B]
+ */
+export function parseDesignSectionRefsFromDescription(description: string): string[] {
+  const match = description.match(/\[designSections?:\s*([^\]]+)\]/i);
+  if (!match?.[1]) {
+    return [];
+  }
+
+  const refs = match[1]
+    .split(",")
+    .map((value) => value.trim())
+    .map((value) => value.replace(/^#+\s*/, "").trim())
+    .filter(Boolean)
+    .map((value) => `#${value}`);
+
+  return Array.from(new Set(refs));
+}
+
+/**
+ * 解析描述中的文件路径引用
+ * 支持 [files: path/a.ts, path/b.test.ts]
+ */
+export function parseFileRefsFromDescription(description: string): string[] {
+  const match = description.match(/\[files:\s*([^\]]+)\]/i);
+  if (!match?.[1]) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      match[1]
+        .split(",")
+        .map((value) => value.trim())
+        .map((value) => value.replace(/^`|`$/g, "").trim())
+        .filter(Boolean),
+    ),
+  );
 }
 
 /**
@@ -98,6 +152,8 @@ export function parseChecklistLine(line: string, lineNumber: number): ChecklistI
     description: description?.trim() || "",
     indentLevel: indent?.length ?? 0,
     dependencies: parseDependenciesFromDescription(description || ""),
+    designSectionRefs: parseDesignSectionRefsFromDescription(description || ""),
+    fileRefs: parseFileRefsFromDescription(description || ""),
   };
 }
 

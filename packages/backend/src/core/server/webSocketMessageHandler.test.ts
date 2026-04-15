@@ -27,7 +27,7 @@ mock.module("@/core/conversation", () => ({
     getOrLoad,
     load: mock(),
   },
-  taskOrchestrator: {
+  conversationOrchestrator: {
     interrupt,
   },
 }));

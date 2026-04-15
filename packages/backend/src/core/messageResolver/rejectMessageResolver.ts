@@ -1,5 +1,5 @@
 import type { USER_SEND_MESSAGE_NAME } from "@amigo-llm/types";
-import { taskOrchestrator } from "@/core/conversation";
+import { conversationOrchestrator } from "@/core/conversation";
 import { logger } from "@/utils/logger";
 import BaseMessageResolver from "./base";
 
@@ -17,7 +17,7 @@ export class RejectMessageResolver extends BaseMessageResolver<"reject"> {
         logger.info(
           `[RejectMessageResolver] 拒绝执行待确认工具: ${this.conversation.pendingToolCall.toolName}`,
         );
-        const executor = taskOrchestrator.getExecutor(this.conversation.id);
+        const executor = conversationOrchestrator.getExecutor(this.conversation.id);
         await executor.execute(this.conversation);
       } else {
         logger.warn(

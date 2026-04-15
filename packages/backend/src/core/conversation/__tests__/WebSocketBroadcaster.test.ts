@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { WebSocketBroadcaster } from "../WebSocketBroadcaster";
+import { WebSocketBroadcaster } from "../lifecycle/WebSocketBroadcaster";
 
 describe("WebSocketBroadcaster", () => {
   test("throttles partial broadcasts with the same type and updateTime", () => {

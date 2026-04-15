@@ -26,13 +26,13 @@ const MessageChannelsSection: React.FC<MessageChannelsSectionProps> = ({
   onSetDefaultChannel,
   onToggleChannelEnabled,
 }) => (
-  <div className="mx-auto w-full max-w-4xl space-y-4">
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-      <div className="border-b border-slate-200 px-5 py-3.5">
-        <div className="text-sm font-medium text-slate-950">飞书应用</div>
+  <div className="w-full space-y-6 pb-6">
+    <section className="rounded-sm border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-200 bg-slate-50/50 px-5 py-2.5">
+        <div className="text-[13px] font-semibold text-slate-900">飞书应用配置</div>
       </div>
 
-      <div className="grid gap-4 px-5 py-4 md:grid-cols-2">
+      <div className="grid gap-6 px-5 py-5 md:grid-cols-2">
         <Field
           label="App ID"
           hint={appIdConfigured ? "已配置，留空表示保持现有值" : "保存后加密存储，不会再回显"}
@@ -69,24 +69,24 @@ const MessageChannelsSection: React.FC<MessageChannelsSectionProps> = ({
       </div>
     </section>
 
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-      <div className="border-b border-slate-200 px-5 py-3.5">
-        <div className="text-sm font-medium text-slate-950">通道实例</div>
+    <section className="rounded-sm border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-200 bg-slate-50/50 px-5 py-2.5">
+        <div className="text-[13px] font-semibold text-slate-900">通道实例列表</div>
       </div>
 
       {channels.length > 0 ? (
-        <div className="divide-y divide-slate-200">
+        <div className="divide-y divide-slate-100">
           {channels.map((channel) => (
             <div key={channel.id} className="px-5 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <div className="truncate text-sm font-medium text-slate-900">
+                    <div className="truncate text-[13px] font-semibold text-slate-900">
                       {channel.name.replace(/^feishu:/, "")}
                     </div>
                     {channel.isDefault ? (
-                      <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-medium text-white">
-                        默认
+                      <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
+                        默认路由
                       </span>
                     ) : null}
                   </div>
@@ -96,12 +96,12 @@ const MessageChannelsSection: React.FC<MessageChannelsSectionProps> = ({
                   </div>
                 </div>
 
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex shrink-0 items-center gap-3">
                   {!channel.isDefault ? (
                     <button
                       type="button"
                       onClick={() => onSetDefaultChannel(channel.id)}
-                      className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                      className="text-[12px] font-semibold text-slate-500 transition hover:text-blue-600"
                     >
                       设为默认
                     </button>
@@ -109,10 +109,10 @@ const MessageChannelsSection: React.FC<MessageChannelsSectionProps> = ({
                   <button
                     type="button"
                     onClick={() => onToggleChannelEnabled(channel.id, !channel.enabled)}
-                    className={`rounded-lg border px-2.5 py-1.5 text-xs transition ${
+                    className={`text-[12px] font-semibold transition ${
                       channel.enabled
-                        ? "border-rose-200 text-rose-600 hover:bg-rose-50"
-                        : "border-slate-200 text-slate-700 hover:border-slate-300 hover:text-slate-950"
+                        ? "text-rose-500 hover:text-rose-700"
+                        : "text-blue-600 hover:text-blue-700"
                     }`}
                   >
                     {channel.enabled ? "停用" : "启用"}
@@ -120,7 +120,7 @@ const MessageChannelsSection: React.FC<MessageChannelsSectionProps> = ({
                 </div>
               </div>
 
-              <dl className="mt-3 grid gap-x-4 gap-y-2 text-xs text-slate-500 md:grid-cols-2">
+              <dl className="mt-4 grid gap-x-6 gap-y-2 text-xs text-slate-500 md:grid-cols-2">
                 <DataItem label="会话 ID" value={String(channel.config.chatId || "未记录")} />
                 <DataItem label="Tenant Key" value={String(channel.config.tenantKey || "未记录")} />
               </dl>
@@ -128,7 +128,7 @@ const MessageChannelsSection: React.FC<MessageChannelsSectionProps> = ({
           ))}
         </div>
       ) : (
-        <div className="px-5 py-6 text-sm leading-6 text-slate-500">
+        <div className="px-5 py-6 text-[13px] leading-6 text-slate-500">
           还没有登记到飞书通道。先给 Amigo 发一条飞书消息，系统会自动创建通道实例。
         </div>
       )}
@@ -141,10 +141,10 @@ const Field: React.FC<{
   hint: string;
   children: React.ReactNode;
 }> = ({ label, hint, children }) => (
-  <div className="space-y-2">
+  <div className="space-y-1.5">
     <div>
-      <div className="text-sm font-medium text-slate-900">{label}</div>
-      <div className="mt-0.5 text-xs text-slate-500">{hint}</div>
+      <div className="text-[13px] font-medium text-slate-900">{label}</div>
+      <div className="mt-0.5 text-[11px] text-slate-500">{hint}</div>
     </div>
     {children}
   </div>
@@ -154,9 +154,9 @@ const DataItem: React.FC<{
   label: string;
   value: string;
 }> = ({ label, value }) => (
-  <div className="flex items-center gap-2">
-    <dt className="shrink-0 text-slate-400">{label}</dt>
-    <dd className="truncate text-slate-600">{value}</dd>
+  <div className="flex items-center gap-2 rounded bg-slate-50/50 px-2.5 py-1.5 border border-slate-100">
+    <dt className="shrink-0 font-medium text-slate-500">{label}</dt>
+    <dd className="truncate text-slate-700">{value}</dd>
   </div>
 );
 

@@ -15,13 +15,14 @@ import {
   SkillSummarySchema,
   type SkillUpsertInput,
 } from "@amigo-llm/backend";
-import type { RowDataPacket } from "mysql2/promise";
+import { and, desc, eq } from "drizzle-orm";
 import {
   ensureMysqlSchemaUpToDate,
+  formatMysqlDateTime,
+  getDrizzleDb,
   isMysqlConfigured,
-  mysqlExecute,
-  mysqlQuery,
   parseJsonColumn,
+  skillsTable,
 } from "../db";
 
 const SKILL_MARKDOWN_FILE = "SKILL.md";
@@ -31,17 +32,7 @@ const normalizeRelativePath = (value: string): string => value.replace(/\\/g, "/
 const sortPaths = (values: string[]): string[] =>
   [...values].sort((a, b) => a.localeCompare(b, "en"));
 
-type SkillRow = RowDataPacket & {
-  id: string;
-  user_id: string;
-  name: string;
-  description: string;
-  skill_markdown: string;
-  resource_manifest_json: unknown;
-  path: string;
-  created_at: string;
-  updated_at: string;
-};
+type SkillRow = typeof skillsTable.$inferSelect;
 
 const parseDateTime = (value: unknown): string => {
   if (value instanceof Date) {
@@ -100,7 +91,7 @@ const buildResourceManifest = (relativePaths: string[]): SkillResourceManifest =
 
 const mapSkillRow = (row: SkillRow): SkillDefinition => {
   const resourceManifest = SkillResourceManifestSchema.parse(
-    parseJsonColumn<SkillResourceManifest>(row.resource_manifest_json, {
+    parseJsonColumn<SkillResourceManifest>(row.resourceManifestJson, {
       scripts: [],
       references: [],
       assets: [],
@@ -115,9 +106,9 @@ const mapSkillRow = (row: SkillRow): SkillDefinition => {
     description: row.description,
     path: row.path,
     resourceManifest,
-    skillMarkdown: row.skill_markdown,
-    createdAt: parseDateTime(row.created_at),
-    updatedAt: parseDateTime(row.updated_at),
+    skillMarkdown: row.skillMarkdown,
+    createdAt: parseDateTime(row.createdAt),
+    updatedAt: parseDateTime(row.updatedAt),
   });
 };
 
@@ -139,12 +130,7 @@ export class SkillStore implements SkillProvider {
   async list(userId?: string): Promise<SkillSummary[]> {
     if (isMysqlConfigured()) {
       await this.init();
-      const rows = userId?.trim()
-        ? await mysqlQuery<SkillRow>(
-            "SELECT * FROM skills WHERE user_id = ? ORDER BY updated_at DESC",
-            [userId.trim()],
-          )
-        : await mysqlQuery<SkillRow>("SELECT * FROM skills ORDER BY updated_at DESC");
+      const rows = await this.listSkillRows(userId);
       const skills = await Promise.all(rows.map((row) => this.hydrateDatabaseSkill(row)));
       return skills
         .map(({ skillMarkdown: _skillMarkdown, ...summary }) => summary)
@@ -167,13 +153,7 @@ export class SkillStore implements SkillProvider {
   async get(id: string, userId?: string): Promise<SkillDefinition | null> {
     if (isMysqlConfigured()) {
       await this.init();
-      const rows = userId?.trim()
-        ? await mysqlQuery<SkillRow>("SELECT * FROM skills WHERE id = ? AND user_id = ? LIMIT 1", [
-            id,
-            userId.trim(),
-          ])
-        : await mysqlQuery<SkillRow>("SELECT * FROM skills WHERE id = ? LIMIT 1", [id]);
-      const row = rows[0];
+      const row = await this.readSkillRow(id, userId);
       return row ? this.hydrateDatabaseSkill(row) : null;
     }
 
@@ -222,34 +202,31 @@ export class SkillStore implements SkillProvider {
       await mkdir(skillDir, { recursive: true });
       await writeFile(this.getSkillMarkdownPath(normalizedId), normalizedMarkdown, "utf-8");
       const manifest = await this.readResourceManifest(skillDir);
+      const now = formatMysqlDateTime(new Date(nowIso));
 
-      await mysqlExecute(
-        `
-          INSERT INTO skills (
-            id, user_id, name, description, skill_markdown, resource_manifest_json, path, created_at, updated_at
-          ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?
-          )
-          ON DUPLICATE KEY UPDATE
-            name = VALUES(name),
-            description = VALUES(description),
-            skill_markdown = VALUES(skill_markdown),
-            resource_manifest_json = VALUES(resource_manifest_json),
-            path = VALUES(path),
-            updated_at = VALUES(updated_at)
-        `,
-        [
-          normalizedId,
-          userId.trim(),
-          parsed.name,
-          parsed.description,
-          normalizedMarkdown.trim(),
-          JSON.stringify(manifest),
-          skillDir,
-          existing?.createdAt ? new Date(existing.createdAt) : new Date(nowIso),
-          new Date(nowIso),
-        ],
-      );
+      await getDrizzleDb()
+        .insert(skillsTable)
+        .values({
+          id: normalizedId,
+          userId: userId.trim(),
+          name: parsed.name,
+          description: parsed.description,
+          skillMarkdown: normalizedMarkdown.trim(),
+          resourceManifestJson: manifest,
+          path: skillDir,
+          createdAt: existing?.createdAt ? formatMysqlDateTime(new Date(existing.createdAt)) : now,
+          updatedAt: now,
+        })
+        .onDuplicateKeyUpdate({
+          set: {
+            name: parsed.name,
+            description: parsed.description,
+            skillMarkdown: normalizedMarkdown.trim(),
+            resourceManifestJson: manifest,
+            path: skillDir,
+            updatedAt: now,
+          },
+        });
 
       const skill = await this.get(normalizedId, userId);
       if (!skill) {
@@ -298,33 +275,32 @@ export class SkillStore implements SkillProvider {
       const manifest = await this.readResourceManifest(targetDir);
       const nowIso = new Date().toISOString();
       const existing = await this.get(normalizedId, input.userId);
+      const now = formatMysqlDateTime(new Date(nowIso));
 
-      await mysqlExecute(
-        `
-          INSERT INTO skills (
-            id, user_id, name, description, skill_markdown, resource_manifest_json, path, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON DUPLICATE KEY UPDATE
-            user_id = VALUES(user_id),
-            name = VALUES(name),
-            description = VALUES(description),
-            skill_markdown = VALUES(skill_markdown),
-            resource_manifest_json = VALUES(resource_manifest_json),
-            path = VALUES(path),
-            updated_at = VALUES(updated_at)
-        `,
-        [
-          normalizedId,
-          input.userId.trim(),
-          parsed.name,
-          parsed.description,
-          skillMarkdown.trim(),
-          JSON.stringify(manifest),
-          targetDir,
-          existing?.createdAt ? new Date(existing.createdAt) : new Date(nowIso),
-          nowIso,
-        ],
-      );
+      await getDrizzleDb()
+        .insert(skillsTable)
+        .values({
+          id: normalizedId,
+          userId: input.userId.trim(),
+          name: parsed.name,
+          description: parsed.description,
+          skillMarkdown: skillMarkdown.trim(),
+          resourceManifestJson: manifest,
+          path: targetDir,
+          createdAt: existing?.createdAt ? formatMysqlDateTime(new Date(existing.createdAt)) : now,
+          updatedAt: now,
+        })
+        .onDuplicateKeyUpdate({
+          set: {
+            userId: input.userId.trim(),
+            name: parsed.name,
+            description: parsed.description,
+            skillMarkdown: skillMarkdown.trim(),
+            resourceManifestJson: manifest,
+            path: targetDir,
+            updatedAt: now,
+          },
+        });
 
       const skill = await this.get(normalizedId, input.userId);
       if (!skill) {
@@ -356,13 +332,18 @@ export class SkillStore implements SkillProvider {
     if (isMysqlConfigured()) {
       await this.init();
       await rm(this.getSkillDir(id.trim()), { recursive: true, force: true });
-      const result = userId?.trim()
-        ? await mysqlExecute("DELETE FROM skills WHERE id = ? AND user_id = ?", [
-            id.trim(),
-            userId.trim(),
-          ])
-        : await mysqlExecute("DELETE FROM skills WHERE id = ?", [id.trim()]);
-      return result.affectedRows > 0;
+      const existing = await this.readSkillRow(id.trim(), userId);
+      if (!existing) {
+        return false;
+      }
+      await getDrizzleDb()
+        .delete(skillsTable)
+        .where(
+          userId?.trim()
+            ? and(eq(skillsTable.id, id.trim()), eq(skillsTable.userId, userId.trim()))
+            : eq(skillsTable.id, id.trim()),
+        );
+      return true;
     }
 
     await this.init();
@@ -385,13 +366,7 @@ export class SkillStore implements SkillProvider {
 
   private async readSkillDefinition(id: string, userId?: string): Promise<SkillDefinition | null> {
     if (isMysqlConfigured()) {
-      const rows = userId?.trim()
-        ? await mysqlQuery<SkillRow>("SELECT * FROM skills WHERE id = ? AND user_id = ? LIMIT 1", [
-            id.trim(),
-            userId.trim(),
-          ])
-        : await mysqlQuery<SkillRow>("SELECT * FROM skills WHERE id = ? LIMIT 1", [id.trim()]);
-      const row = rows[0];
+      const row = await this.readSkillRow(id.trim(), userId);
       return row ? this.hydrateDatabaseSkill(row) : null;
     }
 
@@ -560,6 +535,31 @@ export class SkillStore implements SkillProvider {
 
   private getSkillMarkdownPath(id: string): string {
     return path.join(this.getSkillDir(id), SKILL_MARKDOWN_FILE);
+  }
+
+  private async listSkillRows(userId?: string): Promise<SkillRow[]> {
+    const db = getDrizzleDb();
+    return userId?.trim()
+      ? db
+          .select()
+          .from(skillsTable)
+          .where(eq(skillsTable.userId, userId.trim()))
+          .orderBy(desc(skillsTable.updatedAt))
+      : db.select().from(skillsTable).orderBy(desc(skillsTable.updatedAt));
+  }
+
+  private async readSkillRow(id: string, userId?: string): Promise<SkillRow | null> {
+    const db = getDrizzleDb();
+    const rows = await db
+      .select()
+      .from(skillsTable)
+      .where(
+        userId?.trim()
+          ? and(eq(skillsTable.id, id.trim()), eq(skillsTable.userId, userId.trim()))
+          : eq(skillsTable.id, id.trim()),
+      )
+      .limit(1);
+    return rows[0] || null;
   }
 }
 

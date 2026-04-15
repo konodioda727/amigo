@@ -4,11 +4,11 @@ import { setGlobalState } from "@/globalState";
 import { configureLogger, type LoggerConfig } from "@/utils/logger";
 import type { ServerConfig } from "../config";
 import type {
-  SubTaskCompletionValidationHookPayload,
-  SubTaskValidationResult,
-  SubTaskWaitReviewEvaluationHookPayload,
-  SubTaskWaitReviewEvaluationResult,
-} from "../conversation/subTaskPolicyTypes";
+  TaskExecutionCompletionValidationHookPayload,
+  TaskExecutionValidationResult,
+  TaskExecutionVerificationHookPayload,
+  TaskExecutionVerificationResult,
+} from "../conversation/execution/taskExecutionPolicyTypes";
 import type { LanguageRuntimeHostManager, LspConfig } from "../languageRuntime";
 import { type MemoryConfig, SdkMemoryRuntime } from "../memoryRuntime";
 import { type LlmFactory, setLlmFactory } from "../model";
@@ -23,6 +23,7 @@ import type { MessageRegistry, ToolRegistry } from "../registry";
 import type { RuleProvider } from "../rules";
 import type { SandboxManager } from "../sandbox";
 import type { EditFileDiagnosticsProvider } from "../tools/editFileDiagnostics";
+import type { WorkflowPromptScope } from "../workflow";
 import { ServerWebSocketMessageHandler } from "./webSocketMessageHandler";
 
 export interface ConversationWebSocketData {
@@ -71,9 +72,9 @@ export interface AmigoServerOptions {
   /** 全局追加系统提示词（应用级特化） */
   extraSystemPrompt?: string;
   /** 使用 SDK 覆盖基础工具集合 */
-  baseTools?: Partial<Record<"main" | "sub", ToolInterface<unknown>[]>>;
+  baseTools?: Partial<Record<WorkflowPromptScope, ToolInterface<unknown>[]>>;
   /** 使用 SDK 覆盖默认 system prompt */
-  systemPrompts?: Partial<Record<"main" | "sub", string>>;
+  systemPrompts?: Partial<Record<WorkflowPromptScope, string>>;
   /** 宿主环境规则提供器 */
   ruleProvider?: RuleProvider;
   /** 可注入的 sandbox manager */
@@ -92,14 +93,14 @@ export interface AmigoServerOptions {
   onConversationMessage?: (payload: ConversationMessageHookPayload) => void | Promise<void>;
   /** 在 createTask 真正创建会话前解析自定义 prompt / 工具白名单 / 初始上下文 */
   createTaskConfigResolver?: CreateTaskConfigResolver;
-  /** 子任务 completeTask 扩展校验 hook */
-  subTaskCompletionValidator?: (
-    payload: SubTaskCompletionValidationHookPayload,
-  ) => SubTaskValidationResult | Promise<SubTaskValidationResult>;
-  /** 子任务 wait_review 自动审阅 hook */
-  subTaskWaitReviewEvaluator?: (
-    payload: SubTaskWaitReviewEvaluationHookPayload,
-  ) => SubTaskWaitReviewEvaluationResult | Promise<SubTaskWaitReviewEvaluationResult>;
+  /** 执行子会话 completeTask 扩展校验 hook */
+  taskExecutionCompletionValidator?: (
+    payload: TaskExecutionCompletionValidationHookPayload,
+  ) => TaskExecutionValidationResult | Promise<TaskExecutionValidationResult>;
+  /** 执行子会话完成后的自动 verification hook */
+  taskExecutionVerificationEvaluator?: (
+    payload: TaskExecutionVerificationHookPayload,
+  ) => TaskExecutionVerificationResult | Promise<TaskExecutionVerificationResult>;
   /** 应用层可注入的按用户解析模型配置方法 */
   userModelConfigResolver?: (payload: {
     userId?: string;
@@ -163,8 +164,11 @@ class AmigoServer {
     setGlobalState("onConversationCreate", options.onConversationCreate);
     setGlobalState("onConversationMessage", options.onConversationMessage);
     setGlobalState("createTaskConfigResolver", options.createTaskConfigResolver);
-    setGlobalState("subTaskCompletionValidator", options.subTaskCompletionValidator);
-    setGlobalState("subTaskWaitReviewEvaluator", options.subTaskWaitReviewEvaluator);
+    setGlobalState("taskExecutionCompletionValidator", options.taskExecutionCompletionValidator);
+    setGlobalState(
+      "taskExecutionVerificationEvaluator",
+      options.taskExecutionVerificationEvaluator,
+    );
     setGlobalState("userModelConfigResolver", options.userModelConfigResolver);
     setGlobalState("memoryConfig", options.memory);
     setGlobalState("editFileDiagnosticsProvider", options.editFileDiagnosticsProvider);

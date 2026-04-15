@@ -1,4 +1,4 @@
-import type { ToolInterface } from "@amigo-llm/types";
+import type { ToolInterface, WorkflowState } from "@amigo-llm/types";
 import { getConversationPersistenceProvider } from "@/core/persistence";
 import { getSandboxManager } from "@/core/sandbox";
 import { getSandboxContainerName } from "@/core/sandbox/containerIdentity";
@@ -6,7 +6,12 @@ import { getGlobalState } from "@/globalState";
 import { logger } from "@/utils/logger";
 import { type AmigoLlm, getLlm } from "../model";
 import { CUSTOMED_TOOLS, getBaseTools, ToolService } from "../tools";
-import { Conversation, type ConversationType } from "./Conversation";
+import {
+  createWorkflowState,
+  normalizeWorkflowState,
+  resolveWorkflowPromptScope,
+} from "../workflow";
+import { Conversation } from "./Conversation";
 
 /**
  * 获取所有自定义工具（内置 CUSTOMED_TOOLS + SDK 注册的工具）
@@ -146,8 +151,10 @@ export class ConversationRepository {
       if (conversation) {
         // 如果会话正在运行，先中断
         if (!["idle", "completed", "aborted"].includes(conversation.status)) {
-          const { taskOrchestrator } = await import("./TaskOrchestrator");
-          taskOrchestrator.interrupt(conversation);
+          const { conversationOrchestrator } = await import(
+            "./orchestration/ConversationOrchestrator"
+          );
+          conversationOrchestrator.interrupt(conversation);
         }
       }
 
@@ -273,7 +280,6 @@ export class ConversationRepository {
    */
   create(params?: {
     id?: string;
-    type?: ConversationType;
     parentId?: string;
     customPrompt?: string;
     toolNames?: string[];
@@ -282,14 +288,20 @@ export class ConversationRepository {
     context?: unknown;
     modelConfigSnapshot?: Parameters<Conversation["memory"]["setModelConfigSnapshot"]>[0];
     autoApproveToolNames?: string[];
+    workflowState?: WorkflowState;
   }): Conversation {
     const allCustomTools = getAllCustomTools();
-    const type = params?.type || "main";
     const requestedToolNames = params?.toolNames?.map((name) => name.trim()).filter(Boolean);
-    const baseTools = getBaseTools(type).filter(
+    const workflowState = normalizeWorkflowState(params?.workflowState, createWorkflowState());
+    const promptScope = resolveWorkflowPromptScope({
+      workflowState,
+      toolNames: requestedToolNames,
+      parentId: params?.parentId,
+    });
+    const baseTools = getBaseTools(promptScope).filter(
       (tool) => !requestedToolNames || requestedToolNames.includes(tool.name),
     );
-    const customToolsSource = params?.tools || (type === "main" ? allCustomTools : []);
+    const customToolsSource = params?.tools || allCustomTools;
     const customTools = customToolsSource.filter(
       (tool) => !requestedToolNames || requestedToolNames.includes(tool.name),
     );
@@ -300,12 +312,12 @@ export class ConversationRepository {
       id: params?.id,
       toolService,
       llm: params?.llm || getLlm(),
-      type,
       parentId: params?.parentId,
       customPrompt: params?.customPrompt,
       context: params?.context,
       modelConfigSnapshot: params?.modelConfigSnapshot,
       autoApproveToolNames: params?.autoApproveToolNames,
+      workflowState,
     });
 
     this.save(conversation);

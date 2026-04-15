@@ -193,15 +193,39 @@ export const conversationMessagesTable = mysqlTable(
   }),
 );
 
+export const conversationContextSnapshotsTable = mysqlTable(
+  "conversation_context_snapshots",
+  {
+    id: char("id", { length: 36 }).notNull().primaryKey(),
+    conversationId: char("conversation_id", { length: 36 }).notNull(),
+    requestId: char("request_id", { length: 36 }).notNull(),
+    conversationType: varchar("conversation_type", { length: 32 }).notNull(),
+    model: varchar("model", { length: 191 }).notNull(),
+    provider: varchar("provider", { length: 64 }).notNull(),
+    configId: varchar("config_id", { length: 191 }),
+    workflowPhase: varchar("workflow_phase", { length: 32 }),
+    agentRole: varchar("agent_role", { length: 32 }),
+    messageCount: int("message_count", { unsigned: true }).notNull(),
+    toolNamesJson: json("tool_names_json").$type<string[]>().notNull(),
+    optionsJson: json("options_json").$type<Record<string, unknown>>().notNull(),
+    messagesJson: json("messages_json").$type<unknown[]>().notNull(),
+    createdAt: datetime("created_at", { mode: "string", fsp: 3 }).notNull(),
+  },
+  (table) => ({
+    requestUnique: unique("uq_conversation_context_snapshots_request_id").on(table.requestId),
+  }),
+);
+
 export const conversationStateTable = mysqlTable("conversation_state", {
   conversationId: char("conversation_id", { length: 36 }).notNull().primaryKey(),
   initialSystemPrompt: longtext("initial_system_prompt"),
   toolNamesJson: json("tool_names_json").$type<string[]>().notNull(),
-  modelConfigJson: json("model_config_json").$type<Record<string, unknown> | null>().notNull(),
+  modelConfigJson: json("model_config_json").$type<Record<string, unknown> | null>(),
   autoApproveToolNamesJson: json("auto_approve_tool_names_json").$type<string[]>().notNull(),
   pendingToolCallJson: json("pending_tool_call_json").$type<unknown | null>(),
-  subtasksJson: json("subtasks_json").$type<Record<string, unknown>>().notNull(),
-  contextUsageJson: json("context_usage_json").$type<unknown | null>().notNull(),
+  executionTasksJson: json("subtasks_json").$type<Record<string, unknown>>().notNull(),
+  contextUsageJson: json("context_usage_json").$type<unknown | null>(),
+  workflowStateJson: json("workflow_state_json").$type<Record<string, unknown> | null>(),
   createdAt: datetime("created_at", { mode: "string", fsp: 3 }).notNull(),
   updatedAt: datetime("updated_at", { mode: "string", fsp: 3 }).notNull(),
 });

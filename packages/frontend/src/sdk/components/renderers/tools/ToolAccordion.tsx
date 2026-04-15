@@ -38,12 +38,14 @@ export const ToolAccordion: React.FC<ToolAccordionProps> = ({
         <button
           type="button"
           onClick={() => setIsExpanded(!isExpanded)}
-          className="flex min-w-0 max-w-full items-center gap-2 text-left text-xs text-neutral-500 transition-colors hover:text-neutral-700"
+          className="group flex min-w-0 max-w-full items-center gap-2 text-left text-xs text-neutral-500 transition-colors hover:text-neutral-700"
         >
           <span className="block min-w-0 max-w-full whitespace-normal break-words leading-5">
             <span className={isLoading ? "loading-shimmer" : ""}>{title}</span>
           </span>
-          <span className="shrink-0">
+          <span
+            className={`shrink-0 transition-opacity ${isExpanded ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+          >
             {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </span>
         </button>

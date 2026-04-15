@@ -10,7 +10,6 @@ import { LoadTaskMessageResolver } from "./loadTaskMessageResolver";
 import { RejectMessageResolver } from "./rejectMessageResolver";
 import { ResumeMessageResolver } from "./resumeMessageResolver";
 import { UpdateAutoApproveToolsMessageResolver } from "./updateAutoApproveToolsMessageResolver";
-import { UpdateTaskDocMessageResolver } from "./updateTaskDocMessageResolver";
 
 /**
  * 不同 message 处理器
@@ -25,7 +24,6 @@ const resolvers = [
   RejectMessageResolver,
   DeleteTaskMessageResolver,
   UpdateAutoApproveToolsMessageResolver,
-  UpdateTaskDocMessageResolver,
 ];
 
 const defaultResolver = CommonMessageResolver;

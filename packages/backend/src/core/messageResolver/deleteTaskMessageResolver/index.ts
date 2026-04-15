@@ -1,8 +1,7 @@
 import type { UserSendMessageData } from "@amigo-llm/types";
 import { logger } from "@/utils/logger";
-import type { Conversation } from "../../conversation/Conversation";
 import { conversationRepository } from "../../conversation/ConversationRepository";
-import { broadcaster } from "../../conversation/WebSocketBroadcaster";
+import { broadcaster } from "../../conversation/lifecycle/WebSocketBroadcaster";
 import BaseMessageResolver from "../base";
 
 /**
@@ -11,27 +10,23 @@ import BaseMessageResolver from "../base";
 export class DeleteTaskMessageResolver extends BaseMessageResolver<"deleteTask"> {
   static override resolverName = "deleteTask" as const;
 
-  constructor(conversation: Conversation) {
-    super(conversation);
-  }
-
   override async process(data: UserSendMessageData<"deleteTask">): Promise<void> {
     const { taskId } = data;
 
     logger.info(`[DeleteTaskMessageResolver] 开始删除任务: ${taskId}`);
 
     try {
-      // 递归删除任务及其所有子任务
+      // 递归删除任务及其所有子会话
       const deletedIds = await conversationRepository.deleteWithChildren(taskId);
 
-      logger.info(`[DeleteTaskMessageResolver] 成功删除任务及其子任务: ${deletedIds.join(", ")}`);
+      logger.info(`[DeleteTaskMessageResolver] 成功删除任务及其子会话: ${deletedIds.join(", ")}`);
 
       // 向客户端发送删除成功消息
       broadcaster.broadcast(taskId, {
         type: "taskDeleted",
         data: {
           taskId,
-          deletedSubTaskIds: deletedIds.filter((id) => id !== taskId),
+          deletedChildTaskIds: deletedIds.filter((id) => id !== taskId),
         },
       });
     } catch (error) {

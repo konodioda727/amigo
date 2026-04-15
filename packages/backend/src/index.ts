@@ -1,8 +1,8 @@
 export {
+  conversationOrchestrator,
   conversationRepository,
   enqueueConversationContinuation,
   flushConversationContinuationsIfIdle,
-  taskOrchestrator,
 } from "./core/conversation";
 export * from "./core/persistence";
 export * from "./core/rules";
@@ -16,9 +16,9 @@ export type {
   EditFileDiagnosticsProvider,
   EditFileDiagnosticsProviderPayload,
 } from "./core/tools/editFileDiagnostics";
+export * from "./core/workflow";
 export { getGlobalState, setGlobalState } from "./globalState";
 export * from "./integrations/github";
 export * from "./sdk/index";
-export * from "./toolPresets/coding";
 export type { LoggerConfig } from "./utils/logger";
 export { configureLogger, LogLevel, logger } from "./utils/logger";

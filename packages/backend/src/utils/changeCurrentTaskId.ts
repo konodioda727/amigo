@@ -18,6 +18,7 @@ export const changeCurrentTaskId = async (
       data: {
         messages: record?.websocketMessages || [],
         taskId,
+        workflowState: record?.workflowState,
         conversationStatus: conversation.status,
       },
     });

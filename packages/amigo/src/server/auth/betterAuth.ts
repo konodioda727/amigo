@@ -2,11 +2,12 @@ import { randomUUID } from "node:crypto";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { getDrizzleDb } from "../db/drizzle";
-import { isMysqlConfigured, mysqlExecute } from "../db/mysql";
+import { formatMysqlDateTime, isMysqlConfigured } from "../db/mysql";
 import {
   authAccountsTable,
   authSessionsTable,
   authVerificationsTable,
+  tenantsTable,
   usersTable,
 } from "../db/schema";
 
@@ -161,12 +162,15 @@ export const getAmigoAuth = (): ReturnType<typeof betterAuth> => {
                   : randomUUID();
               const tenantSlug = `user-${tenantId}`;
               const tenantName = String(user.name || user.email || tenantSlug).trim() || tenantSlug;
+              const now = formatMysqlDateTime();
 
-              await mysqlExecute("INSERT INTO tenants (id, slug, name) VALUES (?, ?, ?)", [
-                tenantId,
-                tenantSlug,
-                tenantName,
-              ]);
+              await getDrizzleDb().insert(tenantsTable).values({
+                id: tenantId,
+                slug: tenantSlug,
+                name: tenantName,
+                createdAt: now,
+                updatedAt: now,
+              });
 
               return {
                 data: {

@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import { logger } from "@/utils/logger";
 import { conversationRepository } from "../ConversationRepository";
-import { resolveObservedSubTaskStatus, taskOrchestrator } from "../TaskOrchestrator";
+import {
+  conversationOrchestrator,
+  resolveObservedExecutionTaskStatus,
+} from "../orchestration/ConversationOrchestrator";
 
 // Mock logger
 mock.module("@/utils/logger", () => ({
@@ -20,18 +23,19 @@ mock.module("@/core/conversation/ConversationRepository", () => ({
   },
 }));
 
-mock.module("@/core/conversation/WebSocketBroadcaster", () => ({
+mock.module("@/core/conversation/lifecycle/WebSocketBroadcaster", () => ({
   broadcaster: {
     broadcast: mock(),
     broadcastConversation: mock(),
   },
 }));
 
-describe("TaskOrchestrator Interrupt Logic", () => {
+describe("ConversationOrchestrator Interrupt Logic", () => {
   beforeEach(() => {
     // Reset mocks
     (logger.info as any).mockClear();
     (conversationRepository.getAll as any).mockReturnValue([]);
+    (conversationOrchestrator as any).executors.clear();
   });
 
   it("should not interrupt if status is aborted", () => {
@@ -45,7 +49,7 @@ describe("TaskOrchestrator Interrupt Logic", () => {
       },
     } as any;
 
-    taskOrchestrator.interrupt(conversation);
+    conversationOrchestrator.interrupt(conversation);
 
     expect(logger.info).toHaveBeenCalledWith("会话状态为 aborted，无需打断。");
   });
@@ -61,7 +65,7 @@ describe("TaskOrchestrator Interrupt Logic", () => {
       },
     } as any;
 
-    taskOrchestrator.interrupt(conversation);
+    conversationOrchestrator.interrupt(conversation);
 
     expect(logger.info).toHaveBeenCalledWith("会话状态为 idle，无需打断。");
   });
@@ -77,7 +81,7 @@ describe("TaskOrchestrator Interrupt Logic", () => {
       },
     } as any;
 
-    taskOrchestrator.interrupt(conversation);
+    conversationOrchestrator.interrupt(conversation);
 
     expect(logger.info).toHaveBeenCalledWith("会话状态为 completed，无需打断。");
   });
@@ -107,7 +111,7 @@ describe("TaskOrchestrator Interrupt Logic", () => {
       },
     } as any;
 
-    taskOrchestrator.interrupt(conversation);
+    conversationOrchestrator.interrupt(conversation);
 
     expect(conversation.isAborted).toBe(true);
     expect(conversation.status).toBe("aborted");
@@ -128,35 +132,58 @@ describe("TaskOrchestrator Interrupt Logic", () => {
       },
     } as any;
 
-    taskOrchestrator.interrupt(conversation);
+    conversationOrchestrator.interrupt(conversation);
 
     expect(conversation.isAborted).toBe(true);
     expect(conversation.status).toBe("aborted");
     expect(conversation.pendingToolCall).toBeNull();
     expect(conversation.userInput).toBe("");
   });
+
+  it("aborts the active detached tool runner when interrupting tool_executing conversations", () => {
+    const controller = new AbortController();
+    const clearAbortController = mock();
+    (conversationOrchestrator as any).executors.set("tool-task", {
+      getCurrentAbortController: () => controller,
+      clearAbortController,
+    });
+
+    const conversation = {
+      id: "tool-task",
+      status: "tool_executing",
+      isAborted: false,
+      userInput: "",
+      memory: {
+        addMessage: mock(),
+        addWebsocketMessage: mock(),
+      },
+    } as any;
+
+    conversationOrchestrator.interrupt(conversation);
+
+    expect(controller.signal.aborted).toBe(true);
+    expect(clearAbortController).toHaveBeenCalledTimes(1);
+    expect(conversation.isAborted).toBe(true);
+    expect(conversation.status).toBe("aborted");
+  });
 });
 
-describe("resolveObservedSubTaskStatus", () => {
-  it("keeps wait_review sticky while still waiting for confirmation", () => {
-    const status = resolveObservedSubTaskStatus({
+describe("resolveObservedExecutionTaskStatus", () => {
+  it("treats waiting_tool_confirmation as running while the execution task is active", () => {
+    const status = resolveObservedExecutionTaskStatus({
       currentStatus: "waiting_tool_confirmation",
-      pendingToolName: undefined,
-      lastSyncedStatus: "wait_review",
       hasObservedActiveState: true,
     });
 
-    expect(status).toBe("wait_review");
+    expect(status).toBe("running");
   });
 
-  it("maps completeTask confirmation waits to wait_review", () => {
-    const status = resolveObservedSubTaskStatus({
-      currentStatus: "waiting_tool_confirmation",
-      pendingToolName: "completeTask",
-      lastSyncedStatus: "running",
+  it("maps idle after active execution to interrupted", () => {
+    const status = resolveObservedExecutionTaskStatus({
+      currentStatus: "idle",
       hasObservedActiveState: true,
     });
 
-    expect(status).toBe("wait_review");
+    expect(status).toBe("interrupted");
   });
 });

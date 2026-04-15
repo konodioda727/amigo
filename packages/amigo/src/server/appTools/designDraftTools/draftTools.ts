@@ -1,12 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import {
   asyncToolJobRegistry,
+  conversationOrchestrator,
   conversationRepository,
   defineTool,
   enqueueConversationContinuation,
   flushConversationContinuationsIfIdle,
   logger,
-  taskOrchestrator,
 } from "@amigo-llm/backend";
 import type { UserMessageAttachment } from "@amigo-llm/types";
 import { resolveDesignDocOwnerTaskId } from "../designDocTools/designDocScope";
@@ -112,7 +112,7 @@ const queueConversationContinuation = (taskId: string, prompt: string, reason: s
     reason,
     run: async (currentConversation) => {
       applyContinuationPrompt(currentConversation, prompt);
-      const executor = taskOrchestrator.getExecutor(currentConversation.id);
+      const executor = conversationOrchestrator.getExecutor(currentConversation.id);
       await executor.execute(currentConversation);
     },
     injectBeforeNextTurn: (currentConversation) => {
@@ -147,66 +147,6 @@ const requireSelectedDraftDependencies = (ownerTaskId: string) => {
   return { session, layout, theme };
 };
 
-const buildModuleImplementationRequirementsDoc = (params: {
-  draftId: string;
-  modules: Array<{ id: string; label: string; summary: string; priority: string }>;
-  session: {
-    pageGoal: string;
-    targetAudience: string;
-    brandMood: string;
-    styleKeywords: string[];
-    constraints: string[];
-    antiGoals: string[];
-  };
-  layout: LayoutOption;
-  theme: { themeId: string; title: string };
-  iterationGoal?: string;
-}) => `# Task: 最终设计稿模块实施 ${params.draftId}
-
-## Background
-- draftId: ${params.draftId}
-- 页面目标: ${params.session.pageGoal}
-- 目标用户: ${params.session.targetAudience}
-- 品牌气质: ${params.session.brandMood}
-- 已选布局: ${params.layout.title} (${params.layout.layoutId})
-- 已选主题: ${params.theme.title} (${params.theme.themeId})
-- 本轮模块: ${params.modules.map((module) => `${module.label}(${module.id})`).join(", ")}
-- iterationGoal: ${params.iterationGoal || "无"}
-
-## Objectives
-- 为每个目标模块生成完整的 module draft
-- 严格继承已选布局槽位和已选主题，不重排整页
-- 把背景、精细布局、字体、图片/图标、阴影等设计细节落实到模块 HTML
-- 最终装配后，整页必须呈现统一、完整的视觉效果，而不是彼此割裂的模块拼接
-
-## Constraints
-${[
-  "- 每个子任务只处理单个模块，并通过 upsertModuleDrafts 写回结果",
-  "- 模块 HTML 根节点必须保留对应的 data-module-id",
-  "- 不允许输出 script，不允许修改其他模块，不允许新建整页",
-  `- 风格关键词：${params.session.styleKeywords.join(" / ") || "无"}`,
-  `- 设计约束：${params.session.constraints.join(" / ") || "无"}`,
-  `- 反例禁区：${params.session.antiGoals.join(" / ") || "无"}`,
-  `- 整体合体效果：${buildOverallDraftEffectSummary({
-    pageGoal: params.session.pageGoal,
-    targetAudience: params.session.targetAudience,
-    brandMood: params.session.brandMood,
-    layoutTitle: params.layout.title,
-    themeTitle: params.theme.title,
-    modules: params.modules.map((module) => module.label),
-  })}`,
-  `- 细节设计清单：${buildVisualDetailChecklist()}`,
-].join("\n")}
-
-## Success Criteria
-${params.modules
-  .map(
-    (module) =>
-      `- [ ] 模块 ${module.label}（${module.id}）已写入有效 module draft，且保留 data-module-id="${module.id}"`,
-  )
-  .join("\n")}
-`;
-
 const buildOverallDraftEffectSummary = (params: {
   pageGoal: string;
   targetAudience: string;
@@ -220,7 +160,7 @@ const buildOverallDraftEffectSummary = (params: {
 const buildVisualDetailChecklist = () =>
   "务必主动设计并统一背景层次、区块过渡、留白节奏、阴影强弱、边框透明度、圆角体系、字体选择、字号级差、字重对比、按钮皮肤、图片/图标风格与局部高光，而不是只把内容块摆到位。";
 
-const buildModuleImplementationDesignDoc = (params: {
+const buildModuleImplementationTasks = (params: {
   draftId: string;
   modules: Array<{ id: string; label: string; summary: string; priority: string }>;
   layout: LayoutOption;
@@ -236,101 +176,6 @@ const buildModuleImplementationDesignDoc = (params: {
   iterationGoal?: string;
   revisionFeedbackByModuleId?: Record<string, string[]>;
 }) => {
-  const themeTokenLines = Object.entries(params.theme.tokens)
-    .map(([key, value]) => `- ${key}: ${value}`)
-    .join("\n");
-  const moduleBlocks = params.modules
-    .map((module) => {
-      const slotHtml = extractLayoutSlotHtml(params.layout.source, module.id);
-      if (!slotHtml) {
-        throw new Error(`布局 ${params.layout.layoutId} 中缺少模块槽位 ${module.id}`);
-      }
-      const feedback = params.revisionFeedbackByModuleId?.[module.id] || [];
-      return `### ${module.label}（${module.id}）
-- 模块职责: ${module.summary || "无"}
-- 模块优先级: ${module.priority}
-- iterationGoal: ${params.iterationGoal || "无"}
-${feedback.length > 0 ? `- 返工要求: ${feedback.join("；")}` : "- 返工要求: 无"}
-
-\`\`\`html
-${slotHtml}
-\`\`\``;
-    })
-    .join("\n\n");
-
-  return `# Design: 最终设计稿模块实施 ${params.draftId}
-
-## Research Findings
-- 页面目标: ${params.session.pageGoal}
-- 目标用户: ${params.session.targetAudience}
-- 品牌气质: ${params.session.brandMood}
-- 已选布局: ${params.layout.title}
-- 已选主题: ${params.theme.title}
-- 本轮模块: ${params.modules.map((module) => `${module.label}(${module.id})`).join(", ")}
-
-## Solution Approach
-- 使用 executeTaskList 驱动模块级子任务，每个 task 只完成一个 module draft。
-- 模块子任务必须读取 design session / layout / theme，并严格依据各自槽位 HTML 完成单模块设计。
-- 当前阶段只产出 module drafts，不在子任务里装配整页。
-- 每个模块在落地时都要预判整页装配后的视觉关系，保证合体后有统一的背景、字体、阴影和节奏，而不是单模块各自为政。
-
-## Technical Decisions
-- 模块输出统一通过 upsertModuleDrafts 写回。
-- 每个模块都要把背景、精细布局、文字层级、图片/插画位、图标风格、阴影、边框、圆角和按钮样式真正设计出来。
-- 子任务不得私自改整页结构，不得偏离已选主题 tokens。
-
-## Overall Composition Target
-- ${buildOverallDraftEffectSummary({
-    pageGoal: params.session.pageGoal,
-    targetAudience: params.session.targetAudience,
-    brandMood: params.session.brandMood,
-    layoutTitle: params.layout.title,
-    themeTitle: params.theme.title,
-    modules: params.modules.map((module) => module.label),
-  })}
-
-## Visual Detail Checklist
-- ${buildVisualDetailChecklist()}
-- 子任务虽然只改一个模块，但必须考虑模块与上下相邻区域的衔接方式，包括背景延续、分隔方式、阴影密度、留白呼吸感和字体层级的一致性。
-
-## Implementation Strategy
-- Phase 1: 逐模块生成或返工 module draft。
-- 全部模块完成后，由父流程负责装配、截图和 critique。
-
-## SubTask Collaboration Contract
-### Ownership
-- 管理子任务负责任务文档、taskList 调度和验收。
-- 模块子任务只负责一个模块，不得重排整页。
-
-### Collaboration Protocol
-- 输入来源：requirements.md、design.md、taskList.md，以及 readDesignSession / readLayoutOptions / readThemeOptions 返回的数据。
-- 输出方式：调用 upsertModuleDrafts 写回当前模块，再使用 completeTask 结束。
-- 验收标准：根节点保留 data-module-id；输出有效 HTML；只修改当前模块。
-
-### Handoff Rules
-- 模块子任务完成后必须在 completeTask 的结果里说明交付物、验证、遗留问题、下游说明。
-- 若任务失败或信息不足，不要伪造完成结果，保留未完成状态给上游续跑。
-
-## Theme Tokens
-${themeTokenLines}
-
-## Module Slots
-${moduleBlocks}
-`;
-};
-
-const buildModuleImplementationTaskListDoc = (params: {
-  draftId: string;
-  modules: Array<{ id: string; label: string; summary: string; priority: string }>;
-  session: {
-    pageGoal: string;
-    targetAudience: string;
-    brandMood: string;
-  };
-  layout: LayoutOption;
-  theme: { title: string };
-  revisionFeedbackByModuleId?: Record<string, string[]>;
-}) => {
   const tools = MODULE_SUBTASK_TOOL_NAMES.join(", ");
   const overallEffect = buildOverallDraftEffectSummary({
     pageGoal: params.session.pageGoal,
@@ -341,36 +186,37 @@ const buildModuleImplementationTaskListDoc = (params: {
     modules: params.modules.map((module) => module.label),
   });
   const detailChecklist = buildVisualDetailChecklist();
-  const tasks = params.modules
-    .map((module, index) => {
-      const feedback = params.revisionFeedbackByModuleId?.[module.id] || [];
-      const feedbackText = feedback.length > 0 ? ` 返工重点：${feedback.join("；")}` : "";
-      return `- [ ] Task 1.${index + 1}: 生成模块 ${module.label}（${module.id}）的最终设计稿并写回 draftId="${params.draftId}" 的 module draft。必须严格遵守 design.md 中的槽位 HTML、主题 tokens、设计约束与协作协议；根节点保留 data-module-id="${module.id}"，只处理当前模块，不要重排整页。整页合体目标：${overallEffect} 细节要求：${detailChecklist}${feedbackText} [tools: ${tools}]`;
-    })
-    .join("\n");
-
-  return `# Task List: 最终设计稿模块实施 ${params.draftId}
-
-## Dependencies
-- 上游布局与主题已确认。
-- 模块子任务必须参考当前 taskDocs 中的 requirements.md 与 design.md。
-
-## Tasks
-
-### Phase 1: 模块实施
-${tasks}
-
-## Progress
-- Total: ${params.modules.length} tasks
-- Completed: 0 tasks
-- Remaining: ${params.modules.length} tasks
-`;
+  return params.modules.map((module, index) => {
+    const slotHtml = extractLayoutSlotHtml(params.layout.source, module.id);
+    if (!slotHtml) {
+      throw new Error(`布局 ${params.layout.layoutId} 中缺少模块槽位 ${module.id}`);
+    }
+    const feedback = params.revisionFeedbackByModuleId?.[module.id] || [];
+    const feedbackText = feedback.length > 0 ? ` 返工重点：${feedback.join("；")}` : "";
+    const themeTokenText = Object.entries(params.theme.tokens)
+      .map(([key, value]) => `${key}=${value}`)
+      .join(", ");
+    return {
+      id: `1.${index + 1}`,
+      title:
+        `生成模块 ${module.label}（${module.id}）的最终设计稿并写回 draftId="${params.draftId}" 的 module draft。` +
+        `必须先读取 design session / layout / theme，并严格依据槽位 HTML、主题 tokens、设计约束与协作协议实现。` +
+        `模块职责：${module.summary || "无"}。模块优先级：${module.priority}。` +
+        `iterationGoal：${params.iterationGoal || "无"}。` +
+        `槽位 HTML：${slotHtml.replace(/\s+/g, " ").trim()}。` +
+        `主题 tokens：${themeTokenText || "无"}。` +
+        `根节点保留 data-module-id="${module.id}"，只处理当前模块，不要重排整页。` +
+        `整页合体目标：${overallEffect} 细节要求：${detailChecklist}` +
+        `${feedbackText} [tools: ${tools}]`,
+      deps: [],
+    };
+  });
 };
 
 const readTaskListStatus = (taskId: string): { content: string; hasPending: boolean } => {
   const conversation = conversationRepository.get(taskId) || conversationRepository.load(taskId);
-  const filePath = conversation?.memory.taskDocsPath
-    ? `${conversation.memory.taskDocsPath}/taskList.md`
+  const filePath = conversation?.memory.storagePath
+    ? `${conversation.memory.storagePath}/taskList.md`
     : "";
   if (!filePath) {
     return { content: "", hasPending: false };
@@ -389,7 +235,7 @@ const readTaskListStatus = (taskId: string): { content: string; hasPending: bool
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const broadcastTaskDocState = (taskId: string) => {
+const broadcastTaskExecutionState = (taskId: string) => {
   const conversation = conversationRepository.get(taskId) || conversationRepository.load(taskId);
   if (!conversation) {
     return;
@@ -565,35 +411,18 @@ const generateModuleDrafts = async (params: {
       readStoredModuleDraft(params.ownerTaskId, params.draftId, module.id)?.updatedAt || null,
     ]),
   );
-  const requirementsDoc = buildModuleImplementationRequirementsDoc({
+  const taskListTasks = buildModuleImplementationTasks({
     draftId: params.draftId,
     modules: params.modules,
     session: params.session,
     layout: params.layout,
     theme: params.theme,
     iterationGoal: params.iterationGoal,
-  });
-  const designDoc = buildModuleImplementationDesignDoc({
-    draftId: params.draftId,
-    modules: params.modules,
-    layout: params.layout,
-    theme: params.theme,
-    session: params.session,
-    iterationGoal: params.iterationGoal,
     revisionFeedbackByModuleId: params.revisionFeedbackByModuleId,
   });
-  const taskListDoc = buildModuleImplementationTaskListDoc({
-    draftId: params.draftId,
-    modules: params.modules,
-    session: params.session,
-    layout: params.layout,
-    theme: params.theme,
-    revisionFeedbackByModuleId: params.revisionFeedbackByModuleId,
-  });
-  const updateTaskDocsTool = params.getToolByName("updateTaskDocs");
-  const executeTaskListTool = params.getToolByName("executeTaskList");
-  if (!updateTaskDocsTool || !executeTaskListTool) {
-    throw new Error("缺少 updateTaskDocs 或 executeTaskList 工具，无法执行模块 taskList");
+  const taskListTool = params.getToolByName("taskList");
+  if (!taskListTool) {
+    throw new Error("缺少 taskList 工具，无法执行模块实施任务");
   }
 
   const toolContext = {
@@ -604,44 +433,27 @@ const generateModuleDrafts = async (params: {
     signal: undefined,
   };
 
-  await updateTaskDocsTool.invoke({
-    params: { phase: "requirements", content: requirementsDoc },
+  await taskListTool.invoke({
+    params: { action: "execute", tasks: taskListTasks },
     context: toolContext,
   });
-  broadcastTaskDocState(params.currentTaskId);
-
-  await updateTaskDocsTool.invoke({
-    params: { phase: "design", content: designDoc },
-    context: toolContext,
-  });
-  broadcastTaskDocState(params.currentTaskId);
-
-  await updateTaskDocsTool.invoke({
-    params: { phase: "taskList", content: taskListDoc },
-    context: toolContext,
-  });
-  broadcastTaskDocState(params.currentTaskId);
-
-  await executeTaskListTool.invoke({
-    params: {},
-    context: toolContext,
-  });
+  broadcastTaskExecutionState(params.currentTaskId);
 
   const startedAt = Date.now();
   while (Date.now() - startedAt < 30 * 60 * 1000) {
     const { content, hasPending } = readTaskListStatus(params.currentTaskId);
     if (content) {
-      broadcastTaskDocState(params.currentTaskId);
+      broadcastTaskExecutionState(params.currentTaskId);
     }
 
     const currentConversation =
       conversationRepository.get(params.currentTaskId) ||
       conversationRepository.load(params.currentTaskId);
-    const hasBlockingSubTasks = Object.values(currentConversation?.memory.subTasks || {}).some(
-      (status) => status.status === "failed" || status.status === "wait_review",
-    );
-    if (hasBlockingSubTasks) {
-      throw new Error("模块 taskList 执行未全部完成，存在失败或待审核任务");
+    const hasBlockingExecutionTasks = Object.values(
+      currentConversation?.memory.executionTasks || {},
+    ).some((status) => status.status === "failed");
+    if (hasBlockingExecutionTasks) {
+      throw new Error("模块 execution 执行未全部完成，存在失败任务");
     }
 
     const moduleDraftCount = params.modules.filter((module) =>
@@ -720,7 +532,7 @@ const runDraftCritique = async (params: {
     sessionSummary: params.sessionSummary,
     screenshotMode: attachments.length > 0 ? "image+text" : "text-only",
   });
-  const result = await taskOrchestrator.runSubTask({
+  const result = await conversationOrchestrator.runExecutionTask({
     subPrompt,
     target: `评审最终设计稿 ${params.draft.draftId} rev ${params.draft.revision}`,
     parentId: params.currentTaskId,
@@ -905,7 +717,7 @@ export const readModuleDraftsTool = defineTool({
 export const upsertModuleDraftsTool = defineTool({
   name: "upsertModuleDrafts",
   description: "写入某个最终设计稿下的模块级 HTML 草稿。",
-  whenToUse: "模块 subTask 完成当前模块视觉稿后，必须调用该工具写回模块草稿。",
+  whenToUse: "模块 executionTask 完成当前模块视觉稿后，必须调用该工具写回模块草稿。",
   params: [
     { name: "draftId", optional: false, description: "最终草稿 ID" },
     {
@@ -1118,9 +930,9 @@ export const readDraftCritiqueTool = defineTool({
 export const orchestrateFinalDesignDraftTool = defineTool({
   name: "orchestrateFinalDesignDraft",
   description:
-    "启动最终设计稿的默认生成流程。它会先创建模块实施 taskList，再通过 executeTaskList 驱动模块子任务，最后装配成 1 个最终界面草稿，并自动截图与评审。",
+    "启动最终设计稿的默认生成流程。它会直接生成并执行模块实施 taskList，驱动模块子任务完成设计稿，最后装配成 1 个最终界面草稿，并自动截图与评审。",
   whenToUse:
-    "布局与主题都已确认后，默认立即使用该工具生成最终设计稿。session / layout / theme 阶段仍由主流程直接处理，不需要拆 subTask；只有最终稿的模块级实施、返工、拼装和 critique 才进入这里。该工具会启动一个设计实施管理子任务，由它创建 taskDocs 并调用 executeTaskList，把背景、精细布局、图片/图标、字体、阴影等设计决策下发给模块子任务，最后再回到父流程装配整页并做 critique。该工具一旦返回 started / already_running，就说明后台已接管；本轮必须立即停止，不要继续读取状态、不要轮询、不要再查 readFinalDesignDraft / readDraftCritique。",
+    "布局与主题都已确认后，默认立即使用该工具生成最终设计稿。session / layout / theme 阶段仍由主流程直接处理，不需要拆 executionTask；只有最终稿的模块级实施、返工、拼装和 critique 才进入这里。该工具会启动一个设计实施管理子任务，由它直接生成并执行模块 taskList，把背景、精细布局、图片/图标、字体、阴影等设计决策下发给模块子任务，最后再回到父流程装配整页并做 critique。该工具一旦返回 started / already_running，就说明后台已接管；本轮必须立即停止，不要继续读取状态、不要轮询、不要再查 readFinalDesignDraft / readDraftCritique。",
   completionBehavior: "idle",
   params: [
     { name: "draftId", optional: false, description: "最终草稿 ID" },
@@ -1177,7 +989,7 @@ export const orchestrateFinalDesignDraftTool = defineTool({
           });
           queueConversationContinuation(
             context.taskId,
-            `design orchestration 已完成。请先调用 readFinalDesignDraft，参数 draftId="${draftId}"，确认整页草稿已经装配成功；只有在 draft 存在后，再调用 readDraftCritique 读取整页评审结果，然后继续向用户汇报。`,
+            `design orchestration 已完成。请先调用 designDraft，参数 action="read", draftId="${draftId}"，确认整页草稿已经装配成功；只有在 draft 存在后，再调用 designDraft，参数 action="critique", draftId="${draftId}" 读取整页评审结果，然后继续向用户汇报。`,
             `design orchestration 完成 ${draftId}`,
           );
         } catch (error) {

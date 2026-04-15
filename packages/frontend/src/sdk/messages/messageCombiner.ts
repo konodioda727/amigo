@@ -1,10 +1,12 @@
 import type {
+  CompleteTaskWebsocketData,
   SERVER_SEND_MESSAGE_NAME,
   ToolParams,
   ToolResult,
   TransportToolContent,
   USER_SEND_MESSAGE_NAME,
   WebSocketMessage,
+  WorkflowPhase,
 } from "@amigo-llm/types";
 import type {
   DisplayMessageType,
@@ -93,6 +95,7 @@ const toolProcessor: MessageProcessor<"tool"> = ({ msg, res }) => {
       : undefined;
   const updateTime = getStableUpdateTime(msg.data.updateTime, res);
   const isPartial = msg.data.partial ?? false;
+  const workflowPhase = extractWorkflowPhaseFromToolPayload(toolName, websocketData);
 
   const existingIndex = findMatchingToolMessageIndex(
     res,
@@ -111,6 +114,7 @@ const toolProcessor: MessageProcessor<"tool"> = ({ msg, res }) => {
       params: (params as unknown as ToolParams<any>) || existingMessage.params,
       toolOutput: result as unknown as ToolResult<any>,
       websocketData: websocketData ?? existingMessage.websocketData,
+      workflowPhase: workflowPhase ?? existingMessage.workflowPhase,
       toolCallId: toolCallId || existingMessage.toolCallId,
       sourceUpdateTime: existingMessage.sourceUpdateTime ?? sourceUpdateTime ?? updateTime,
       error,
@@ -126,6 +130,7 @@ const toolProcessor: MessageProcessor<"tool"> = ({ msg, res }) => {
       params: params as unknown as ToolParams<any>,
       toolOutput: result as unknown as ToolResult<any>,
       websocketData,
+      workflowPhase,
       toolCallId,
       sourceUpdateTime: sourceUpdateTime ?? updateTime,
       error,
@@ -136,6 +141,18 @@ const toolProcessor: MessageProcessor<"tool"> = ({ msg, res }) => {
   }
 
   return { handled: true };
+};
+
+const extractWorkflowPhaseFromToolPayload = (
+  toolName: string,
+  websocketData: unknown,
+): WorkflowPhase | undefined => {
+  if (toolName !== "completeTask" || !websocketData || typeof websocketData !== "object") {
+    return undefined;
+  }
+
+  const data = websocketData as Partial<CompleteTaskWebsocketData>;
+  return data.completedPhase || data.currentPhase;
 };
 
 const defaultProcessor: MessageProcessor<any> = ({ msg, res }) => {
@@ -320,7 +337,6 @@ const READ_TOOL_NAMES = new Set([
   "readFile",
   "readRules",
   "readSkillBundle",
-  "readTaskDocs",
 ]);
 
 const isReadToolMessage = (
@@ -394,21 +410,6 @@ const buildReadSummary = (messages: FrontendToolMessageType<any>[]): ReadSummary
           searchQueries.add(params.query.trim());
         }
         break;
-      case "readTaskDocs": {
-        const documents = toolOutput?.documents;
-        if (typeof params?.phase === "string" && params.phase.trim()) {
-          resourceLabels.add(`任务文档: ${params.phase}`);
-        }
-        if (documents && typeof documents === "object") {
-          const docCount = Object.values(documents).filter(
-            (value) => !!value && typeof value === "object",
-          ).length;
-          resourceCount += Math.max(docCount, 1);
-        } else {
-          resourceCount += 1;
-        }
-        break;
-      }
       case "readRules": {
         const ids = Array.isArray(params?.ids) ? params.ids : [];
         const documents = Array.isArray(toolOutput?.documents) ? toolOutput.documents : [];
@@ -478,6 +479,18 @@ const buildReadSummary = (messages: FrontendToolMessageType<any>[]): ReadSummary
           toolOutput?.skillName || toolOutput?.skillId || params?.skillId || toolOutput?.filePath;
         if (typeof label === "string" && label) {
           resourceLabels.add(`技能: ${label}`);
+        }
+        resourceCount += 1;
+        break;
+      }
+      case "readRepoKnowledge": {
+        const label =
+          toolOutput?.filePath ||
+          params?.filePath ||
+          params?.sectionId ||
+          toolOutput?.resolvedBranch;
+        if (typeof label === "string" && label) {
+          resourceLabels.add(`仓库知识: ${label}`);
         }
         resourceCount += 1;
         break;

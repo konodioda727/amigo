@@ -1,3 +1,4 @@
+import type { WorkflowAgentRole, WorkflowMode, WorkflowPhase, WorkflowState } from "../workflow";
 import type { ToolInterface } from "./index";
 
 /**
@@ -7,10 +8,18 @@ import type { ToolInterface } from "./index";
 export interface ToolExecutionContext {
   /** 当前任务 ID */
   taskId: string;
-  /** 父任务 ID（主任务为 undefined，用于获取共享资源如 sandbox） */
+  /** 父任务 ID（controller 根任务为 undefined，用于获取共享资源如 sandbox） */
   parentId?: string;
   /** 当前会话上下文 */
   conversationContext?: unknown;
+  /** 当前工作流状态 */
+  workflowState?: WorkflowState;
+  /** 当前工作流阶段 */
+  currentPhase?: WorkflowPhase;
+  /** 当前工作流运行角色 */
+  agentRole?: WorkflowAgentRole;
+  /** 当前工作流模式 */
+  workflowMode?: WorkflowMode;
   /** 获取当前会话的 sandbox（懒加载） */
   getSandbox: () => Promise<unknown>;
   /** 获取语言运行时宿主（懒加载） */

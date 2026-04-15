@@ -9,11 +9,11 @@ import type { ZodObject, ZodRawShape } from "zod";
 import type { LoggerConfig } from "@/utils/logger";
 import { type ServerConfig, ServerConfigSchema } from "../config";
 import type {
-  SubTaskCompletionValidationHookPayload,
-  SubTaskValidationResult,
-  SubTaskWaitReviewEvaluationHookPayload,
-  SubTaskWaitReviewEvaluationResult,
-} from "../conversation/subTaskPolicyTypes";
+  TaskExecutionCompletionValidationHookPayload,
+  TaskExecutionValidationResult,
+  TaskExecutionVerificationHookPayload,
+  TaskExecutionVerificationResult,
+} from "../conversation/execution/taskExecutionPolicyTypes";
 import type { LanguageRuntimeHostManager, LspConfig } from "../languageRuntime";
 import { createLanguageRuntimeHostManagerFromSandboxManager } from "../languageRuntime";
 import type { MemoryConfig } from "../memoryRuntime";
@@ -38,6 +38,7 @@ import {
 } from "../skills";
 import type { EditFileDiagnosticsProvider } from "../tools/editFileDiagnostics";
 import { createReadRulesTool, READ_RULES_TOOL_NAME } from "../tools/readRules";
+import type { WorkflowPromptScope } from "../workflow";
 
 /**
  * Amigo 服务器流式构建器
@@ -63,8 +64,8 @@ export class AmigoServerBuilder {
   private _autoApproveToolNames = new Set<string>();
   private _defaultAutoApproveToolNames?: string[];
   private _extraSystemPrompt = "";
-  private _baseTools: Partial<Record<"main" | "sub", ToolInterface<unknown>[]>> = {};
-  private _systemPrompts: Partial<Record<"main" | "sub", string>> = {};
+  private _baseTools: Partial<Record<WorkflowPromptScope, ToolInterface<unknown>[]>> = {};
+  private _systemPrompts: Partial<Record<WorkflowPromptScope, string>> = {};
   private _sandboxManager?: SandboxManager;
   private _conversationPersistenceProvider?: ConversationPersistenceProvider;
   private _ruleProvider?: RuleProvider;
@@ -78,12 +79,12 @@ export class AmigoServerBuilder {
     payload: ConversationMessageHookPayload,
   ) => void | Promise<void>;
   private _createTaskConfigResolver?: CreateTaskConfigResolver;
-  private _subTaskCompletionValidator?: (
-    payload: SubTaskCompletionValidationHookPayload,
-  ) => SubTaskValidationResult | Promise<SubTaskValidationResult>;
-  private _subTaskWaitReviewEvaluator?: (
-    payload: SubTaskWaitReviewEvaluationHookPayload,
-  ) => SubTaskWaitReviewEvaluationResult | Promise<SubTaskWaitReviewEvaluationResult>;
+  private _taskExecutionCompletionValidator?: (
+    payload: TaskExecutionCompletionValidationHookPayload,
+  ) => TaskExecutionValidationResult | Promise<TaskExecutionValidationResult>;
+  private _taskExecutionVerificationEvaluator?: (
+    payload: TaskExecutionVerificationHookPayload,
+  ) => TaskExecutionVerificationResult | Promise<TaskExecutionVerificationResult>;
   private _skillProvider?: SkillProvider;
   private _userModelConfigResolver?: (payload: {
     userId?: string;
@@ -198,40 +199,40 @@ export class AmigoServerBuilder {
     return this;
   }
 
-  baseTools(tools: Partial<Record<"main" | "sub", ToolInterface<unknown>[]>>): this {
-    if (tools.main) {
-      this._baseTools.main = [...tools.main];
+  baseTools(tools: Partial<Record<WorkflowPromptScope, ToolInterface<unknown>[]>>): this {
+    if (tools.controller) {
+      this._baseTools.controller = [...tools.controller];
     }
-    if (tools.sub) {
-      this._baseTools.sub = [...tools.sub];
-    }
-    return this;
-  }
-
-  mainBaseTools(tools: ToolInterface<unknown>[]): this {
-    return this.baseTools({ main: tools });
-  }
-
-  subBaseTools(tools: ToolInterface<unknown>[]): this {
-    return this.baseTools({ sub: tools });
-  }
-
-  systemPrompts(prompts: Partial<Record<"main" | "sub", string>>): this {
-    if (typeof prompts.main === "string") {
-      this._systemPrompts.main = prompts.main.trim();
-    }
-    if (typeof prompts.sub === "string") {
-      this._systemPrompts.sub = prompts.sub.trim();
+    if (tools.worker) {
+      this._baseTools.worker = [...tools.worker];
     }
     return this;
   }
 
-  mainSystemPrompt(prompt: string): this {
-    return this.systemPrompts({ main: prompt });
+  controllerBaseTools(tools: ToolInterface<unknown>[]): this {
+    return this.baseTools({ controller: tools });
   }
 
-  subSystemPrompt(prompt: string): this {
-    return this.systemPrompts({ sub: prompt });
+  workerBaseTools(tools: ToolInterface<unknown>[]): this {
+    return this.baseTools({ worker: tools });
+  }
+
+  systemPrompts(prompts: Partial<Record<WorkflowPromptScope, string>>): this {
+    if (typeof prompts.controller === "string") {
+      this._systemPrompts.controller = prompts.controller.trim();
+    }
+    if (typeof prompts.worker === "string") {
+      this._systemPrompts.worker = prompts.worker.trim();
+    }
+    return this;
+  }
+
+  controllerSystemPrompt(prompt: string): this {
+    return this.systemPrompts({ controller: prompt });
+  }
+
+  workerSystemPrompt(prompt: string): this {
+    return this.systemPrompts({ worker: prompt });
   }
 
   sandboxManager(manager: SandboxManager): this {
@@ -282,21 +283,21 @@ export class AmigoServerBuilder {
     return this;
   }
 
-  subTaskCompletionValidator(
+  taskExecutionCompletionValidator(
     validator: (
-      payload: SubTaskCompletionValidationHookPayload,
-    ) => SubTaskValidationResult | Promise<SubTaskValidationResult>,
+      payload: TaskExecutionCompletionValidationHookPayload,
+    ) => TaskExecutionValidationResult | Promise<TaskExecutionValidationResult>,
   ): this {
-    this._subTaskCompletionValidator = validator;
+    this._taskExecutionCompletionValidator = validator;
     return this;
   }
 
-  subTaskWaitReviewEvaluator(
+  taskExecutionVerificationEvaluator(
     evaluator: (
-      payload: SubTaskWaitReviewEvaluationHookPayload,
-    ) => SubTaskWaitReviewEvaluationResult | Promise<SubTaskWaitReviewEvaluationResult>,
+      payload: TaskExecutionVerificationHookPayload,
+    ) => TaskExecutionVerificationResult | Promise<TaskExecutionVerificationResult>,
   ): this {
-    this._subTaskWaitReviewEvaluator = evaluator;
+    this._taskExecutionVerificationEvaluator = evaluator;
     return this;
   }
 
@@ -429,8 +430,8 @@ export class AmigoServerBuilder {
       onConversationCreate,
       onConversationMessage: this._onConversationMessage,
       createTaskConfigResolver,
-      subTaskCompletionValidator: this._subTaskCompletionValidator,
-      subTaskWaitReviewEvaluator: this._subTaskWaitReviewEvaluator,
+      taskExecutionCompletionValidator: this._taskExecutionCompletionValidator,
+      taskExecutionVerificationEvaluator: this._taskExecutionVerificationEvaluator,
       userModelConfigResolver: this._userModelConfigResolver,
       memory: this._memoryConfig,
       editFileDiagnosticsProvider: this._editFileDiagnosticsProvider,

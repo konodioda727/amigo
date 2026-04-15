@@ -2,7 +2,6 @@ import type { FC, ReactNode } from "react";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useSwipeGesture } from "../../hooks/useSwipeGesture";
-import DocSidebar from "../DocSidebar";
 import Header from "../Header";
 import Sidebar from "../Sidebar";
 
@@ -114,8 +113,6 @@ const Layout: FC<LayoutProps> = ({ children }) => {
           <main className="flex min-w-0 flex-1 flex-col items-center overflow-hidden">
             {children}
           </main>
-
-          <DocSidebar />
         </div>
       </div>
     </SidebarContext.Provider>

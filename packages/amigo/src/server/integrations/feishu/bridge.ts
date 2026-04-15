@@ -1,8 +1,8 @@
 import {
+  conversationOrchestrator,
   conversationRepository,
   getGlobalState,
   logger,
-  taskOrchestrator,
 } from "@amigo-llm/backend";
 import type { ConversationMessageHookPayload, CreateTaskConfig } from "@amigo-llm/backend/sdk";
 import * as Lark from "@larksuiteoapi/node-sdk";
@@ -422,7 +422,6 @@ export class FeishuBridge implements ConversationChannelProvider {
 
     if (!conversation) {
       conversation = conversationRepository.create({
-        type: "main",
         customPrompt: resolvedTaskConfig?.customPrompt,
         context: initialConversationContext,
       });
@@ -456,8 +455,8 @@ export class FeishuBridge implements ConversationChannelProvider {
     const amigoInput = isGroupChat(event)
       ? await this.buildGroupAmigoInput(event)
       : this.buildDirectMessageInput(event);
-    taskOrchestrator.setUserInput(conversation, amigoInput);
-    const executor = taskOrchestrator.getExecutor(conversation.id);
+    await conversationOrchestrator.setUserInput(conversation, amigoInput);
+    const executor = conversationOrchestrator.getExecutor(conversation.id);
     void executor.execute(conversation);
   }
 

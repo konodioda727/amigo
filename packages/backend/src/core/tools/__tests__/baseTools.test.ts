@@ -4,11 +4,11 @@ import { setGlobalState } from "@/globalState";
 import {
   AskFollowupQuestions,
   Bash,
-  DEFAULT_MAIN_BASIC_TOOLS,
-  DEFAULT_SUB_BASIC_TOOLS,
+  DEFAULT_CONTROLLER_BASIC_TOOLS,
+  DEFAULT_WORKER_BASIC_TOOLS,
   getBaseTools,
-  InstallDependencies,
   ListFiles,
+  OverridePhase,
 } from "../index";
 
 describe("getBaseTools", () => {
@@ -17,30 +17,39 @@ describe("getBaseTools", () => {
   });
 
   it("returns default base tools when no override is configured", () => {
-    expect(getBaseTools("main")).toEqual(DEFAULT_MAIN_BASIC_TOOLS);
-    expect(getBaseTools("sub")).toEqual(DEFAULT_SUB_BASIC_TOOLS);
+    expect(getBaseTools("controller")).toEqual(DEFAULT_CONTROLLER_BASIC_TOOLS);
+    expect(getBaseTools("worker")).toEqual(DEFAULT_WORKER_BASIC_TOOLS);
   });
 
   it("returns configured base tools when override exists", () => {
-    const customMainTools = [Bash] as ToolInterface<any>[];
-    const customSubTools = [AskFollowupQuestions] as ToolInterface<any>[];
+    const customControllerTools = [Bash] as ToolInterface<any>[];
+    const customWorkerTools = [AskFollowupQuestions] as ToolInterface<any>[];
 
     setGlobalState("baseTools", {
-      main: customMainTools,
-      sub: customSubTools,
+      controller: customControllerTools,
+      worker: customWorkerTools,
     });
 
-    expect(getBaseTools("main")).toEqual(customMainTools);
-    expect(getBaseTools("sub")).toEqual(customSubTools);
+    expect(getBaseTools("controller")).toEqual(customControllerTools);
+    expect(getBaseTools("worker")).toEqual(customWorkerTools);
   });
 
-  it("includes installDependencies in default tool sets", () => {
-    expect(DEFAULT_MAIN_BASIC_TOOLS).toContain(InstallDependencies);
-    expect(DEFAULT_SUB_BASIC_TOOLS).toContain(InstallDependencies);
+  it("does not include installDependencies in default tool sets", () => {
+    expect(DEFAULT_CONTROLLER_BASIC_TOOLS.map((tool) => tool.name)).not.toContain(
+      "installDependencies",
+    );
+    expect(DEFAULT_WORKER_BASIC_TOOLS.map((tool) => tool.name)).not.toContain(
+      "installDependencies",
+    );
   });
 
   it("includes listFiles in default tool sets", () => {
-    expect(DEFAULT_MAIN_BASIC_TOOLS).toContain(ListFiles);
-    expect(DEFAULT_SUB_BASIC_TOOLS).toContain(ListFiles);
+    expect(DEFAULT_CONTROLLER_BASIC_TOOLS).toContain(ListFiles);
+    expect(DEFAULT_WORKER_BASIC_TOOLS).toContain(ListFiles);
+  });
+
+  it("exposes overridePhase in controller defaults", () => {
+    expect(DEFAULT_CONTROLLER_BASIC_TOOLS).toContain(OverridePhase);
+    expect(DEFAULT_CONTROLLER_BASIC_TOOLS.map((tool) => tool.name)).toContain("overridePhase");
   });
 });

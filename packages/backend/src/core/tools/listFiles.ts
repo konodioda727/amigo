@@ -132,6 +132,7 @@ export const ListFiles = createTool({
     "列出目录中的文件和子目录。用于在读取文件前快速了解仓库或某个目录的结构，不返回文件正文。",
   whenToUse:
     "当你不知道确切文件名、需要先浏览目录结构、缩小 readFile 范围时使用。不要用它代替 readFile 读取内容。",
+  executionMode: "parallel_readonly",
   params: [
     {
       name: "directoryPath",

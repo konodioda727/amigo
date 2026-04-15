@@ -3,7 +3,7 @@ import type {
   USER_SEND_MESSAGE_NAME,
   UserSendMessageData,
 } from "@amigo-llm/types";
-import { broadcaster, taskOrchestrator } from "@/core/conversation";
+import { broadcaster, conversationOrchestrator } from "@/core/conversation";
 import { getGlobalState } from "@/globalState";
 import { getSessionHistories } from "@/utils/getSessions";
 import { logger } from "@/utils/logger";
@@ -14,7 +14,12 @@ export class CreateTaskMessageResolver extends BaseMessageResolver<"createTask">
 
   override async process(message: UserSendMessageData<"createTask">): Promise<void> {
     // 设置用户输入
-    taskOrchestrator.setUserInput(this.conversation, message.message, message.attachments);
+    await conversationOrchestrator.setUserInput(
+      this.conversation,
+      message.message,
+      message.attachments,
+      message.workflowMode,
+    );
 
     const onConversationCreate = getGlobalState("onConversationCreate");
     const resolvedContext = this.conversation.memory.context ?? message.context;
@@ -41,7 +46,7 @@ export class CreateTaskMessageResolver extends BaseMessageResolver<"createTask">
     // 启动执行
     const manualExecuteStatus: ConversationStatus[] = ["completed", "aborted", "idle"];
     if (manualExecuteStatus.includes(this.conversation.status)) {
-      const executor = taskOrchestrator.getExecutor(this.conversation.id);
+      const executor = conversationOrchestrator.getExecutor(this.conversation.id);
       executor.execute(this.conversation);
     }
   }

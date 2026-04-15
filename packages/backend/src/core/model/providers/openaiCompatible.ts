@@ -1,3 +1,4 @@
+import { logger } from "@/utils/logger";
 import type { ModelThinkType } from "../contextConfig";
 import { streamSseData } from "../sse";
 import type {
@@ -55,6 +56,27 @@ type OpenAIStreamToolCallDelta = {
     arguments?: string;
   };
 };
+
+const OPENAI_COMPAT_DEBUG_ENABLED = process.env.OPENAI_COMPAT_DEBUG === "1";
+
+const maskSecret = (value: string): string => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (trimmed.length <= 8) {
+    return "*".repeat(trimmed.length);
+  }
+  return `${trimmed.slice(0, 4)}***${trimmed.slice(-4)}`;
+};
+
+const serializeHeaders = (headers: Headers): Record<string, string> =>
+  Object.fromEntries(Array.from(headers.entries()));
+
+const buildDebugRequestHeaders = (apiKey: string): Record<string, string> => ({
+  Authorization: `Bearer ${maskSecret(apiKey)}`,
+  "Content-Type": "application/json",
+});
 
 const getFallbackAttachmentText = (part: Exclude<AmigoMessageContentPart, { type: "text" }>) => {
   const fileName = part.name ? `${part.name} ` : "";
@@ -516,25 +538,48 @@ export class OpenAICompatibleProvider implements AmigoLlm {
     options?: AmigoLlmStreamOptions,
   ): Promise<AsyncIterable<AmigoLlmStreamEvent>> {
     const tools = toOpenAITools(options?.tools);
+    const requestBody = {
+      model: this.options.model,
+      messages: toOpenAIMessages(messages),
+      stream: true,
+      temperature: this.options.temperature,
+      tools,
+      tool_choice: tools ? "auto" : undefined,
+    };
+
+    if (OPENAI_COMPAT_DEBUG_ENABLED) {
+      logger.info(
+        `[OpenAICompatibleProvider] request url=${this.completionsUrl} headers=${JSON.stringify(
+          buildDebugRequestHeaders(this.options.apiKey),
+        )} body=${JSON.stringify(requestBody)}`,
+      );
+    }
+
     const response = await fetch(this.completionsUrl, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.options.apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model: this.options.model,
-        messages: toOpenAIMessages(messages),
-        stream: true,
-        temperature: this.options.temperature,
-        tools,
-        tool_choice: tools ? "auto" : undefined,
-      }),
+      body: JSON.stringify(requestBody),
       signal: options?.signal,
     });
 
+    if (OPENAI_COMPAT_DEBUG_ENABLED) {
+      logger.info(
+        `[OpenAICompatibleProvider] response status=${response.status} headers=${JSON.stringify(
+          serializeHeaders(response.headers),
+        )}`,
+      );
+    }
+
     if (!response.ok) {
       const detail = await response.text().catch(() => "");
+      if (OPENAI_COMPAT_DEBUG_ENABLED) {
+        logger.error(
+          `[OpenAICompatibleProvider] response error body=${detail || response.statusText}`,
+        );
+      }
       throw new Error(
         `OpenAI-compatible provider request failed (${response.status}): ${
           detail || response.statusText
@@ -557,6 +602,9 @@ export class OpenAICompatibleProvider implements AmigoLlm {
         >();
 
         for await (const data of streamSseData(body, signal)) {
+          if (OPENAI_COMPAT_DEBUG_ENABLED) {
+            logger.info(`[OpenAICompatibleProvider] sse=${data}`);
+          }
           if (data === "[DONE]") {
             break;
           }

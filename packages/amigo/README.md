@@ -1,136 +1,157 @@
-# Amigo App
+# @amigo-llm/amigo
 
-`amigo-app` 现在默认在服务端启动时启用一套本地 Qdrant-backed `longTerm memory`，地址固定为 `http://127.0.0.1:6333`。默认启动配置在 [index.ts](your-path-to-amigo/packages/amigo/src/server/index.ts)。
+`@amigo-llm/amigo` 是这个仓库里的完整应用层。
+
+它把这些能力接在了一起：
+
+- `@amigo-llm/backend` 会话运行时
+- `@amigo-llm/frontend` React WebSocket SDK
+- Better Auth 登录注册
+- MySQL 持久化与 migration
+- 技能管理与技能市场导入
+- automations 调度
+- design draft 工作流
+- sandbox editor / preview 代理
+- Feishu 集成
+- Qdrant 长期记忆
+
+## 入口
+
+服务端入口：
+
+- [`src/server/index.ts`](src/server/index.ts)
+- [`src/server/app.ts`](src/server/app.ts)
+
+前端入口：
+
+- [`src/web/App.tsx`](src/web/App.tsx)
+- [`src/web/main.tsx`](src/web/main.tsx)
+
+## 本地启动
+
+在仓库根目录执行：
+
+```bash
+bun install
+cp packages/amigo/.env.example packages/amigo/.env
+docker run -d --name amigo-qdrant -p 6333:6333 qdrant/qdrant
+docker build -t ai_sandbox packages/amigo/assets
+bun --filter @amigo-llm/amigo dev
+```
+
+如果你没有 MySQL，也需要先准备一个。
+
+默认端口：
+
+- Web: `http://localhost:3000`
+- API/Auth/WS: `http://localhost:10013`
+
+## 环境变量
+
+最低限度需要：
+
+```env
+MYSQL_HOST=127.0.0.1
+MYSQL_PORT=3306
+MYSQL_USER=amigo
+MYSQL_PASSWORD=your_mysql_password
+MYSQL_DATABASE=amigo
+
+BETTER_AUTH_SECRET=replace-with-a-long-random-secret
+BETTER_AUTH_BASE_URL=http://localhost:10013
+BETTER_AUTH_TRUSTED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+```
+
+补充：
+
+- 模型配置优先从用户设置读取
+- `MODEL_API_KEY` / `MODEL_NAME` / `MODEL_BASE_URL` 仍可作为兜底
+- `SERPER_API_KEY`、`GITHUB_TOKEN`、OSS、Feishu 配置都是可选项
+
+参考：
+
+- [`./.env.example`](./.env.example)
+- [`../../ops/deploy/amigo.env.example`](../../ops/deploy/amigo.env.example)
 
 ## 默认行为
 
-- 当前会话的短期记忆继续沿用现有 `conversation memory + checkpoint/compaction`
-- SDK memory 只负责跨会话的 `longTerm` 记忆
-- 不再维护额外的 `history index`
+### MySQL 是必需的
 
-默认 Qdrant 配置：
+`createAmigoApp()` 启动时会强制要求 MySQL 配置，并自动执行 migration。
 
-```ts
-qdrantMemory: {
-  url: "http://127.0.0.1:6333",
-  collectionPrefix: "amigo_memory",
-  longTerm: {
-    enabled: true,
-    topK: 6,
-    minScore: 0.15,
-    minConfidence: 0.8,
-  },
-  retrieval: {
-    hybrid: true,
-  },
-}
-```
+### 默认入口会启用 Qdrant 长期记忆
 
-启动前请先确保本地 Qdrant 已运行：
+`src/server/index.ts` 默认会注入一套 Qdrant memory 配置，地址固定为 `http://127.0.0.1:6333`。
 
-```bash
-docker run --rm -p 6333:6333 qdrant/qdrant
-```
+### 默认会启用 LSP 工具
 
-## SDK Memory API
+当前默认内置：
 
-SDK 现在把向量化和存储拆开暴露。
+- TypeScript / JavaScript: `typescript-language-server`
+- Python: `pyright-langserver`
 
-- `MemoryEmbeddingProvider`
-  - `embedQuery(text)`
-  - `embedDocuments(texts)`
-- `MemoryStore`
-  - `upsert(records)`
-  - `query({ namespace, vector, topK, minScore, filter, hybrid, queryText })`
-  - `delete(...)`
+这些语言服务已经预装在 [`assets/Dockerfile`](assets/Dockerfile) 对应的 sandbox 镜像里。
 
-相关类型和 helper 从 [sdk/index.ts](your-path-to-amigo/packages/backend/src/sdk/index.ts) 导出。
+## 公开的应用层能力
 
-## App 侧接法
+### `createAmigoApp`
 
-### 1. 直接传完整 memory 配置
+如果你想复用这个完整应用装配逻辑，可以直接从 `src/server/app.ts` 使用：
 
 ```ts
-import {
-  createDeterministicMemoryEmbeddingProvider,
-  createInMemoryMemoryStore,
-} from "@amigo-llm/backend";
-import { createAmigoApp } from "your-path-to-amigo/packages/amigo/src/server/app";
-
-const embeddings = createDeterministicMemoryEmbeddingProvider();
-const store = createInMemoryMemoryStore();
+import { createAmigoApp } from "./src/server/app";
 
 const app = await createAmigoApp({
-  memory: {
-    longTerm: {
-      enabled: true,
-      store,
-      embeddings,
-      topK: 6,
-      minScore: 0.15,
-      minConfidence: 0.8,
-    },
-    retrieval: {
-      hybrid: true,
-    },
+  port: 10013,
+  cachePath: "/var/lib/amigo",
+  sandboxConfig: {
+    imageName: "ai_sandbox",
   },
 });
+
+app.server.start();
 ```
 
-### 2. 传 `qdrantMemory`
+它会负责装配：
 
-```ts
-import { createAmigoApp } from "your-path-to-amigo/packages/amigo/src/server/app";
+- MySQL persistence provider
+- auth / HTTP / WebSocket server
+- skill store
+- automation scheduler
+- sandbox manager
+- preview / editor 代理
+- 用户级模型配置解析
+- 可选 memory / LSP / OSS / preview host 配置
 
-const app = await createAmigoApp({
-  qdrantMemory: {
-    url: "http://127.0.0.1:6333",
-    collectionPrefix: "amigo_memory",
-    longTerm: {
-      enabled: true,
-      topK: 6,
-      minScore: 0.15,
-      minConfidence: 0.8,
-    },
-    retrieval: {
-      hybrid: true,
-    },
-  },
-});
-```
+### MySQL helper
 
-`qdrantMemory` helper 定义在 [qdrantMemory.ts](your-path-to-amigo/packages/amigo/src/server/memory/qdrantMemory.ts)。
+数据库相关辅助导出位于：
 
-## 长期记忆抽取模型
+- [`src/server/db/index.ts`](src/server/db/index.ts)
+- [`src/server/db/bootstrap.ts`](src/server/db/bootstrap.ts)
 
-长期记忆现在默认在每条 `user message` 到达时做抽取，不再等 `turn` 结束。
+可用于：
 
-- 在 `amigo-app` 里，长期记忆提取模型优先从前端设置页读取
-- 如果用户在设置页里选择了“长期记忆提取模型”，运行时会优先用那个模型
-- `amigo-app` 的 `qdrantMemory` helper 不暴露 `extractor.model`，避免把这个选择硬编码在服务端配置里
-- 对纯 SDK 接入，如果你给 `longTerm.extractor.model` 配了模型，SDK 会优先用这个模型做长期记忆判断和提取
-- 如果没配，SDK 会默认回退到当前会话的模型快照
-- 如果模型调用失败或返回空数组，本次就放弃写入，不做规则兜底
-- 运行时默认只持久化 `confidence >= 0.8` 的候选，且会额外过滤明显属于当前任务/当前轮工作流的内容（例如 taskdoc 生成顺序、局部增量修改要求）
+- 创建数据库访问层
+- 手动执行 migration
+- bootstrap 本地 web 用户
 
-纯 SDK 配置示例：
+## 生产部署样板
 
-```ts
-longTerm: {
-  enabled: true,
-  store,
-  embeddings,
-  topK: 6,
-  minScore: 0.15,
-  minConfidence: 0.8,
-  extractor: {
-    model: { configId: "memory-config", model: "gpt-4.1-mini" },
-  },
-}
-```
+当前仓库内置了基础样板：
 
-## 现阶段限制
+- [`../../ops/deploy/amigo.env.example`](../../ops/deploy/amigo.env.example)
+- [`../../ops/systemd/amigo.service`](../../ops/systemd/amigo.service)
+- [`../../ops/caddy/Caddyfile.example`](../../ops/caddy/Caddyfile.example)
 
-- `qdrantMemory` 默认用的是 deterministic embeddings，适合本地联调，不适合生产效果评估
-- 如果要上生产，应该显式传一个真实的 `MemoryEmbeddingProvider`
-- 当前没有额外的 history index，历史回忆依赖你们现有的短期记忆 / checkpoint 体系
+常见生产形态是：
+
+- Caddy 提供静态资源并代理 `/api/*`、`/ws*`
+- Bun 只跑后端服务
+- preview 可选走子域代理
+
+## 进一步阅读
+
+- 根说明：[`../../README.md`](../../README.md)
+- backend SDK：[`../backend/README.md`](../backend/README.md)
+- frontend SDK：[`../frontend/README.md`](../frontend/README.md)

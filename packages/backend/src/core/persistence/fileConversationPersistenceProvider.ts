@@ -2,9 +2,9 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import path from "node:path";
 import {
   type ChatMessage,
+  type ExecutionTaskStatus,
   type SERVER_SEND_MESSAGE_NAME,
   StorageType,
-  type SubTaskStatus,
   type TaskStatusMetadata,
   type USER_SEND_MESSAGE_NAME,
   type WebSocketMessage,
@@ -42,28 +42,31 @@ const readJson = <T>(filePath: string): T | null => {
   }
 };
 
-const normalizeSubTasks = (
-  rawSubTasks: Record<string, SubTaskStatus> | undefined,
-): Record<string, SubTaskStatus> => {
-  const normalizedSubTasks: Record<string, SubTaskStatus> = {};
-  for (const [key, status] of Object.entries(rawSubTasks || {})) {
+const normalizeExecutionTasks = (
+  rawExecutionTasks: Record<string, ExecutionTaskStatus> | undefined,
+): Record<string, ExecutionTaskStatus> => {
+  const normalizedExecutionTasks: Record<string, ExecutionTaskStatus> = {};
+  for (const [key, status] of Object.entries(rawExecutionTasks || {})) {
     const taskKey = getTaskId(key) || key;
-    const nextStatus: SubTaskStatus = {
+    const rawStatus = status.status as string;
+    const normalizedStatus = rawStatus === "waiting_user_input" ? "interrupted" : status.status;
+    const nextStatus: ExecutionTaskStatus = {
       ...status,
+      status: normalizedStatus,
       description: status.description || key,
     };
-    const existing = normalizedSubTasks[taskKey];
-    if (!existing || (!existing.subTaskId && nextStatus.subTaskId)) {
-      normalizedSubTasks[taskKey] = nextStatus;
+    const existing = normalizedExecutionTasks[taskKey];
+    if (!existing || (!existing.executionTaskId && nextStatus.executionTaskId)) {
+      normalizedExecutionTasks[taskKey] = nextStatus;
     } else {
-      normalizedSubTasks[taskKey] = {
+      normalizedExecutionTasks[taskKey] = {
         ...existing,
         ...nextStatus,
         description: existing.description || nextStatus.description,
       };
     }
   }
-  return normalizedSubTasks;
+  return normalizedExecutionTasks;
 };
 
 const toConversationRecord = (
@@ -72,7 +75,7 @@ const toConversationRecord = (
   messages: ChatMessage[],
   websocketMessages: WebSocketMessage<USER_SEND_MESSAGE_NAME | SERVER_SEND_MESSAGE_NAME>[],
 ): ConversationPersistenceRecord => {
-  const normalizedSubTasks = normalizeSubTasks(taskStatus?.subTasks);
+  const normalizedExecutionTasks = normalizeExecutionTasks(taskStatus?.executionTasks);
   return {
     taskId,
     fatherTaskId: taskStatus?.fatherTaskId,
@@ -82,8 +85,9 @@ const toConversationRecord = (
     context: taskStatus?.context,
     autoApproveToolNames: taskStatus?.autoApproveToolNames || [],
     pendingToolCall: taskStatus?.pendingToolCall || null,
-    subTasks: normalizedSubTasks,
+    executionTasks: normalizedExecutionTasks,
     contextUsage: taskStatus?.contextUsage,
+    workflowState: taskStatus?.workflowState,
     createdAt: taskStatus?.createdAt || new Date().toISOString(),
     updatedAt: taskStatus?.updatedAt || taskStatus?.createdAt || new Date().toISOString(),
     messages,
@@ -148,8 +152,9 @@ class FileConversationPersistenceProvider implements ConversationPersistenceProv
         context: record.context,
         autoApproveToolNames: record.autoApproveToolNames,
         pendingToolCall: record.pendingToolCall || undefined,
-        subTasks: record.subTasks,
+        executionTasks: record.executionTasks,
         contextUsage: record.contextUsage,
+        workflowState: record.workflowState,
         createdAt: record.createdAt,
         updatedAt: record.updatedAt,
       };

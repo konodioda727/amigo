@@ -10,59 +10,47 @@ export const messageInputEditorStyles = `
     z-index: 10;
   }
 
-  .tiptap-editor-wrapper {
+  .message-input-theme-wrapper {
     position: relative;
     max-width: 800px;
     margin: 0 auto;
+    background-color: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 24px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 4px 20px -5px rgba(0, 0, 0, 0.05);
+    transition: all 0.2s ease-in-out;
   }
 
-  .tiptap-editor-wrapper.is-image-drag-active .ProseMirror {
+  .message-input-theme-wrapper:focus-within {
+    border-color: #d1d5db;
+    box-shadow: 0 4px 25px -5px rgba(0, 0, 0, 0.08);
+  }
+
+  .message-input-theme-wrapper.is-image-drag-active {
     border-color: #93c5fd;
-    background:
-      linear-gradient(0deg, rgba(239, 246, 255, 0.92), rgba(239, 246, 255, 0.92)),
-      #ffffff;
-    box-shadow: 0 0 0 4px rgba(147, 197, 253, 0.2);
+    background-color: rgba(239, 246, 255, 0.5);
+  }
+
+  .tiptap-editor-wrapper {
+    position: relative;
+    width: 100%;
   }
 
   .tiptap-editor-wrapper .ProseMirror {
-    min-height: 60px;
+    min-height: 44px;
     max-height: 320px;
     overflow-y: auto;
     overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
-    padding: 18px 108px 18px 60px;
-    border-radius: 30px;
-    border: 1px solid #e5e7eb;
-    background-color: #ffffff;
-    box-shadow: 0 4px 20px -5px rgba(0, 0, 0, 0.05);
+    padding: 10px 16px 4px;
     font-size: 15px;
     font-weight: 400;
     line-height: 1.5;
-    transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
     outline: none;
-  }
-
-  .tiptap-editor-wrapper .ProseMirror:focus {
-    border-color: #d1d5db;
-    box-shadow: 0 4px 25px -5px rgba(0, 0, 0, 0.08);
-    outline: none;
-  }
-
-  .attachment-button-wrapper {
-    position: absolute;
-    left: 10px;
-    bottom: 10px;
-    z-index: 10;
-  }
-
-  .send-button-wrapper {
-    position: absolute;
-    right: 10px;
-    bottom: 10px;
-    z-index: 10;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    color: #111827;
   }
 
   .tiptap-editor-wrapper .ProseMirror p.is-editor-empty:first-child::before {
@@ -75,6 +63,7 @@ export const messageInputEditorStyles = `
 
   .tiptap-editor-wrapper .ProseMirror p {
     margin: 0;
+    padding-bottom: 2px;
   }
 
   .mention-suggestions {
@@ -85,7 +74,8 @@ export const messageInputEditorStyles = `
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
+    padding: 0 16px;
   }
 
   .attachment-chip {
@@ -93,10 +83,10 @@ export const messageInputEditorStyles = `
     align-items: center;
     gap: 8px;
     padding: 6px 8px;
-    background: rgba(255, 255, 255, 0.92);
+    background: #f9fafb;
     border: 1px solid #e5e7eb;
     border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
     min-width: 0;
     max-width: 100%;
   }
@@ -155,7 +145,7 @@ export const messageInputEditorStyles = `
 
   .attachment-chip-name {
     font-size: 12px;
-    color: #111827;
+    color: #374151;
     max-width: 220px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -202,12 +192,12 @@ export const messageInputEditorStyles = `
     justify-content: center;
     border: none;
     background: transparent;
-    color: #6b7280;
+    color: #9ca3af;
     cursor: pointer;
     padding: 0;
   }
 
   .attachment-chip-remove:hover {
-    color: #111827;
+    color: #4b5563;
   }
 `;

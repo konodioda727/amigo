@@ -88,7 +88,8 @@ export const createReadRulesTool = (provider: RuleProvider) =>
     description:
       "读取宿主应用环境中的规则文档。这些规则文档位于 sandbox 外部，不能通过 readFile 访问。",
     whenToUse:
-      "当系统提示词引用了某个规则 ID，且你需要查看该规则的完整正文时使用。优先按 ID 精准读取，不要猜测宿主环境中的文件路径。",
+      "当系统提示词引用了某个规则 ID，且你当前判断确实缺少这条规则的正文时使用。若 execution handoff、最近诊断或当前上下文已经明确给出目标文件和动作，不要只为重复规则而再读一次。优先按 ID 精准读取，不要猜测宿主环境中的文件路径。",
+    executionMode: "parallel_readonly",
     params: [
       {
         name: "ids",

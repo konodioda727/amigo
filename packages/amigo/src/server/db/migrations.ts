@@ -795,6 +795,198 @@ DROP TABLE IF EXISTS design_assets
       `,
     ]),
   },
+  {
+    version: 8,
+    name: "conversation_workflow_state",
+    statements: [
+      `
+SET @amigo_has_workflow_state_json = (
+  SELECT COUNT(*)
+  FROM information_schema.columns
+  WHERE table_schema = DATABASE()
+    AND table_name = 'conversation_state'
+    AND column_name = 'workflow_state_json'
+)
+      `,
+      `
+SET @amigo_add_workflow_state_json_sql = IF(
+  @amigo_has_workflow_state_json = 0,
+  'ALTER TABLE conversation_state ADD COLUMN workflow_state_json JSON NULL AFTER context_usage_json',
+  'SELECT 1'
+)
+      `,
+      `
+PREPARE amigo_add_workflow_state_json_stmt FROM @amigo_add_workflow_state_json_sql
+      `,
+      `
+EXECUTE amigo_add_workflow_state_json_stmt
+      `,
+      `
+DEALLOCATE PREPARE amigo_add_workflow_state_json_stmt
+      `,
+      `
+UPDATE conversation_state
+SET workflow_state_json = JSON_OBJECT()
+WHERE workflow_state_json IS NULL
+      `,
+      `
+SET @amigo_workflow_state_json_not_null_sql = IF(
+  @amigo_has_workflow_state_json = 0,
+  'ALTER TABLE conversation_state MODIFY COLUMN workflow_state_json JSON NOT NULL',
+  'SELECT 1'
+)
+      `,
+      `
+PREPARE amigo_workflow_state_json_not_null_stmt FROM @amigo_workflow_state_json_not_null_sql
+      `,
+      `
+EXECUTE amigo_workflow_state_json_not_null_stmt
+      `,
+      `
+DEALLOCATE PREPARE amigo_workflow_state_json_not_null_stmt
+      `,
+    ],
+    checksum: migrationChecksum(8, "conversation_workflow_state", [
+      `
+SET @amigo_has_workflow_state_json = (
+  SELECT COUNT(*)
+  FROM information_schema.columns
+  WHERE table_schema = DATABASE()
+    AND table_name = 'conversation_state'
+    AND column_name = 'workflow_state_json'
+)
+      `,
+      `
+SET @amigo_add_workflow_state_json_sql = IF(
+  @amigo_has_workflow_state_json = 0,
+  'ALTER TABLE conversation_state ADD COLUMN workflow_state_json JSON NULL AFTER context_usage_json',
+  'SELECT 1'
+)
+      `,
+      `
+PREPARE amigo_add_workflow_state_json_stmt FROM @amigo_add_workflow_state_json_sql
+      `,
+      `
+EXECUTE amigo_add_workflow_state_json_stmt
+      `,
+      `
+DEALLOCATE PREPARE amigo_add_workflow_state_json_stmt
+      `,
+      `
+UPDATE conversation_state
+SET workflow_state_json = JSON_OBJECT()
+WHERE workflow_state_json IS NULL
+      `,
+      `
+SET @amigo_workflow_state_json_not_null_sql = IF(
+  @amigo_has_workflow_state_json = 0,
+  'ALTER TABLE conversation_state MODIFY COLUMN workflow_state_json JSON NOT NULL',
+  'SELECT 1'
+)
+      `,
+      `
+PREPARE amigo_workflow_state_json_not_null_stmt FROM @amigo_workflow_state_json_not_null_sql
+      `,
+      `
+EXECUTE amigo_workflow_state_json_not_null_stmt
+      `,
+      `
+DEALLOCATE PREPARE amigo_workflow_state_json_not_null_stmt
+      `,
+    ]),
+  },
+  {
+    version: 9,
+    name: "conversation_context_usage_nullable",
+    statements: [
+      `
+ALTER TABLE conversation_state
+MODIFY COLUMN context_usage_json JSON NULL
+      `,
+    ],
+    checksum: migrationChecksum(9, "conversation_context_usage_nullable", [
+      `
+ALTER TABLE conversation_state
+MODIFY COLUMN context_usage_json JSON NULL
+      `,
+    ]),
+  },
+  {
+    version: 10,
+    name: "conversation_nullable_json_state_fields",
+    statements: [
+      `
+ALTER TABLE conversation_state
+MODIFY COLUMN model_config_json JSON NULL
+      `,
+      `
+ALTER TABLE conversation_state
+MODIFY COLUMN workflow_state_json JSON NULL
+      `,
+    ],
+    checksum: migrationChecksum(10, "conversation_nullable_json_state_fields", [
+      `
+ALTER TABLE conversation_state
+MODIFY COLUMN model_config_json JSON NULL
+      `,
+      `
+ALTER TABLE conversation_state
+MODIFY COLUMN workflow_state_json JSON NULL
+      `,
+    ]),
+  },
+  {
+    version: 11,
+    name: "conversation_context_snapshots",
+    statements: [
+      `
+CREATE TABLE IF NOT EXISTS conversation_context_snapshots (
+  id CHAR(36) NOT NULL,
+  conversation_id CHAR(36) NOT NULL,
+  request_id CHAR(36) NOT NULL,
+  conversation_type VARCHAR(32) NOT NULL,
+  model VARCHAR(191) NOT NULL,
+  provider VARCHAR(64) NOT NULL,
+  config_id VARCHAR(191) NULL,
+  workflow_phase VARCHAR(32) NULL,
+  agent_role VARCHAR(32) NULL,
+  message_count INT UNSIGNED NOT NULL,
+  tool_names_json JSON NOT NULL,
+  options_json JSON NOT NULL,
+  messages_json JSON NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_conversation_context_snapshots_request_id (request_id),
+  KEY idx_conversation_context_snapshots_conversation_created_at (conversation_id, created_at),
+  CONSTRAINT fk_conversation_context_snapshots_conversation_id FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `,
+    ],
+    checksum: migrationChecksum(11, "conversation_context_snapshots", [
+      `
+CREATE TABLE IF NOT EXISTS conversation_context_snapshots (
+  id CHAR(36) NOT NULL,
+  conversation_id CHAR(36) NOT NULL,
+  request_id CHAR(36) NOT NULL,
+  conversation_type VARCHAR(32) NOT NULL,
+  model VARCHAR(191) NOT NULL,
+  provider VARCHAR(64) NOT NULL,
+  config_id VARCHAR(191) NULL,
+  workflow_phase VARCHAR(32) NULL,
+  agent_role VARCHAR(32) NULL,
+  message_count INT UNSIGNED NOT NULL,
+  tool_names_json JSON NOT NULL,
+  options_json JSON NOT NULL,
+  messages_json JSON NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_conversation_context_snapshots_request_id (request_id),
+  KEY idx_conversation_context_snapshots_conversation_created_at (conversation_id, created_at),
+  CONSTRAINT fk_conversation_context_snapshots_conversation_id FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `,
+    ]),
+  },
 ];
 
 const ensureSchemaMigrationsTable = async (pool: Pool): Promise<void> => {

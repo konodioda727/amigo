@@ -10,47 +10,6 @@ import { toast } from "@/utils/toast";
 import { combineMessages } from "../../messages/messageCombiner";
 import { getMessageHandler } from "../messageHandlers";
 import type { WebSocketStore } from "../websocket";
-import { createEmptyDocuments, type DocType } from "./docSlice";
-
-const checkAndExtractDoc = (
-  message: WebSocketMessage<any>,
-  store: WebSocketStore,
-  taskId: string,
-) => {
-  if (taskId !== store.mainTaskId) return;
-
-  if (message.type === "tool") {
-    try {
-      const parsed = JSON.parse((message.data as any).message || "{}");
-      if (parsed.toolName === "updateTaskDocs") {
-        const params = parsed.params;
-        const result = parsed.result as { updatedContent?: string } | undefined;
-        const nextContent =
-          typeof result?.updatedContent === "string" ? result.updatedContent : params?.content;
-        if (nextContent) {
-          // Use phase from params if available, otherwise try to infer or default
-          const phase = params.phase as DocType | undefined;
-          store.setDocContent(nextContent, params.taskName || params.title, phase);
-        }
-      }
-    } catch (e) {
-      // ignore parse error
-      console.error("Error parsing tool message for task docs", e);
-    }
-  }
-};
-
-interface DocInfo {
-  content: string;
-  title: string;
-}
-
-type DocCollection = Partial<Record<DocType, DocInfo>>;
-
-interface DocsResult {
-  docs: DocCollection;
-  lastEdited: DocType | null;
-}
 
 const extractPendingToolCallFromMessages = (
   messages: Array<WebSocketMessage<SERVER_SEND_MESSAGE_NAME>>,
@@ -141,47 +100,6 @@ const mapConversationStatusToTaskStatus = (
     default:
       return undefined;
   }
-};
-
-const findLatestDocs = (messages: WebSocketMessage<any>[]): DocsResult => {
-  const docs: DocCollection = {};
-  let lastEdited: DocType | null = null;
-
-  for (const msg of messages) {
-    if (msg.type === "taskHistory") {
-      const historyData = msg.data as { messages: WebSocketMessage<any>[]; taskId: string };
-      if (historyData.messages && Array.isArray(historyData.messages)) {
-        const nestedDocs = findLatestDocs(historyData.messages);
-        Object.assign(docs, nestedDocs.docs);
-        if (nestedDocs.lastEdited) {
-          lastEdited = nestedDocs.lastEdited;
-        }
-      }
-    } else if (msg.type === "tool") {
-      try {
-        const parsed = JSON.parse((msg.data as any).message || "{}");
-        if (parsed.toolName === "updateTaskDocs") {
-          const params = parsed.params;
-          const result = parsed.result as { updatedContent?: string } | undefined;
-          const nextContent =
-            typeof result?.updatedContent === "string" ? result.updatedContent : params?.content;
-          if (nextContent) {
-            const phase = (params.phase as DocType) || "taskList";
-            if (["requirements", "design", "taskList"].includes(phase)) {
-              docs[phase] = {
-                content: nextContent,
-                title: params.taskName || params.title,
-              };
-              lastEdited = phase;
-            }
-          }
-        }
-      } catch (_e) {
-        // ignore
-      }
-    }
-  }
-  return { docs, lastEdited };
 };
 
 type Listener<T extends SERVER_SEND_MESSAGE_NAME> = (data: ServerSendMessageData<T>) => void;
@@ -370,22 +288,6 @@ export const createMessageSlice: StateCreator<WebSocketStore, [], [], MessageSli
     }
 
     const newDisplayMessages = combineMessages(messages as any);
-    if (taskId === get().mainTaskId) {
-      // Reset doc state before hydrating docs from the current conversation history.
-      get().setDocState({
-        isOpen: false,
-        activeDoc: "taskList",
-        documents: createEmptyDocuments(),
-      });
-
-      const foundDocs = findLatestDocs(messages);
-      get().cacheTaskDocuments(taskId, foundDocs.docs);
-      get().hydrateDocStateForTask(taskId);
-
-      if (foundDocs.lastEdited) {
-        get().setActiveDoc(foundDocs.lastEdited);
-      }
-    }
 
     const explicitStatus = mapConversationStatusToTaskStatus(conversationStatus);
 
@@ -486,9 +388,6 @@ export const createMessageSlice: StateCreator<WebSocketStore, [], [], MessageSli
     const newDisplayMessages = combineMessages(newRawMessages as any);
 
     const latestTask = get().tasks[taskId];
-
-    // Check for createDoc
-    checkAndExtractDoc(message, get(), taskId);
 
     set({
       tasks: {

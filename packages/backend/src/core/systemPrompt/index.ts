@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { logger } from "@/utils/logger";
 import type { ToolService } from "../tools";
+import type { WorkflowPromptScope } from "../workflow";
 
 const promptBaseDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -33,12 +34,12 @@ const loadSharedModules = () => {
  */
 export function getSystemPrompt(
   toolService: ToolService,
-  conversationType: "main" | "sub" = "main",
+  promptScope: WorkflowPromptScope = "controller",
 ): string {
   const systemPrompt =
-    conversationType === "main"
-      ? getMainSystemPrompt(toolService)
-      : getSubSystemPrompt(toolService);
+    promptScope === "controller"
+      ? getControllerSystemPrompt(toolService)
+      : getWorkerSystemPrompt(toolService);
   logger.debug("System Prompt:", systemPrompt);
   return systemPrompt;
 }
@@ -46,13 +47,13 @@ export function getSystemPrompt(
 /**
  * Main Agent system prompt
  * Assembly order:
- * 1. shared/critical-rules.md (critical rules at top)
+ * 1. shared/critical-rules.md
  * 2. main/identity.md
  * 3. main/rules.md
- * 4. main/workflow.md (structured workflow guidance)
+ * 4. main/workflow.md
  * 5. shared/tool-guide.md
  */
-export const getMainSystemPrompt = (_toolService: ToolService): string => {
+export const getControllerSystemPrompt = (_toolService: ToolService): string => {
   const { criticalRules, toolGuide } = loadSharedModules();
   const identity = loadPrompt("./main/identity.md");
   const rules = loadPrompt("./main/rules.md");
@@ -66,12 +67,12 @@ export const getMainSystemPrompt = (_toolService: ToolService): string => {
 /**
  * Sub Agent system prompt
  * Assembly order:
- * 1. shared/critical-rules.md (critical rules at top)
+ * 1. shared/critical-rules.md
  * 2. sub/identity.md
  * 3. sub/rules.md
  * 4. shared/tool-guide.md
  */
-export const getSubSystemPrompt = (_toolService: ToolService): string => {
+export const getWorkerSystemPrompt = (_toolService: ToolService): string => {
   const { criticalRules, toolGuide } = loadSharedModules();
   const identity = loadPrompt("./sub/identity.md");
   const rules = loadPrompt("./sub/rules.md");

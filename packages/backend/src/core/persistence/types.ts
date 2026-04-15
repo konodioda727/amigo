@@ -2,13 +2,31 @@ import type {
   ChatMessage,
   ContextUsageStatus,
   ConversationStatus,
+  ExecutionTaskStatus,
   PendingToolCall,
   SERVER_SEND_MESSAGE_NAME,
-  SubTaskStatus,
   USER_SEND_MESSAGE_NAME,
   WebSocketMessage,
+  WorkflowState,
 } from "@amigo-llm/types";
+import type { AmigoModelMessage } from "../model";
 import type { ModelConfigSnapshot } from "../model/contextConfig";
+
+export interface ConversationContextSnapshotRecord {
+  requestId: string;
+  conversationId: string;
+  conversationType?: string;
+  model: string;
+  provider?: string;
+  configId?: string;
+  workflowPhase?: string;
+  agentRole?: string;
+  messageCount: number;
+  toolNames: string[];
+  options?: Record<string, unknown>;
+  messages: AmigoModelMessage[];
+  createdAt: string;
+}
 
 export interface ConversationPersistenceRecord {
   taskId: string;
@@ -20,8 +38,9 @@ export interface ConversationPersistenceRecord {
   modelConfigSnapshot?: ModelConfigSnapshot;
   autoApproveToolNames: string[];
   pendingToolCall: PendingToolCall | null;
-  subTasks: Record<string, SubTaskStatus>;
+  executionTasks: Record<string, ExecutionTaskStatus>;
   contextUsage?: ContextUsageStatus;
+  workflowState?: WorkflowState;
   createdAt: string;
   updatedAt: string;
   messages: ChatMessage[];
@@ -46,4 +65,5 @@ export interface ConversationPersistenceProvider {
   delete(taskId: string): boolean;
   listConversationRelations(): ConversationRelation[];
   listSessionHistories(userId?: string): ConversationSessionHistory[];
+  recordModelContextSnapshot?(record: ConversationContextSnapshotRecord): void | Promise<void>;
 }

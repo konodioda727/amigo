@@ -5,9 +5,9 @@ import type {
   ServerSendMessageData,
   USER_SEND_MESSAGE_NAME,
   WebSocketMessage,
+  WorkflowState,
 } from "@amigo-llm/types";
 import type { DisplayMessageType } from "../messages/types";
-import type { DocState, DocType, TaskDocSnapshot } from "../store/slices/docSlice";
 
 /**
  * Connection status
@@ -83,10 +83,12 @@ export interface WebSocketStore {
   taskAutoApproveToolNameMaps: Record<string, string[]>;
   taskContextUsageMaps: Record<string, ContextUsageStatus | undefined>;
   taskContextMaps: Record<string, unknown>;
-  setTaskStatusMap: (taskId: string, subTasks: Record<string, any>) => void;
+  taskWorkflowStateMaps: Record<string, WorkflowState | undefined>;
+  setTaskStatusMap: (taskId: string, executionTasks: Record<string, any>) => void;
   setTaskAutoApproveToolNames: (taskId: string, toolNames: string[]) => void;
   setTaskContextUsage: (taskId: string, contextUsage: ContextUsageStatus | undefined) => void;
   setTaskContext: (taskId: string, context: unknown) => void;
+  setTaskWorkflowState: (taskId: string, workflowState: WorkflowState | undefined) => void;
   // Connection state
   socket: WebSocket | null;
   connectionStatus: ConnectionStatus;
@@ -96,8 +98,6 @@ export interface WebSocketStore {
   mainTaskId: string;
   activeTaskId: string | null;
   taskHistories: Array<{ taskId: string; title: string; updatedAt: string }>;
-  docState: DocState;
-  taskDocSnapshots: Record<string, TaskDocSnapshot>;
 
   // Mention state
   followupQueue: string[];
@@ -119,7 +119,7 @@ export interface WebSocketStore {
   subscribe: <T extends SERVER_SEND_MESSAGE_NAME>(type: T, listener: Listener<T>) => Unsubscribe;
 
   // Task methods
-  taskStatusMapUpdated: (taskId: string, subTasks: Record<string, any>) => void;
+  taskStatusMapUpdated: (taskId: string, executionTasks: Record<string, any>) => void;
   registerTask: (taskId: string) => void;
   unregisterTask: (taskId: string) => void;
   setActiveTask: (taskId: string | null) => void;
@@ -130,16 +130,6 @@ export interface WebSocketStore {
   handleSessionHistories: (
     histories: Array<{ taskId: string; title: string; updatedAt: string }>,
   ) => void;
-  resetDocState: () => void;
-  setDocState: (state: Partial<DocState>) => void;
-  setDocContent: (content: string, title?: string, type?: DocType) => void;
-  setActiveDoc: (type: DocType) => void;
-  updateDocContent: (type: DocType, content: string) => void;
-  cacheTaskDocuments: (
-    taskId: string,
-    documents: Partial<Record<DocType, string | { content: string; title: string | null } | null>>,
-  ) => void;
-  hydrateDocStateForTask: (taskId: string) => void;
 
   // Message methods
   updateUserMessageStatus: (

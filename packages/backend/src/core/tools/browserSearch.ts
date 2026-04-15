@@ -259,6 +259,7 @@ export const BrowserSearch = createTool({
   description: "使用 Google 搜索信息，并自动抓取搜索结果页面正文（纯 HTTP，无浏览器回退）。",
   whenToUse:
     "需要获取互联网实时信息并抓取搜索结果页正文时使用。仅支持 query 搜索，不用于直接访问单个 URL。",
+  executionMode: "parallel_readonly",
   historyProfile: {
     progressKind: "search",
     getResourceKeys: ({ params }) =>

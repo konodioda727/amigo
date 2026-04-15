@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { WorkflowAgentRoleSchema, WorkflowPhaseSchema } from "../workflow";
 
 export const CompleteTaskSchema = z.object({
   name: z.literal("completeTask"),
@@ -6,11 +7,13 @@ export const CompleteTaskSchema = z.object({
     .object({
       summary: z
         .string()
-        .describe("任务完成摘要。主任务用于简短面向用户总结；子任务用于父任务自动验收与通知。"),
+        .describe(
+          "任务完成摘要。controller 用于简短面向用户总结；在 requirements 阶段应清楚概括整理后的用户需求和范围；execution worker 用于父任务自动验收与通知。",
+        ),
       result: z
         .string()
         .describe(
-          "任务完成的详细结果。主任务：面向用户清晰说明最终结果，无固定格式要求。子任务：必须包含 `## 交付物`、`## 验证`、`## 遗留问题`、`## 下游说明` 四个二级标题。",
+          "任务完成的详细结果。controller：面向用户清晰说明最终结果，无固定格式要求；在 requirements 阶段必须把澄清后的用户需求、目标、约束和范围写清楚，作为下一阶段的输入。execution worker：必须包含 `## 交付物`、`## 验证`、`## 遗留问题`、`## 下游说明` 四个二级标题。",
         ),
       achievements: z
         .string()
@@ -24,3 +27,12 @@ export const CompleteTaskSchema = z.object({
     .describe("任务完成参数"),
   result: z.string().describe("任务已完成并更新父任务待办列表"),
 });
+
+export const CompleteTaskWebsocketDataSchema = z.object({
+  kind: z.enum(["phase_complete", "task_complete"]),
+  completedPhase: WorkflowPhaseSchema.optional(),
+  currentPhase: WorkflowPhaseSchema.optional(),
+  agentRole: WorkflowAgentRoleSchema.optional(),
+});
+
+export type CompleteTaskWebsocketData = z.infer<typeof CompleteTaskWebsocketDataSchema>;

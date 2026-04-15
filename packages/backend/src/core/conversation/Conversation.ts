@@ -1,82 +1,146 @@
-import { existsSync, readFileSync } from "node:fs";
-import path from "node:path";
+import { existsSync, rmSync } from "node:fs";
 import type {
+  ChatMessage,
   ContextUsageStatus,
   ConversationStatus,
+  ExecutionTaskStatus,
   PendingToolCall,
-  SubTaskStatus,
   TaskStatusMapUpdatedData,
   ToolInterface,
   WebSocketMessage,
+  WorkflowAgentRole,
+  WorkflowMode,
+  WorkflowPhase,
+  WorkflowState,
 } from "@amigo-llm/types";
+import { CONTROLLER_DEFAULT_WORKFLOW_PHASE_SEQUENCE } from "@amigo-llm/types";
 import { v4 as uuidV4 } from "uuid";
-import { getGlobalState } from "@/globalState";
 import { FilePersistedMemory } from "../memory";
-import { type AmigoLlm, getLlm } from "../model";
-import { buildRulesPromptAppendix } from "../rules";
-import { getSystemPrompt } from "../systemPrompt";
+import type { AmigoLlm } from "../model";
+import type { ModelConfigSnapshot } from "../model/contextConfig";
 import { getTaskId } from "../templates/checklistParser";
-import { getBaseTools, ToolService } from "../tools";
+import type { ToolService } from "../tools";
+import { getTaskListPath } from "../tools/taskList/utils";
+import { createWorkflowState, normalizeWorkflowState, transitionWorkflowState } from "../workflow";
 import {
   getConfiguredAutoApproveToolNames,
   normalizeAutoApproveToolNames,
-} from "./autoApproveTools";
-import { broadcaster } from "./WebSocketBroadcaster";
+} from "./context/autoApproveTools";
+import { buildCheckpointMessage } from "./context/conversationCheckpoint";
+import { buildRecoveredConversationRuntime } from "./context/conversationRecovery";
+import { buildConversationSystemPrompt } from "./context/conversationSystemPrompt";
+import {
+  announceWorkflowState,
+  resolveConversationWorkflowFallbackState,
+} from "./context/conversationWorkflowState";
+import { parseAssistantToolCallMessage, parseToolResultMessage } from "./context/toolTranscript";
+import { broadcaster } from "./lifecycle/WebSocketBroadcaster";
 
-const readContextUserId = (context: unknown): string | undefined => {
-  if (!context || typeof context !== "object" || Array.isArray(context)) {
-    return undefined;
+const cloneChatMessage = (message: (typeof FilePersistedMemory.prototype.messages)[number]) => ({
+  ...message,
+  attachments: message.attachments ? [...message.attachments] : undefined,
+});
+
+const normalizeCompletionResultText = (value: unknown): string => {
+  if (typeof value === "string") {
+    return value.trim();
   }
 
-  const userId = (context as { userId?: unknown }).userId;
-  return typeof userId === "string" && userId.trim() ? userId.trim() : undefined;
+  if (value === undefined) {
+    return "";
+  }
+
+  try {
+    return JSON.stringify(value, null, 2).trim();
+  } catch {
+    return String(value).trim();
+  }
 };
 
-const readSystemPromptAppendix = (context: unknown, type: ConversationType): string | undefined => {
-  if (!context || typeof context !== "object" || Array.isArray(context)) {
-    return undefined;
-  }
+const isCheckpointMessage = (
+  message: (typeof FilePersistedMemory.prototype.messages)[number],
+): boolean => message.type === "checkpoint";
 
-  const appendixContainer = (context as { systemPromptAppendix?: unknown }).systemPromptAppendix;
-  if (
-    !appendixContainer ||
-    typeof appendixContainer !== "object" ||
-    Array.isArray(appendixContainer)
-  ) {
-    return undefined;
-  }
+const collectSeedHistoryFromLastCompletion = (
+  memory: FilePersistedMemory,
+): NonNullable<WorkflowState["completionSeedState"]> | null => {
+  const previousSeedState = memory.workflowState?.completionSeedState;
+  const sourceMessages = memory.messages;
+  const cycleStartIndex = Math.min(
+    Math.max(previousSeedState?.sourceMessageCount || 0, 0),
+    sourceMessages.length,
+  );
+  const cycleMessages = sourceMessages.slice(cycleStartIndex);
+  const cycleUserMessages = cycleMessages
+    .filter((message) => message.role === "user" && message.type === "userSendMessage")
+    .map(cloneChatMessage);
 
-  const appendix = (appendixContainer as Record<string, unknown>)[type];
-  return typeof appendix === "string" && appendix.trim() ? appendix.trim() : undefined;
-};
+  const latestTaskCheckpoint = [...cycleMessages]
+    .reverse()
+    .find(
+      (message) =>
+        isCheckpointMessage(message) &&
+        message.content.startsWith("[Checkpoint]") &&
+        message.content.includes("类型：task_complete"),
+    );
 
-const readTaskDocSnapshot = (taskDocsPath: string) => {
-  const phases = {
-    requirements: "requirements.md",
-    design: "design.md",
-    taskList: "taskList.md",
-  } as const;
-  const documents: {
-    requirements?: string;
-    design?: string;
-    taskList?: string;
-  } = {};
+  let completionMessage: ChatMessage | null = latestTaskCheckpoint
+    ? cloneChatMessage(latestTaskCheckpoint)
+    : null;
 
-  for (const [phase, filename] of Object.entries(phases)) {
-    const filePath = path.join(taskDocsPath, filename);
-    if (!existsSync(filePath)) {
-      continue;
+  if (!completionMessage) {
+    const lastCompleteTaskResultIndex = cycleMessages.findLastIndex((message) => {
+      const payload = parseToolResultMessage(message);
+      return payload?.toolName === "completeTask";
+    });
+
+    if (lastCompleteTaskResultIndex >= 0) {
+      const resultMessage = cycleMessages[lastCompleteTaskResultIndex]!;
+      const resultPayload = parseToolResultMessage(resultMessage);
+      const previousMessage =
+        lastCompleteTaskResultIndex > 0
+          ? cycleMessages[lastCompleteTaskResultIndex - 1]
+          : undefined;
+      const callPayload = previousMessage ? parseAssistantToolCallMessage(previousMessage) : null;
+      const summary =
+        resultPayload?.summary?.trim() ||
+        (typeof callPayload?.arguments?.summary === "string"
+          ? callPayload.arguments.summary.trim()
+          : "") ||
+        "任务已完成";
+      const result =
+        normalizeCompletionResultText(resultPayload?.result) ||
+        (typeof callPayload?.arguments?.result === "string"
+          ? callPayload.arguments.result.trim()
+          : "") ||
+        summary;
+
+      completionMessage = {
+        role: "user",
+        type: "checkpoint",
+        partial: false,
+        content: buildCheckpointMessage({
+          kind: "task_complete",
+          summary,
+          result,
+        }),
+      };
     }
-    const content = readFileSync(filePath, "utf-8").trim();
-    if (content) {
-      documents[phase as keyof typeof documents] = content;
-    }
   }
 
-  return documents;
-};
+  if (cycleUserMessages.length === 0 && !completionMessage) {
+    return previousSeedState || null;
+  }
 
-export type ConversationType = "main" | "sub";
+  return {
+    sourceMessageCount: sourceMessages.length,
+    messages: [
+      ...(previousSeedState?.messages || []).map(cloneChatMessage),
+      ...cycleUserMessages,
+      ...(completionMessage ? [completionMessage] : []),
+    ],
+  };
+};
 
 /**
  * 会话
@@ -86,26 +150,24 @@ export class Conversation {
   readonly memory: FilePersistedMemory;
   readonly toolService: ToolService;
   llm: AmigoLlm;
-  readonly type: ConversationType;
   readonly parentId?: string;
 
   private _userInput = "";
   private _isAborted = false;
   private _pendingToolCall: PendingToolCall | null = null;
+  private _lastCompleteTaskDisposition: "phase_advanced" | "task_completed" | null = null;
 
   private constructor(params: {
     id: string;
     memory: FilePersistedMemory;
     toolService: ToolService;
     llm: AmigoLlm;
-    type: ConversationType;
     parentId?: string;
   }) {
     this.id = params.id;
     this.memory = params.memory;
     this.toolService = params.toolService;
     this.llm = params.llm;
-    this.type = params.type;
     this.parentId = params.parentId;
   }
 
@@ -122,11 +184,11 @@ export class Conversation {
       type: "taskStatusMapUpdated",
       data: {
         taskId: this.id,
-        subTasks: this.memory.subTasks,
+        executionTasks: this.memory.executionTasks,
         autoApproveToolNames: this.memory.autoApproveToolNames,
         contextUsage: this.memory.contextUsage,
         context: this.memory.context,
-        documents: readTaskDocSnapshot(this.memory.taskDocsPath),
+        workflowState: this.workflowState,
       } satisfies TaskStatusMapUpdatedData,
     };
     broadcaster.broadcast(this.id, message);
@@ -140,6 +202,149 @@ export class Conversation {
   public setContextUsage(contextUsage: ContextUsageStatus | undefined): void {
     this.memory.setContextUsage(contextUsage);
     this.broadcastTaskStatusMapUpdated();
+  }
+
+  public get workflowState(): WorkflowState {
+    const normalized = normalizeWorkflowState(
+      this.memory.workflowState,
+      this.resolveWorkflowFallbackState(),
+    );
+    const persisted = this.memory.workflowState;
+    if (!persisted || JSON.stringify(persisted) !== JSON.stringify(normalized)) {
+      this.memory.setWorkflowState(normalized);
+    }
+    return normalized;
+  }
+
+  public get currentWorkflowPhase(): WorkflowPhase {
+    return this.workflowState.currentPhase;
+  }
+
+  public get workflowAgentRole(): WorkflowAgentRole {
+    return this.workflowState.agentRole;
+  }
+
+  public setWorkflowState(
+    workflowState: WorkflowState,
+    options?: { announce?: boolean; forceAnnouncement?: boolean },
+  ): void {
+    const normalized = normalizeWorkflowState(workflowState);
+    const previous = this.memory.workflowState;
+    const phaseChanged =
+      previous?.currentPhase !== normalized.currentPhase ||
+      previous?.agentRole !== normalized.agentRole;
+
+    this.memory.setWorkflowState(normalized);
+    if (options?.announce || phaseChanged) {
+      announceWorkflowState({
+        memory: this.memory,
+        workflowState: this.workflowState,
+        force: !!options?.forceAnnouncement,
+      });
+    }
+    this.broadcastTaskStatusMapUpdated();
+  }
+
+  public advanceWorkflowPhase(targetPhase: WorkflowPhase): void {
+    this.setWorkflowState(transitionWorkflowState(this.workflowState, targetPhase, "advance"));
+  }
+
+  public skipWorkflowPhase(
+    targetPhase: WorkflowPhase,
+    metadata: { reason?: string; evidence?: string } = {},
+  ): void {
+    this.setWorkflowState(
+      transitionWorkflowState(this.workflowState, targetPhase, "skip", metadata),
+    );
+  }
+
+  public changeWorkflowPhase(
+    targetPhase: WorkflowPhase,
+    metadata: { reason?: string; evidence?: string } = {},
+    options?: { mode?: WorkflowMode },
+  ): void {
+    const nextState = transitionWorkflowState(this.workflowState, targetPhase, "change", metadata, {
+      phaseSequence: CONTROLLER_DEFAULT_WORKFLOW_PHASE_SEQUENCE,
+    });
+    this.setWorkflowState({
+      ...nextState,
+      ...(options?.mode ? { mode: options.mode } : {}),
+    });
+  }
+
+  public restartMainWorkflowCycleForNextUserTurn(): void {
+    if (this.parentId || this.workflowAgentRole !== "controller") {
+      return;
+    }
+
+    const taskListPath = getTaskListPath(this.id);
+    if (existsSync(taskListPath)) {
+      rmSync(taskListPath, { force: true });
+    }
+
+    this.memory.clearAllExecutionTasks();
+    this.pendingToolCall = null;
+    this.setContextUsage(undefined);
+    this.setWorkflowState(createWorkflowState(), {
+      announce: true,
+      forceAnnouncement: true,
+    });
+
+    broadcaster.broadcast(this.id, {
+      type: "taskStatusMapUpdated",
+      data: {
+        taskId: this.id,
+        executionTasks: this.memory.executionTasks,
+        autoApproveToolNames: this.memory.autoApproveToolNames,
+        contextUsage: this.memory.contextUsage,
+        context: this.memory.context,
+        workflowState: this.workflowState,
+      } satisfies TaskStatusMapUpdatedData,
+    });
+  }
+
+  public restartMainWorkflowCycleForNextUserTurnWithState(
+    workflowState: WorkflowState,
+    options?: { preserveCompletionSeedHistory?: boolean },
+  ): void {
+    if (this.parentId || this.workflowAgentRole !== "controller") {
+      return;
+    }
+
+    const completionSeedState = options?.preserveCompletionSeedHistory
+      ? collectSeedHistoryFromLastCompletion(this.memory)
+      : null;
+
+    const taskListPath = getTaskListPath(this.id);
+    if (existsSync(taskListPath)) {
+      rmSync(taskListPath, { force: true });
+    }
+
+    this.memory.clearAllExecutionTasks();
+    this.pendingToolCall = null;
+    this.setContextUsage(undefined);
+    this.setWorkflowState(
+      {
+        ...workflowState,
+        ...(completionSeedState ? { completionSeedState } : {}),
+      },
+      {
+        announce: true,
+        forceAnnouncement: true,
+      },
+    );
+
+    broadcaster.broadcast(this.id, {
+      type: "taskStatusMapUpdated",
+      data: {
+        taskId: this.id,
+        executionTasks: this.memory.executionTasks,
+        autoApproveToolNames: this.memory.autoApproveToolNames,
+        contextUsage: this.memory.contextUsage,
+        context: this.memory.context,
+        workflowState: this.workflowState,
+      } satisfies TaskStatusMapUpdatedData,
+    });
   }
 
   public setLlm(llm: AmigoLlm): void {
@@ -183,46 +388,41 @@ export class Conversation {
     return this.memory.isNewSession();
   }
 
+  public setLastCompleteTaskDisposition(
+    disposition: "phase_advanced" | "task_completed" | null,
+  ): void {
+    this._lastCompleteTaskDisposition = disposition;
+  }
+
+  public consumeLastCompleteTaskDisposition(): "phase_advanced" | "task_completed" | null {
+    const disposition = this._lastCompleteTaskDisposition;
+    this._lastCompleteTaskDisposition = null;
+    return disposition;
+  }
+
+  private resolveWorkflowFallbackState(options?: {
+    allowLegacyWorkerInference?: boolean;
+  }): Partial<WorkflowState> {
+    return resolveConversationWorkflowFallbackState({
+      persistedWorkflowState: this.memory.workflowState,
+      toolNames: this.memory.toolNames,
+      parentId: this.parentId,
+      allowLegacyWorkerInference: options?.allowLegacyWorkerInference,
+    });
+  }
+
   private static buildInitialSystemPrompt(
     toolService: ToolService,
-    type: ConversationType,
+    workflowState: Partial<WorkflowState> | undefined,
     customPrompt?: string,
     context?: unknown,
   ): string {
-    const ruleProvider = getGlobalState("ruleProvider");
-    const configuredPrompt = getGlobalState("systemPrompts")?.[type]?.trim();
-    let systemPrompt = configuredPrompt || getSystemPrompt(toolService, type);
-    const extraSystemPrompt = (getGlobalState("extraSystemPrompt") || "").trim();
-    const scopedExtraSystemPrompt = (getGlobalState("extraSystemPrompts")?.[type] || "").trim();
-    const contextAppendix = readSystemPromptAppendix(context, type);
-    if (extraSystemPrompt) {
-      systemPrompt += `\n\n=====应用追加系统提示词:\n${extraSystemPrompt}`;
-    }
-    if (scopedExtraSystemPrompt) {
-      systemPrompt += `\n\n=====按类型追加系统提示词:\n${scopedExtraSystemPrompt}`;
-    }
-    const providerAppendix = ruleProvider?.getSystemPromptAppendix({
-      conversationType: type,
+    return buildConversationSystemPrompt({
+      toolService,
+      workflowState,
+      customPrompt,
       context,
     });
-    if (providerAppendix) {
-      systemPrompt += `\n\n=====应用目录系统提示词:\n${providerAppendix}`;
-    }
-    const rulesAppendix = buildRulesPromptAppendix({
-      provider: ruleProvider,
-      conversationType: type,
-      context,
-    });
-    if (rulesAppendix) {
-      systemPrompt += `\n\n=====按需规则目录:\n${rulesAppendix}`;
-    }
-    if (contextAppendix) {
-      systemPrompt += `\n\n=====上下文系统提示补充:\n${contextAppendix}`;
-    }
-    if (customPrompt?.trim()) {
-      systemPrompt += `\n\n=====用户自定义提示词:\n${customPrompt.trim()}`;
-    }
-    return systemPrompt;
   }
 
   /**
@@ -232,23 +432,21 @@ export class Conversation {
     id?: string;
     toolService: ToolService;
     llm: AmigoLlm;
-    type?: ConversationType;
     parentId?: string;
     customPrompt?: string;
     context?: unknown;
     modelConfigSnapshot?: ModelConfigSnapshot;
     autoApproveToolNames?: string[];
+    workflowState?: WorkflowState;
   }): Conversation {
     const id = params.id || uuidV4();
     const memory = new FilePersistedMemory(id, params.parentId);
-    const type = params.type || "main";
 
     const conversation = new Conversation({
       id,
       memory,
       toolService: params.toolService,
       llm: params.llm,
-      type,
       parentId: params.parentId,
     });
 
@@ -258,12 +456,16 @@ export class Conversation {
     if (params.modelConfigSnapshot) {
       memory.setModelConfigSnapshot(params.modelConfigSnapshot);
     }
+    const normalizedWorkflowState = normalizeWorkflowState(
+      params.workflowState,
+      conversation.resolveWorkflowFallbackState(),
+    );
     conversation.syncAutoApproveToolNamesToTaskStatus(params.autoApproveToolNames);
 
     // 初始化系统提示词
     const systemPrompt = Conversation.buildInitialSystemPrompt(
       params.toolService,
-      type,
+      normalizedWorkflowState,
       params.customPrompt,
       params.context,
     );
@@ -271,19 +473,23 @@ export class Conversation {
 
     const toolNames = params.toolService.getAllTools().map((tool) => tool.name);
     memory.setToolNames(toolNames);
+    conversation.setWorkflowState(normalizedWorkflowState, {
+      announce: true,
+      forceAnnouncement: true,
+    });
 
     return conversation;
   }
 
   /**
-   * 更新子任务状态并广播
+   * 更新执行任务状态并广播
    */
-  public updateSubTaskStatus(description: string, status: SubTaskStatus): void {
+  public updateExecutionTaskStatus(description: string, status: ExecutionTaskStatus): void {
     const taskKey = getTaskId(description) || description;
-    if (taskKey !== description && this.memory.subTasks[description]) {
-      this.memory.clearSubTask(description);
+    if (taskKey !== description && this.memory.executionTasks[description]) {
+      this.memory.clearExecutionTask(description);
     }
-    this.memory.updateSubTask(taskKey, {
+    this.memory.updateExecutionTask(taskKey, {
       ...status,
       description: status.description ?? description,
     });
@@ -292,23 +498,23 @@ export class Conversation {
   }
 
   /**
-   * 清理子任务状态
+   * 清理执行任务状态
    */
-  public clearSubTask(description: string): void {
+  public clearExecutionTask(description: string): void {
     const taskKey = getTaskId(description) || description;
-    this.memory.clearSubTask(taskKey);
+    this.memory.clearExecutionTask(taskKey);
     if (taskKey !== description) {
-      this.memory.clearSubTask(description);
+      this.memory.clearExecutionTask(description);
     }
 
     this.broadcastTaskStatusMapUpdated();
   }
 
   /**
-   * 清理所有子任务状态
+   * 清理所有执行任务状态
    */
-  public clearAllSubTasks(): void {
-    this.memory.clearAllSubTasks();
+  public clearAllExecutionTasks(): void {
+    this.memory.clearAllExecutionTasks();
 
     this.broadcastTaskStatusMapUpdated();
   }
@@ -317,44 +523,13 @@ export class Conversation {
    * 从已有 taskId 恢复会话
    */
   static fromTaskId(taskId: string, allCustomTools: ToolInterface<any>[]): Conversation {
-    const memory = new FilePersistedMemory(taskId);
-    const llm = getLlm(
-      memory.modelConfigSnapshot
-        ? {
-            modelConfigSnapshot: memory.modelConfigSnapshot,
-            userId: readContextUserId(memory.context),
-          }
-        : undefined,
-    );
-    const type: ConversationType = memory.getFatherTaskId ? "sub" : "main";
-
-    // 根据任务类型过滤基础工具
-    const baseTools = getBaseTools(type);
-
-    // 恢复工具配置。旧任务可能只保存了自定义工具名，
-    // 这种情况下仍回退为完整基础工具集合以兼容历史数据。
-    const toolNames = memory.toolNames;
-    const baseToolNames = new Set(baseTools.map((tool) => tool.name));
-    const hasExplicitBaseToolSelection = toolNames.some((name) => baseToolNames.has(name));
-
-    const selectedBaseTools =
-      toolNames.length > 0 && hasExplicitBaseToolSelection
-        ? baseTools.filter((tool) => toolNames.includes(tool.name))
-        : baseTools;
-
-    const selectedCustomTools =
-      toolNames.length > 0
-        ? allCustomTools.filter((tool) => toolNames.includes(tool.name))
-        : allCustomTools;
-
-    const toolService = new ToolService(selectedBaseTools, selectedCustomTools);
+    const { memory, llm, toolService } = buildRecoveredConversationRuntime(taskId, allCustomTools);
 
     const conversation = new Conversation({
       id: taskId,
       memory,
       toolService,
       llm,
-      type,
       parentId: memory.getFatherTaskId,
     });
     conversation.syncAutoApproveToolNamesToTaskStatus();
@@ -364,11 +539,17 @@ export class Conversation {
       conversation._pendingToolCall = memory.pendingToolCall;
     }
 
+    const isNewSession = memory.isNewSession();
+
     // 如果是新会话（文件不存在或为空），注入 systemPrompt
-    if (memory.isNewSession()) {
+    if (isNewSession) {
+      const normalizedWorkflowState = normalizeWorkflowState(
+        memory.workflowState,
+        conversation.resolveWorkflowFallbackState({ allowLegacyWorkerInference: true }),
+      );
       const systemPrompt = Conversation.buildInitialSystemPrompt(
         toolService,
-        type,
+        normalizedWorkflowState,
         undefined,
         memory.context,
       );
@@ -377,6 +558,14 @@ export class Conversation {
       const initialToolNames = toolService.getAllTools().map((tool) => tool.name);
       memory.setToolNames(initialToolNames);
     }
+
+    conversation.setWorkflowState(
+      normalizeWorkflowState(
+        memory.workflowState,
+        conversation.resolveWorkflowFallbackState({ allowLegacyWorkerInference: true }),
+      ),
+      { announce: true, forceAnnouncement: isNewSession },
+    );
 
     return conversation;
   }

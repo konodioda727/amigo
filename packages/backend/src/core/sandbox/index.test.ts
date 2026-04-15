@@ -1,5 +1,5 @@
 import { describe, expect, it, mock } from "bun:test";
-import { Sandbox } from "./index";
+import { buildDockerExecArgs, Sandbox } from "./index";
 
 describe("Sandbox hydrateBootstrapRepository", () => {
   it("resets origin to the real repository after cloning from the bootstrap mirror", async () => {
@@ -154,5 +154,31 @@ describe("Sandbox dependency install commands", () => {
     expect(command).toContain(
       "(bun install) >'/tmp/amigo/dependency-install-packages_backend.log' 2>&1",
     );
+  });
+});
+
+describe("buildDockerExecArgs", () => {
+  it("builds docker exec args with cwd, env, command, and args", () => {
+    const args = buildDockerExecArgs("container-123", {
+      command: "typescript-language-server",
+      args: ["--stdio"],
+      cwd: "/sandbox/packages/plugin",
+      env: {
+        NODE_ENV: "development",
+        EMPTY: "",
+      },
+    });
+
+    expect(args).toEqual([
+      "exec",
+      "-i",
+      "-w",
+      "/sandbox/packages/plugin",
+      "-e",
+      "NODE_ENV=development",
+      "container-123",
+      "typescript-language-server",
+      "--stdio",
+    ]);
   });
 });

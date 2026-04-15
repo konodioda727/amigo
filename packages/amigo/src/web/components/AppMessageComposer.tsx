@@ -1,6 +1,6 @@
 import { MessageInput, useTasks, useWebSocketContext } from "@amigo-llm/frontend";
-import type { ContextUsageStatus } from "@amigo-llm/types";
-import { AlertCircle, Bot, ChevronDown, Github, Loader2, X } from "lucide-react";
+import type { ContextUsageStatus, WorkflowMode, WorkflowState } from "@amigo-llm/types";
+import { AlertCircle, ChevronDown, Github, Loader2, X, Zap } from "lucide-react";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { cancelGithubBootstrap, type GithubBootstrapSummary } from "@/utils/githubBootstrap";
@@ -20,13 +20,16 @@ import {
 import { openSettingsModal, subscribeSettingsUpdated } from "@/utils/settingsModal";
 import { toast } from "@/utils/toast";
 import { GithubBootstrapModal } from "./GithubBootstrapModal";
+import { TaskListDropdown } from "./TaskListDropdown";
 
 interface AppMessageComposerProps {
   taskId?: string;
 }
 
-export const canSwitchTaskModel = (taskId: string | undefined, taskStatus: string): boolean =>
-  !taskId || taskStatus !== "streaming";
+export const canSwitchTaskModel = (
+  taskId: string | null | undefined,
+  taskStatus: string,
+): boolean => !taskId || taskStatus !== "streaming";
 
 export const getTaskModelKey = (context: unknown): string => {
   const taskModel = resolveTaskModelContext(context);
@@ -35,9 +38,14 @@ export const getTaskModelKey = (context: unknown): string => {
     : "";
 };
 
+export const getTaskWorkflowMode = (
+  workflowState: WorkflowState | null | undefined,
+): WorkflowMode => (workflowState?.mode === "fast" ? "fast" : "phased");
+
 export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }) => {
   const { config } = useWebSocketContext();
-  const { mainTaskId, taskContextMaps, taskContextUsageMaps, tasks } = useTasks();
+  const { mainTaskId, taskContextMaps, taskContextUsageMaps, taskWorkflowStateMaps, tasks } =
+    useTasks();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [pendingBootstrap, setPendingBootstrapState] = useState<GithubBootstrapSummary | null>(
     () => (typeof window === "undefined" ? null : getPendingBootstrap()),
@@ -46,12 +54,21 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
   const [availableSkills, setAvailableSkills] = useState<SkillSummary[]>([]);
   const [modelSettings, setModelSettings] = useState<UserModelConfigSettings | null>(null);
   const [selectedModelKey, setSelectedModelKey] = useState("");
+  const [selectedWorkflowMode, setSelectedWorkflowMode] = useState<WorkflowMode>("fast");
   const effectiveTaskId = taskId || mainTaskId;
   const rawTaskContext =
     (effectiveTaskId && taskContextMaps[effectiveTaskId]) ||
     (mainTaskId ? taskContextMaps[mainTaskId] : undefined);
-  const activeTaskContext = resolveTaskContext(rawTaskContext);
-  const activeTaskModel = resolveTaskModelContext(rawTaskContext);
+  const activeTaskContext = useMemo(() => resolveTaskContext(rawTaskContext), [rawTaskContext]);
+  const activeTaskModelKey = useMemo(() => getTaskModelKey(rawTaskContext), [rawTaskContext]);
+  const activeWorkflowMode = useMemo(
+    () =>
+      getTaskWorkflowMode(
+        (effectiveTaskId && taskWorkflowStateMaps[effectiveTaskId]) ||
+          (mainTaskId ? taskWorkflowStateMaps[mainTaskId] : undefined),
+      ),
+    [effectiveTaskId, mainTaskId, taskWorkflowStateMaps],
+  );
   const activeSkillIds = extractSkillIds(rawTaskContext);
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
   const currentTaskContextUsage =
@@ -79,6 +96,10 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
   const selectedModel = useMemo(
     () => availableModels.find((item) => getModelOptionKey(item) === selectedModelKey) || null,
     [availableModels, selectedModelKey],
+  );
+  const defaultModelKey = useMemo(
+    () => getModelSelectionKey(modelSettings?.defaultModel || null),
+    [modelSettings?.defaultModel],
   );
 
   useEffect(() => {
@@ -133,13 +154,26 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
   useEffect(() => {
     const nextKey = resolveInitialModelKey({
       availableModels,
-      defaultModel: modelSettings?.defaultModel || null,
-      activeTaskModel,
+      defaultModelKey,
+      activeTaskModelKey,
     });
-    if (nextKey && nextKey !== selectedModelKey) {
-      setSelectedModelKey(nextKey);
+    if (!nextKey) {
+      return;
     }
-  }, [activeTaskModel, availableModels, modelSettings?.defaultModel, selectedModelKey]);
+
+    setSelectedModelKey((currentKey) => (currentKey === nextKey ? currentKey : nextKey));
+  }, [activeTaskModelKey, availableModels, defaultModelKey]);
+
+  useEffect(() => {
+    if (!effectiveTaskId) {
+      setSelectedWorkflowMode((currentMode) => (currentMode === "fast" ? currentMode : "fast"));
+      return;
+    }
+
+    setSelectedWorkflowMode((currentMode) =>
+      currentMode === activeWorkflowMode ? currentMode : activeWorkflowMode,
+    );
+  }, [activeWorkflowMode, effectiveTaskId]);
 
   const handleCancelBootstrap = async () => {
     if (!pendingBootstrap) {
@@ -179,6 +213,7 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
     <div className="w-full">
       <MessageInput
         taskId={taskId}
+        topAccessory={<TaskListDropdown />}
         createTaskContext={createTaskContext}
         modelConfigSnapshot={
           canSwitchModel && selectedModel
@@ -188,6 +223,7 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
               }
             : undefined
         }
+        workflowMode={selectedWorkflowMode}
         onSend={() => {
           if (!effectiveTaskId && pendingBootstrap) {
             clearPendingBootstrap();
@@ -197,160 +233,148 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
           }
         }}
         bottomAccessory={
-          <div className="flex w-full flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0 space-y-2">
-              <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-                {availableModels.length > 0 ? (
-                  <label className="relative inline-flex min-w-[120px] max-w-full items-center text-[13px] text-gray-700">
-                    <select
-                      value={selectedModelKey}
-                      onChange={(event) => setSelectedModelKey(event.target.value)}
-                      disabled={!canSwitchModel}
-                      className="min-w-0 appearance-none bg-transparent py-1 pr-5 text-[13px] font-medium text-gray-700 outline-none disabled:cursor-not-allowed disabled:text-gray-400"
-                      title={
-                        selectedModel
-                          ? `${selectedModel.model} · ${selectedModel.configId}`
-                          : "选择模型"
-                      }
-                    >
-                      {availableModels.map((item) => (
-                        <option key={getModelOptionKey(item)} value={getModelOptionKey(item)}>
-                          {getModelOptionLabel(item, duplicateModelNames)}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-0 h-3.5 w-3.5 text-gray-400" />
-                  </label>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => openSettingsModal()}
-                    className="inline-flex items-center gap-1.5 py-1 text-[13px] text-[#c66a18] transition-colors hover:text-[#a8540e]"
-                  >
-                    <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                    <span>请先配置模型</span>
-                  </button>
-                )}
+          <>
+            <WorkflowModeSwitch
+              mode={selectedWorkflowMode}
+              onChange={(nextMode) => setSelectedWorkflowMode(nextMode)}
+            />
 
-                {effectiveTaskId ? (
-                  <button
-                    type="button"
-                    disabled
-                    className="inline-flex min-w-[120px] max-w-full items-center gap-1.5 py-1 text-[13px] font-medium text-gray-400"
-                    title={
-                      activeTaskContext?.repoUrl
-                        ? `${activeTaskContext.repoUrl}${activeTaskContext.branch ? ` · ${activeTaskContext.branch}` : ""}`
-                        : "当前会话未绑定 GitHub 仓库"
-                    }
-                  >
-                    <Github className="h-3.5 w-3.5 shrink-0" />
-                    <span className="max-w-[320px] truncate">
-                      {activeTaskContext?.repoLabel || "未绑定 GitHub 仓库"}
-                    </span>
-                  </button>
-                ) : pendingBootstrap ? (
-                  <div className="inline-flex min-w-[120px] max-w-full items-center gap-1.5 py-1 text-[13px] font-medium text-gray-700">
-                    <Github className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                    <span className="max-w-[300px] truncate" title={pendingBootstrap.repoUrl}>
-                      {pendingBootstrap.repoUrl
-                        .replace("https://github.com/", "")
-                        .replace(".git", "")}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => void handleCancelBootstrap()}
-                      disabled={isCancelling}
-                      className="inline-flex h-4 w-4 items-center justify-center text-gray-400 transition hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
-                      title="取消当前仓库"
-                    >
-                      {isCancelling ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <X className="h-3 w-3" />
-                      )}
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setIsModalOpen(true)}
-                    className="inline-flex min-w-[120px] max-w-full items-center gap-1.5 py-1 text-[13px] font-medium text-gray-400 transition-colors hover:text-gray-700"
-                  >
-                    <Github className="h-3.5 w-3.5 shrink-0" />
-                    <span>选择仓库</span>
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-
-              {!effectiveTaskId && availableSkills.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-1 text-[12px] text-gray-400">
-                    <Bot className="h-3.5 w-3.5" />
-                    Skills
-                  </span>
-                  {availableSkills.map((skill) => {
-                    const isSelected = selectedSkillIds.includes(skill.id);
-                    return (
-                      <button
-                        key={skill.id}
-                        type="button"
-                        onClick={() =>
-                          setSelectedSkillIds((prev) =>
-                            isSelected
-                              ? prev.filter((item) => item !== skill.id)
-                              : [...prev, skill.id],
-                          )
-                        }
-                        className={`rounded-full border px-2.5 py-1 text-[12px] transition-colors ${
-                          isSelected
-                            ? "border-blue-200 bg-blue-50 text-blue-700"
-                            : "border-gray-200 bg-white text-gray-500 hover:bg-gray-50"
-                        }`}
-                        title={skill.description || skill.name}
-                      >
-                        {skill.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {effectiveTaskId && activeSkillIds.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-1 text-[12px] text-gray-400">
-                    <Bot className="h-3.5 w-3.5" />
-                    当前 Skills
-                  </span>
-                  {activeSkillIds.map((skillId) => {
-                    const skillName =
-                      availableSkills.find((skill) => skill.id === skillId)?.name || skillId;
-                    return (
-                      <span
-                        key={skillId}
-                        className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[12px] text-blue-700"
-                      >
-                        {skillName}
-                      </span>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-2 self-start lg:justify-end">
-              {selectedModel?.thinkType ? (
-                <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] text-gray-500">
-                  {selectedModel.thinkType}
+            {availableModels.length > 0 ? (
+              <label className="relative flex shrink-0 items-center justify-center bg-transparent hover:bg-black/[0.04] rounded-lg px-2 py-1.5 transition-colors cursor-pointer group">
+                <span className="text-[12px] font-medium text-gray-700 mr-1 max-w-[150px] sm:max-w-[200px] truncate pr-1">
+                  {selectedModel
+                    ? getModelOptionLabel(selectedModel, duplicateModelNames)
+                    : "选择模型"}
                 </span>
-              ) : null}
-              {!canSwitchModel && (
-                <span className="text-[11px] text-gray-400">生成中时不可切换</span>
-              )}
+                <ChevronDown className="h-3.5 w-3.5 text-gray-400 group-hover:text-gray-600" />
+                <select
+                  value={selectedModelKey}
+                  onChange={(event) => setSelectedModelKey(event.target.value)}
+                  disabled={!canSwitchModel}
+                  className="absolute inset-0 opacity-0 w-full h-full disabled:cursor-not-allowed cursor-pointer"
+                  title={
+                    selectedModel
+                      ? `${selectedModel.model} · ${selectedModel.configId}`
+                      : "选择模型"
+                  }
+                >
+                  {availableModels.map((item) => (
+                    <option
+                      key={getModelOptionKey(item)}
+                      value={getModelOptionKey(item)}
+                      className="text-black"
+                    >
+                      {getModelOptionLabel(item, duplicateModelNames)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <button
+                type="button"
+                onClick={() => openSettingsModal()}
+                className="flex shrink-0 items-center justify-center gap-1.5 bg-transparent hover:bg-orange-50 rounded-lg px-2 py-1.5 text-[12px] font-medium text-orange-600 transition-colors"
+              >
+                <AlertCircle className="h-3.5 w-3.5" />
+                <span>请先配置模型</span>
+              </button>
+            )}
+
+            {effectiveTaskId ? (
+              <button
+                type="button"
+                disabled
+                className="flex shrink-0 items-center gap-1.5 bg-transparent rounded-lg px-2 py-1.5 text-[12px] font-medium text-gray-400 disabled:cursor-not-allowed"
+                title={
+                  activeTaskContext?.repoUrl
+                    ? `${activeTaskContext.repoUrl}${
+                        activeTaskContext.branch ? ` · ${activeTaskContext.branch}` : ""
+                      }`
+                    : "当前会话未绑定 GitHub 仓库"
+                }
+              >
+                <Github className="h-3.5 w-3.5 shrink-0" />
+                <span className="max-w-[150px] truncate">
+                  {activeTaskContext?.repoLabel || "未绑定 GitHub 仓库"}
+                </span>
+              </button>
+            ) : pendingBootstrap ? (
+              <div className="flex shrink-0 items-center gap-1.5 bg-transparent rounded-lg px-2 py-1.5 text-[12px] font-medium text-gray-600">
+                <Github className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                <span className="max-w-[150px] truncate" title={pendingBootstrap.repoUrl}>
+                  {pendingBootstrap.repoUrl.replace("https://github.com/", "").replace(".git", "")}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void handleCancelBootstrap()}
+                  disabled={isCancelling}
+                  className="flex h-3.5 w-3.5 items-center justify-center text-gray-400 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  title="取消当前仓库"
+                >
+                  {isCancelling ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <X className="h-3 w-3" />
+                  )}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(true)}
+                className="flex shrink-0 items-center gap-1.5 bg-transparent hover:bg-black/[0.04] rounded-lg px-2 py-1.5 text-[12px] font-medium text-gray-600 hover:text-gray-800 transition-colors"
+              >
+                <Github className="h-3.5 w-3.5 shrink-0" />
+                <span>IDE 背景信息</span>
+              </button>
+            )}
+
+            {!effectiveTaskId &&
+              availableSkills.length > 0 &&
+              availableSkills.map((skill) => {
+                const isSelected = selectedSkillIds.includes(skill.id);
+                return (
+                  <button
+                    key={skill.id}
+                    type="button"
+                    onClick={() =>
+                      setSelectedSkillIds((prev) =>
+                        isSelected ? prev.filter((item) => item !== skill.id) : [...prev, skill.id],
+                      )
+                    }
+                    className={`flex shrink-0 items-center justify-center rounded-lg px-2.5 py-1.5 text-[12px] font-medium transition-colors ${
+                      isSelected
+                        ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                        : "bg-transparent text-gray-600 hover:bg-black/[0.04]"
+                    }`}
+                    title={skill.description || skill.name}
+                  >
+                    {skill.name}
+                  </button>
+                );
+              })}
+
+            {effectiveTaskId &&
+              activeSkillIds.length > 0 &&
+              activeSkillIds.map((skillId) => {
+                const skillName =
+                  availableSkills.find((skill) => skill.id === skillId)?.name || skillId;
+                return (
+                  <span
+                    key={skillId}
+                    className="flex shrink-0 items-center justify-center rounded-lg bg-blue-100 px-2.5 py-1.5 text-[12px] font-medium text-blue-700"
+                  >
+                    {skillName}
+                  </span>
+                );
+              })}
+
+            <div className="flex shrink-0 items-center gap-2 ml-auto">
               {currentTaskContextUsage && (
                 <ContextUsageRing contextUsage={currentTaskContextUsage} />
               )}
             </div>
-          </div>
+          </>
         }
       />
 
@@ -456,6 +480,14 @@ const resolveTaskModelContext = (context: unknown): TaskModelContext | null => {
 const getModelOptionKey = (option: Pick<ResolvedModelOption, "configId" | "model">): string =>
   `${option.configId}::${option.model}`;
 
+const getModelSelectionKey = (
+  selection: { configId?: string | null; model?: string | null } | null | undefined,
+): string => {
+  const configId = typeof selection?.configId === "string" ? selection.configId.trim() : "";
+  const model = typeof selection?.model === "string" ? selection.model.trim() : "";
+  return configId && model ? `${configId}::${model}` : "";
+};
+
 const getModelOptionLabel = (
   option: Pick<ResolvedModelOption, "configId" | "model">,
   duplicateModelNames: Map<string, number>,
@@ -467,26 +499,21 @@ const getModelOptionLabel = (
 
 const resolveInitialModelKey = (params: {
   availableModels: ResolvedModelOption[];
-  defaultModel: UserModelConfigSettings["defaultModel"] | null;
-  activeTaskModel: TaskModelContext | null;
+  defaultModelKey: string;
+  activeTaskModelKey: string;
 }): string => {
-  const activeTaskKey =
-    params.activeTaskModel?.model && params.activeTaskModel.modelConfigId
-      ? `${params.activeTaskModel.modelConfigId}::${params.activeTaskModel.model}`
-      : "";
   if (
-    activeTaskKey &&
-    params.availableModels.some((item) => getModelOptionKey(item) === activeTaskKey)
+    params.activeTaskModelKey &&
+    params.availableModels.some((item) => getModelOptionKey(item) === params.activeTaskModelKey)
   ) {
-    return activeTaskKey;
+    return params.activeTaskModelKey;
   }
 
-  const defaultKey =
-    params.defaultModel?.model && params.defaultModel.configId
-      ? `${params.defaultModel.configId}::${params.defaultModel.model}`
-      : "";
-  if (defaultKey && params.availableModels.some((item) => getModelOptionKey(item) === defaultKey)) {
-    return defaultKey;
+  if (
+    params.defaultModelKey &&
+    params.availableModels.some((item) => getModelOptionKey(item) === params.defaultModelKey)
+  ) {
+    return params.defaultModelKey;
   }
 
   return params.availableModels[0] ? getModelOptionKey(params.availableModels[0]) : "";
@@ -501,7 +528,7 @@ const ContextUsageRing: React.FC<{ contextUsage: ContextUsageStatus }> = ({ cont
     ? "#2563eb"
     : usageRatio >= contextUsage.compressionThreshold
       ? "#d97706"
-      : "#6b7280";
+      : "#9ca3af";
   const strokeWidth = 3;
   const title = `上下文占用 ${Math.round(usageRatio * 100)}% (${contextUsage.estimatedTokens.toLocaleString(
     "zh-CN",
@@ -537,5 +564,28 @@ const ContextUsageRing: React.FC<{ contextUsage: ContextUsageStatus }> = ({ cont
         />
       </svg>
     </div>
+  );
+};
+
+const WorkflowModeSwitch: React.FC<{
+  mode: WorkflowMode;
+  onChange: (mode: WorkflowMode) => void;
+}> = ({ mode, onChange }) => {
+  const isWorkflow = mode === "phased";
+
+  return (
+    <button
+      type="button"
+      title={isWorkflow ? "当前为工作流模式" : "切换到工作流模式"}
+      onClick={() => onChange(isWorkflow ? "fast" : "phased")}
+      className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px] font-medium transition-colors ${
+        isWorkflow
+          ? "bg-blue-50 text-blue-600 hover:bg-blue-100"
+          : "bg-transparent text-gray-600 hover:bg-black/[0.04]"
+      }`}
+    >
+      <Zap className="h-3.5 w-3.5" />
+      <span>工作流模式</span>
+    </button>
   );
 };

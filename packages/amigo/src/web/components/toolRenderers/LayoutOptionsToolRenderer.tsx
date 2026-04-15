@@ -273,6 +273,13 @@ export const LayoutOptionsToolRenderer: React.FC<ToolMessageRendererProps<ToolNa
   isLatest,
 }) => {
   const toolName = String(message.toolName || "");
+  const paramsRecord = asRecord(message.params);
+  const action =
+    typeof paramsRecord?.action === "string"
+      ? paramsRecord.action
+      : typeof asRecord(message.toolOutput)?.action === "string"
+        ? String(asRecord(message.toolOutput)?.action)
+        : "";
   const { config } = useWebSocketContext();
   const { taskId } = useParams<{ taskId: string }>();
   const { sendMessage } = useSendMessage();
@@ -290,7 +297,8 @@ export const LayoutOptionsToolRenderer: React.FC<ToolMessageRendererProps<ToolNa
   const activeSelectedId = selectedLayoutId || persistedSelectedId || localSelectedId;
   const canSelect = isLatest && !message.partial && !message.hasError && source === "toolOutput";
   const hasBlockingError = message.hasError || validationErrors.length > 0;
-  const isReadOnlySummary = toolName === "readLayoutOptions";
+  const isReadOnlySummary =
+    toolName === "readLayoutOptions" || (toolName === "designOptions" && action === "read");
   const displaySummary = isReadOnlySummary ? takeLeadingSentence(summary) : summary;
 
   useEffect(() => {
@@ -459,7 +467,7 @@ export const LayoutOptionsToolRenderer: React.FC<ToolMessageRendererProps<ToolNa
       setPersistedSelectedId(option.layoutId);
       setLocalSelectedId(option.layoutId);
       sendMessage(
-        `我已经选择布局方案 ${option.title}（${option.layoutId}），继续由主流程基于这个布局生成 2-3 个主题方案；这一步先不要拆 subTask orchestration。`,
+        `我已经选择布局方案 ${option.title}（${option.layoutId}）。现在继续调用 designOptions，参数 kind="theme", action="generate"，基于这个布局生成 2-3 个主题方案。`,
       );
     } catch (error) {
       setSelectionError(error instanceof Error ? error.message : "选择布局失败");

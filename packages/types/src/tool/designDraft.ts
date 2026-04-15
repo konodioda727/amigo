@@ -378,6 +378,68 @@ export const ReadDraftCritiqueSchema = z.object({
   }),
 });
 
+export const DesignSessionToolSchema = z.object({
+  name: z.literal("designSession"),
+  params: z.object({
+    action: z.enum(["read", "update"]),
+    pageGoal: z.string().optional(),
+    targetAudience: z.string().optional(),
+    brandMood: z.string().optional(),
+    styleKeywords: z.array(z.string()).optional(),
+    references: z.array(z.string()).optional(),
+    constraints: z.array(z.string()).optional(),
+    antiGoals: z.array(z.string()).optional(),
+    modules: z.array(DesignModuleSchema).optional(),
+  }),
+  result: z.object({
+    success: z.boolean(),
+    action: z.enum(["read", "update"]),
+    session: DesignSessionSchema.nullable(),
+    validationErrors: ValidationErrorsSchema,
+    message: z.string(),
+  }),
+});
+
+export const DesignOptionsToolSchema = z.object({
+  name: z.literal("designOptions"),
+  params: z.object({
+    kind: z.enum(["layout", "theme"]),
+    action: z.enum(["read", "generate", "update", "select"]),
+    options: z.array(z.record(z.string(), z.unknown())).optional(),
+    layoutId: z.string().optional(),
+    themeId: z.string().optional(),
+  }),
+  result: z
+    .object({
+      success: z.boolean(),
+      kind: z.enum(["layout", "theme"]),
+      action: z.enum(["read", "generate", "update", "select"]),
+      validationErrors: ValidationErrorsSchema,
+      message: z.string(),
+    })
+    .passthrough(),
+});
+
+export const DesignDraftToolSchema = z.object({
+  name: z.literal("designDraft"),
+  params: z.object({
+    action: z.enum(["generate", "read", "status", "critique", "revise"]),
+    draftId: z.string(),
+    title: z.string().optional(),
+    iterationGoal: z.string().optional(),
+    regenerateModules: z.array(z.string()).optional(),
+  }),
+  result: z
+    .object({
+      success: z.boolean(),
+      action: z.enum(["generate", "read", "status", "critique", "revise"]),
+      draftId: z.string().optional(),
+      validationErrors: ValidationErrorsSchema,
+      message: z.string(),
+    })
+    .passthrough(),
+});
+
 export type ReadDesignSessionParams = z.infer<typeof ReadDesignSessionSchema>["params"];
 export type ReadDesignSessionResult = z.infer<typeof ReadDesignSessionSchema>["result"];
 export type UpsertDesignSessionParams = z.infer<typeof UpsertDesignSessionSchema>["params"];
@@ -406,3 +468,9 @@ export type OrchestrateFinalDesignDraftResult = z.infer<
 >["result"];
 export type ReadDraftCritiqueParams = z.infer<typeof ReadDraftCritiqueSchema>["params"];
 export type ReadDraftCritiqueResult = z.infer<typeof ReadDraftCritiqueSchema>["result"];
+export type DesignSessionParams = z.infer<typeof DesignSessionToolSchema>["params"];
+export type DesignSessionResult = z.infer<typeof DesignSessionToolSchema>["result"];
+export type DesignOptionsParams = z.infer<typeof DesignOptionsToolSchema>["params"];
+export type DesignOptionsResult = z.infer<typeof DesignOptionsToolSchema>["result"];
+export type DesignDraftParams = z.infer<typeof DesignDraftToolSchema>["params"];
+export type DesignDraftResult = z.infer<typeof DesignDraftToolSchema>["result"];

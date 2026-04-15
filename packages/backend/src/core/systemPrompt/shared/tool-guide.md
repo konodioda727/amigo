@@ -1,65 +1,26 @@
 ====
 
-TOOL USAGE
+工具使用
 
-## Selection Priority
+- `readRules`：当宿主规则、产品约束、提示词约束会影响当前判断时优先读取；不要用 `readFile` 代替规则文档。
+- `readFile` / `listFiles`：只在当前上下文缺少关键信息、信息可能过期，或需要核对真实文件内容时使用；如果目标改动已经明确，不要继续读取。查看文件内容只能使用 `readFile`。
+- `browserSearch`：只在问题依赖工作区外部事实时使用；本地可核实的问题优先看本地。
+- `bash`：只用于搜索、安装依赖、构建、测试、运行脚本、查看环境和快速诊断；不要把它当成文件编辑器，也不要用一串低价值试探命令替代明确的下一步。
+- `editFile`：一旦目标文件和改动点明确，它就是默认工具。修改文件只能使用 `editFile`；不要先用 `bash` 改文件再回来验证，也不要用其他工具旁路写文件。
+- `taskList(action=execute)`：只有拆分成多个独立分支或模块更高效时才使用；简单任务、单模块任务或紧耦合修改默认直接做，不要为了形式拆任务。
+- `askFollowupQuestion`：只用于获取用户专属事实、偏好、取舍或验收边界；不要用普通文本向用户追问。
+- `completeTask`：仅在当前阶段或当前任务确实完成时调用；不要把它当作进度播报工具。
 
-```
-Task fully complete with no pending blocker or missing step? -> `completeTask`
-Need async task execution? -> executeTaskList
-Any async tool starts? -> immediately tell user background work has started, they will be notified automatically when it finishes, and if there is nothing else actionable now, stop instead of waiting
-Need missing requirement detail or design tradeoff preference? -> askFollowupQuestion
-Otherwise -> Use appropriate functional tool
-```
+异步工具
 
-## Native Tool Call Format
+- 异步结果不一定在同一轮立即返回；启动后优先继续做其他不冲突的有效工作。
+- 只有一个异步任务尚未返回且它是当前唯一阻塞时，才可以用一次很短的 `bash` 等待后再检查；不要 busy loop。
 
-- Use native tool calls only (structured function call with JSON arguments).
-- Do not output XML tags like `<toolName>...</toolName>`.
-- For nested objects/arrays, pass valid JSON object/array arguments.
-- If a tool has no parameters, call it with an empty JSON object.
+常见错误
 
-## Common Mistakes
-
-- Multiple tools in one response
-- Sub-task completing with plain text instead of calling `completeTask`
-- Sub-task calling `completeTask` before the assigned problem is actually solved
-- Using tool names or JSON parameters that do not match definitions
-
-## Code Search vs Semantic Tools
-
-- If semantic tools such as `goToDefinition`, `findReferences`, or `getDiagnostics` are available, use them for precise symbol-level navigation and validation.
-- Use `goToDefinition` when you already know the `symbolName`, `filePath`, and approximate `line` / `column`, and want the exact implementation or type definition.
-- Use `findReferences` before changing shared functions, exported types, fields, or other public APIs so you understand the impact surface; pass the `symbolName` plus an approximate anchor location.
-- Use `getDiagnostics` after edits when you need semantic/type errors for the current file.
-- `goToDefinition` and `findReferences` first try to locate the exact `symbolName` near the provided anchor and fail if that nearby symbol cannot be found.
-- Do not use semantic tools as a replacement for broad text discovery.
-- If you do not yet know where a symbol/string/config appears, first use repository search tools such as `bash` with `rg`, plus `listFiles` and `readFile`, then switch to semantic tools once you have a concrete symbol location.
-
-## Project Script Discipline
-
-- Before starting a dev server, running lint/test/build/typecheck, or issuing project-scoped shell commands, inspect repository facts first instead of guessing.
-- Minimum check: read the target working directory's `package.json`; if available, also read a nearby `README.md` or docs/config file that explains local scripts.
-- Infer script names and package manager from repository evidence such as `package.json`, lockfiles, and docs. Do not assume `npm` when the repo may be driven by `bun`, `pnpm`, or `yarn`.
-- Avoid using `npm` for package management unless it is clearly required by the project.
-- Preserve the project's existing package manager by default. If the repo is already on `bun`, use `bun`; if it is on `pnpm`, use `pnpm`.
-- Only migrate package-management commands toward `pnpm` when the repo evidence shows that doing so is safe and compatible; do not force-switch a `bun` project to `pnpm`.
-- When dependencies may not be installed yet, prefer `installDependencies` after reading the target directory's `package.json`, lockfiles, README, and scripts; you must provide the exact `installCommand` discovered from the repo instead of relying on backend inference.
-- When using `updateDevServer`, pass the exact start command discovered from the repo.
-- `updateDevServer` and `runChecks` only consume the shared dependency-install state; if dependencies are still downloading they should wait and continue automatically, and if dependencies have not been installed yet they should first call `installDependencies` with an explicit command.
-- If `installDependencies` starts asynchronously, or `updateDevServer` / `runChecks` return a waiting-for-dependencies status, explicitly tell the user the background task will continue automatically and they will be notified when it finishes.
-- In that async-waiting case, if there is no other concrete action to take right now, stop after informing the user; do not keep reasoning about "waiting" in place.
-- When using `runChecks`, prefer explicit `commands` derived from the repo when scripts are project-specific or non-standard; use `preset` only when the repo layout is conventional and the script mapping is already clear.
-
-## Task Docs Discipline
-
-- In Spec Mode, task docs are the explicit, living form of the UNIVERSAL SOP, not a parallel workflow.
-- `requirements.md` records task-goal decomposition.
-- `design.md` records the preliminary solution, tradeoffs, and validation plan.
-- `taskList.md` records the execution breakdown and current implementation path.
-- Prefer a loop of: read current doc -> gather evidence -> ask one focused follow-up if needed -> patch only the affected text with `updateTaskDocs`.
-- Patch docs not only after user answers, but after any meaningful new evidence, repo fact, or design decision that changes the explicit SOP record.
-- Do not regenerate the entire doc after every answer.
-- In the design phase, research both the local repo context and relevant external best practices before asking the user to choose between viable options.
+- 没有工具调用就结束当前轮。
+- 下一步已经清楚，却还在重复读取、重复搜索或重复试跑命令。
+- 已经知道该改哪个文件，却继续用 `bash` 试探，而不是直接 `editFile`。
+- 在 design 阶段生成 `taskList`，或在未完成时过早调用 `completeTask`。
 
 ====

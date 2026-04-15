@@ -166,6 +166,7 @@ export const ReadFile = createTool({
     "从沙箱中批量读取文件内容。支持一次读取多个文件，并可按行范围截取内容，返回内容自带真实行号。",
   whenToUse:
     "需要同时查看多个文件内容或定位指定行时使用。通常在 editFile 前先 readFile 以确认上下文；后续若要按行修改，直接使用返回内容中的行号。",
+  executionMode: "parallel_readonly",
 
   params: [
     {

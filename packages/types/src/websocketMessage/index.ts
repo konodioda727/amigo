@@ -11,7 +11,8 @@ export type SYSTEM_RESERVED_TAGS =
   | "interrupt"
   | "askFollowupQuestion"
   | "system"
-  | "compaction";
+  | "compaction"
+  | "checkpoint";
 export const systemReservedTags: SYSTEM_RESERVED_TAGS[] = [
   "think",
   "interrupt",

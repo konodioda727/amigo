@@ -5,8 +5,14 @@ import {
   type ResolvedModelConfig,
   resolveModelConfigFromConfigs,
 } from "@amigo-llm/backend";
-import type { RowDataPacket } from "mysql2/promise";
-import { ensureMysqlSchemaUpToDate, mysqlExecute, mysqlQuery, parseJsonColumn } from "../db";
+import { eq } from "drizzle-orm";
+import {
+  ensureMysqlSchemaUpToDate,
+  formatMysqlDateTime,
+  getDrizzleDb,
+  parseJsonColumn,
+  userModelConfigsTable,
+} from "../db";
 
 export interface UserModelConfigSettingsRecord {
   modelConfigs: Record<string, ModelConfig>;
@@ -37,11 +43,6 @@ export interface UserModelConfigUpsertInput {
   defaultModel: ModelSelection | null;
   memoryExtractorModel: ModelSelection | null;
 }
-
-type UserModelConfigRow = RowDataPacket & {
-  user_id: string;
-  settings_json: unknown;
-};
 
 const settingsCache = new Map<string, UserModelConfigSettingsRecord>();
 
@@ -146,11 +147,12 @@ const normalizeSettingsRecord = (value: unknown): UserModelConfigSettingsRecord 
 
 const readSettingsRow = async (userId: string): Promise<UserModelConfigSettingsRecord | null> => {
   await ensureMysqlSchemaUpToDate();
-  const rows = await mysqlQuery<UserModelConfigRow>(
-    "SELECT user_id, settings_json FROM user_model_configs WHERE user_id = ? LIMIT 1",
-    [userId],
-  );
-  const rawSettings = rows[0]?.settings_json;
+  const rows = await getDrizzleDb()
+    .select()
+    .from(userModelConfigsTable)
+    .where(eq(userModelConfigsTable.userId, userId))
+    .limit(1);
+  const rawSettings = rows[0]?.settingsJson;
   if (!rawSettings) {
     return null;
   }
@@ -178,16 +180,13 @@ const toPublicSettings = (
 
 export const warmUserModelConfigStore = async (): Promise<void> => {
   await ensureMysqlSchemaUpToDate();
-  const rows = await mysqlQuery<UserModelConfigRow>(
-    "SELECT user_id, settings_json FROM user_model_configs",
-    [],
-  );
+  const rows = await getDrizzleDb().select().from(userModelConfigsTable);
 
   settingsCache.clear();
   for (const row of rows) {
-    const settings = normalizeSettingsRecord(parseJsonColumn(row.settings_json, {}));
+    const settings = normalizeSettingsRecord(parseJsonColumn(row.settingsJson, {}));
     if (settings) {
-      settingsCache.set(row.user_id, settings);
+      settingsCache.set(row.userId, settings);
     }
   }
 };
@@ -264,16 +263,21 @@ export const upsertUserModelConfigSettings = async (
   };
 
   await ensureMysqlSchemaUpToDate();
-  await mysqlExecute(
-    `
-      INSERT INTO user_model_configs (user_id, settings_json, created_at, updated_at)
-      VALUES (?, CAST(? AS JSON), CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
-      ON DUPLICATE KEY UPDATE
-        settings_json = VALUES(settings_json),
-        updated_at = CURRENT_TIMESTAMP(3)
-    `,
-    [userId, JSON.stringify(nextSettings)],
-  );
+  const now = formatMysqlDateTime();
+  await getDrizzleDb()
+    .insert(userModelConfigsTable)
+    .values({
+      userId,
+      settingsJson: nextSettings,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onDuplicateKeyUpdate({
+      set: {
+        settingsJson: nextSettings,
+        updatedAt: now,
+      },
+    });
 
   settingsCache.set(userId, cloneSettingsRecord(nextSettings));
   return toPublicSettings(nextSettings);

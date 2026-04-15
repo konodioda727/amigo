@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { drizzle, type MySql2Database } from "drizzle-orm/mysql2";
-import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
+import type { Pool, PoolConnection } from "mysql2/promise";
 import { decryptSecret, encryptSecret } from "../utils/secretBox";
 import { getDrizzleDb } from "./drizzle";
 import {
@@ -32,10 +32,6 @@ export interface FeishuAppCredentialSummary {
   appIdConfigured: boolean;
   appSecretConfigured: boolean;
 }
-
-type AppSettingsRow = RowDataPacket & {
-  settings_json: unknown;
-};
 
 export interface PersistedUser {
   id: string;
@@ -152,22 +148,6 @@ export const getMysqlPool = (): Pool => {
   return pool;
 };
 
-export const mysqlQuery = async <T extends RowDataPacket>(
-  sql: string,
-  params: unknown[] = [],
-): Promise<T[]> => {
-  const [rows] = await getMysqlPool().query<T[]>(sql, params as never[]);
-  return rows;
-};
-
-export const mysqlExecute = async (
-  sql: string,
-  params: unknown[] = [],
-): Promise<ResultSetHeader> => {
-  const [result] = await getMysqlPool().execute<ResultSetHeader>(sql, params as never[]);
-  return result;
-};
-
 export const mysqlTransaction = async <T>(
   fn: (connection: PoolConnection) => Promise<T>,
 ): Promise<T> => withAmigoTransaction(getMysqlPool(), fn);
@@ -245,39 +225,36 @@ export const findFeishuChannelOwnerUserId = async (
   }
 
   const tenantKey = input.tenantKey?.trim() || "";
-  const rows = await mysqlQuery<
-    RowDataPacket & {
-      userId: string;
-    }
-  >(
-    tenantKey
-      ? `
-          SELECT nc.user_id AS userId
-          FROM notification_channels nc
-          INNER JOIN users u ON u.id = nc.user_id
-          WHERE nc.type = 'feishu'
-            AND nc.enabled = 1
-            AND u.kind = 'local_web'
-            AND JSON_UNQUOTE(JSON_EXTRACT(nc.config_json, '$.chatId')) = ?
-            AND JSON_UNQUOTE(JSON_EXTRACT(nc.config_json, '$.tenantKey')) = ?
-          ORDER BY nc.is_default DESC, nc.updated_at DESC
-          LIMIT 1
-        `
-      : `
-          SELECT nc.user_id AS userId
-          FROM notification_channels nc
-          INNER JOIN users u ON u.id = nc.user_id
-          WHERE nc.type = 'feishu'
-            AND nc.enabled = 1
-            AND u.kind = 'local_web'
-            AND JSON_UNQUOTE(JSON_EXTRACT(nc.config_json, '$.chatId')) = ?
-          ORDER BY nc.is_default DESC, nc.updated_at DESC
-          LIMIT 1
-        `,
-    tenantKey ? [chatId, tenantKey] : [chatId],
-  );
+  const rows = await getDrizzleDb()
+    .select({
+      userId: notificationChannelsTable.userId,
+      configJson: notificationChannelsTable.configJson,
+    })
+    .from(notificationChannelsTable)
+    .innerJoin(usersTable, eq(usersTable.id, notificationChannelsTable.userId))
+    .where(
+      and(
+        eq(notificationChannelsTable.type, "feishu"),
+        eq(notificationChannelsTable.enabled, 1),
+        eq(usersTable.kind, "local_web"),
+      ),
+    )
+    .orderBy(desc(notificationChannelsTable.isDefault), desc(notificationChannelsTable.updatedAt));
 
-  return rows[0]?.userId?.trim() || null;
+  for (const row of rows) {
+    const config = parseJsonColumn<Record<string, unknown>>(row.configJson, {});
+    const rowChatId = typeof config.chatId === "string" ? config.chatId.trim() : "";
+    const rowTenantKey = typeof config.tenantKey === "string" ? config.tenantKey.trim() : "";
+    if (!rowChatId || rowChatId !== chatId) {
+      continue;
+    }
+    if (tenantKey && rowTenantKey !== tenantKey) {
+      continue;
+    }
+    return row.userId.trim();
+  }
+
+  return null;
 };
 
 const readExternalIdentityUserWithDb = async (
@@ -627,14 +604,19 @@ export const updateNotificationChannels = async (
       continue;
     }
 
-    await mysqlExecute(
-      `
-        UPDATE notification_channels
-        SET enabled = ?, is_default = ?, updated_at = CURRENT_TIMESTAMP(3)
-        WHERE id = ? AND user_id = ?
-      `,
-      [channel.enabled ? 1 : 0, channel.isDefault ? 1 : 0, channel.id, userId],
-    );
+    await getDrizzleDb()
+      .update(notificationChannelsTable)
+      .set({
+        enabled: channel.enabled ? 1 : 0,
+        isDefault: channel.isDefault ? 1 : 0,
+        updatedAt: formatMysqlDateTime(),
+      })
+      .where(
+        and(
+          eq(notificationChannelsTable.id, channel.id),
+          eq(notificationChannelsTable.userId, userId),
+        ),
+      );
   }
 
   return listNotificationChannels(userId);
@@ -642,25 +624,31 @@ export const updateNotificationChannels = async (
 
 const readAppSettings = async (): Promise<AppSettingsRecord> => {
   await ensureMysqlSchemaUpToDate();
-  const rows = await mysqlQuery<AppSettingsRow>(
-    "SELECT settings_json FROM app_settings WHERE `key` = ? LIMIT 1",
-    [APP_SETTINGS_KEY],
-  );
-  return parseJsonColumn<AppSettingsRecord>(rows[0]?.settings_json, {});
+  const rows = await getDrizzleDb()
+    .select({ settingsJson: schema.appSettingsTable.settingsJson })
+    .from(schema.appSettingsTable)
+    .where(eq(schema.appSettingsTable.key, APP_SETTINGS_KEY))
+    .limit(1);
+  return parseJsonColumn<AppSettingsRecord>(rows[0]?.settingsJson, {});
 };
 
 const writeAppSettings = async (settings: AppSettingsRecord): Promise<void> => {
   await ensureMysqlSchemaUpToDate();
-  await mysqlExecute(
-    `
-      INSERT INTO app_settings (\`key\`, settings_json, created_at, updated_at)
-      VALUES (?, CAST(? AS JSON), CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
-      ON DUPLICATE KEY UPDATE
-        settings_json = VALUES(settings_json),
-        updated_at = CURRENT_TIMESTAMP(3)
-    `,
-    [APP_SETTINGS_KEY, JSON.stringify(settings)],
-  );
+  const now = formatMysqlDateTime();
+  await getDrizzleDb()
+    .insert(schema.appSettingsTable)
+    .values({
+      key: APP_SETTINGS_KEY,
+      settingsJson: settings,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onDuplicateKeyUpdate({
+      set: {
+        settingsJson: settings,
+        updatedAt: now,
+      },
+    });
 };
 
 const readEnvFeishuCredentials = () => {

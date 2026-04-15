@@ -77,7 +77,7 @@ export {
   ReadFileResultBody,
 } from "./tools/DefaultReadFileRenderer";
 export { DefaultReadSkillBundleRenderer } from "./tools/DefaultReadSkillBundleRenderer";
-export { DefaultRunChecksRenderer } from "./tools/DefaultRunChecksRenderer";
+export { DefaultTaskListRenderer } from "./tools/DefaultTaskListRenderer";
 export { DefaultUpsertAutomationRenderer } from "./tools/DefaultUpsertAutomationRenderer";
 export { ToolAccordion } from "./tools/ToolAccordion";
 export { ToolCodeBlock } from "./tools/ToolCodeBlock";

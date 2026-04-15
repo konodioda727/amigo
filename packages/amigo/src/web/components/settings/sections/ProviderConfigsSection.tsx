@@ -53,12 +53,12 @@ const ProviderConfigsSection: React.FC<ProviderConfigsSectionProps> = ({
     return (
       <EmptyStateCard
         title="还没有配置"
-        description="先添加一个配置。"
+        description="先在左侧添加一个配置，再补全模型信息。"
         action={
           <button
             type="button"
             onClick={onAddConfig}
-            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+            className="rounded bg-blue-600 px-4 py-1.5 text-[13px] font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
             添加配置
           </button>
@@ -68,12 +68,12 @@ const ProviderConfigsSection: React.FC<ProviderConfigsSectionProps> = ({
   }
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-4">
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <div className="border-b border-slate-200 px-5 py-3.5">
-          <div className="text-sm font-medium text-slate-950">全局选择</div>
+    <div className="w-full space-y-6 pb-6">
+      <section className="rounded-sm border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 bg-slate-50/50 px-5 py-2.5">
+          <div className="text-[13px] font-semibold text-slate-900">全局模型设置</div>
         </div>
-        <div className="grid gap-4 px-5 py-4 md:grid-cols-2">
+        <div className="grid gap-6 px-5 py-4 md:grid-cols-2">
           <Field label="默认模型">
             <select
               value={
@@ -138,24 +138,24 @@ const ProviderConfigsSection: React.FC<ProviderConfigsSectionProps> = ({
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3.5">
+      <section className="rounded-sm border border-slate-200 bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/50 px-5 py-2.5">
           <div className="flex items-center gap-2">
-            <div className="text-sm font-medium text-slate-950">{activeConfigId}</div>
-            <span className="rounded-full border border-slate-200 px-2 py-0.5 text-[11px] text-slate-500">
+            <div className="text-[13px] font-semibold text-slate-900">{activeConfigId}</div>
+            <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">
               {getProviderLabel(activeConfig.provider)}
             </span>
           </div>
           <button
             type="button"
             onClick={() => onDeleteConfig(activeConfigId)}
-            className="rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs text-rose-600 transition hover:bg-rose-50"
+            className="text-[12px] font-semibold text-rose-600 transition hover:text-rose-700"
           >
-            删除
+            删除配置
           </button>
         </div>
 
-        <div className="grid gap-4 px-5 py-4 md:grid-cols-2">
+        <div className="grid gap-x-6 gap-y-5 px-5 py-5 md:grid-cols-2">
           <Field label="配置 ID">
             <input
               value={activeConfigId}
@@ -184,7 +184,7 @@ const ProviderConfigsSection: React.FC<ProviderConfigsSectionProps> = ({
           </Field>
 
           <Field label="API 密钥">
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <input
                 type="password"
                 value={activeConfig.apiKey}
@@ -198,7 +198,7 @@ const ProviderConfigsSection: React.FC<ProviderConfigsSectionProps> = ({
                 placeholder={activeConfig.hasApiKey ? "已配置，留空则不修改" : "sk-..."}
                 className={INPUT_CLASS}
               />
-              <div className="text-xs text-slate-500">
+              <div className="text-[11px] text-slate-500">
                 {activeConfig.hasApiKey
                   ? "服务端已保存密钥，除非要替换，否则这里保持为空。"
                   : "首次保存前需要填写 API 密钥。"}
@@ -268,19 +268,19 @@ const ProviderConfigsSection: React.FC<ProviderConfigsSectionProps> = ({
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3.5">
-          <div className="text-sm font-medium text-slate-950">模型</div>
+      <section className="rounded-sm border border-slate-200 bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/50 px-5 py-2.5">
+          <div className="text-[13px] font-semibold text-slate-900">包含的模型</div>
           <button
             type="button"
             onClick={() => onAddModel(activeConfigId)}
-            className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+            className="text-[12px] font-semibold text-blue-600 transition hover:text-blue-700"
           >
             添加模型
           </button>
         </div>
 
-        <div className="divide-y divide-slate-200">
+        <div className="divide-y divide-slate-100">
           {activeConfig.models.length > 0 ? (
             activeConfig.models.map((model, index) => {
               const isDefault =
@@ -289,18 +289,18 @@ const ProviderConfigsSection: React.FC<ProviderConfigsSectionProps> = ({
 
               return (
                 <div key={model.uiId} className="px-5 py-4">
-                  <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="mb-4 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
-                      <div className="text-sm font-medium text-slate-900">
+                      <div className="text-[13px] font-semibold text-slate-900">
                         {model.name || `模型 ${index + 1}`}
                       </div>
                       {isDefault ? (
-                        <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[11px] text-white">
-                          默认
+                        <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
+                          默认模型
                         </span>
                       ) : null}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
                       {!isDefault ? (
                         <button
                           type="button"
@@ -311,7 +311,7 @@ const ProviderConfigsSection: React.FC<ProviderConfigsSectionProps> = ({
                             })
                           }
                           disabled={!model.name.trim()}
-                          className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 transition hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="text-[12px] font-semibold text-slate-500 transition hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           设为默认
                         </button>
@@ -319,7 +319,7 @@ const ProviderConfigsSection: React.FC<ProviderConfigsSectionProps> = ({
                       <button
                         type="button"
                         onClick={() => onDeleteModel(activeConfigId, index)}
-                        className="rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs text-rose-600 transition hover:bg-rose-50"
+                        className="text-[12px] font-semibold text-rose-500 transition hover:text-rose-700"
                       >
                         删除
                       </button>
@@ -370,7 +370,9 @@ const ProviderConfigsSection: React.FC<ProviderConfigsSectionProps> = ({
               );
             })
           ) : (
-            <div className="px-5 py-6 text-sm text-slate-500">还没有模型。</div>
+            <div className="px-5 py-6 text-center text-[13px] text-slate-500">
+              此配置下尚未添加模型
+            </div>
           )}
         </div>
       </section>

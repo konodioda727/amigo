@@ -17,6 +17,7 @@ import { defineMessage as defineMessageFromTypes } from "@amigo-llm/types";
  * const myTool = defineTool({
  *   name: "my_tool",
  *   description: "My custom tool",
+ *   executionMode: "parallel_readonly",
  *   completionBehavior: "idle",
  *   params: [{ name: "input", optional: false, description: "Input text" }],
  *   invoke: async ({ params }) => ({

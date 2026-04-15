@@ -10,7 +10,7 @@ export const goToDefinitionTool = defineTool({
   description:
     "基于语言服务精确跳到当前符号的定义位置，适合从一个已知使用点跳到实现、类型定义或导出源头。",
   whenToUse:
-    "当你已经知道 symbolName、所在 filePath，以及大致的 line、column 时使用。工具会先在该位置附近定位 symbolName，定位失败就直接失败；如果你还不知道符号大概在哪，先用 bash/rg、listFiles、readFile 搜索。",
+    "当你已经知道 symbolName、所在 filePath，以及大致的 line、column 时优先使用。尤其在 TypeScript/Python 诊断、编译报错或现有上下文已经给出 filePath + line + symbolName 时，应先用它从调用点跳到定义；只有在完全没有符号锚点、或当前文件没有可用 LSP server 时，才回退到 bash/rg、listFiles、readFile 做粗搜索。",
   params: [
     {
       name: "filePath",
@@ -64,7 +64,7 @@ export const findReferencesTool = defineTool({
   description:
     "基于语言服务查找当前符号的引用位置，适合在修改公共函数、类型、字段或导出前确认影响面。",
   whenToUse:
-    "当你准备修改共享 API、类型、字段、导出名或行为入口时，先用它看影响面。你需要提供 symbolName、filePath 和大致的 line、column；工具会先在附近定位 symbolName，没定位到就失败。如果还不知道候选位置，先用 bash/rg 搜索。",
+    "当你准备修改共享 API、类型、字段、导出名或行为入口时，优先用它看影响面。只要你已经知道 filePath、symbolName 和大致的 line、column，或诊断/现有上下文已经给出调用点，就应先尝试它；只有在完全没有候选位置、或当前文件没有可用 LSP server 时，才回退到 bash/rg 做粗搜索。",
   params: [
     {
       name: "filePath",
@@ -126,7 +126,7 @@ export const getDiagnosticsTool = defineTool({
   description:
     "基于语言服务获取当前文件的语义诊断，适合在编辑后确认类型错误、未解析符号和其他编译器错误。",
   whenToUse:
-    "当你修改完代码想确认当前文件是否仍有语义错误时使用。它不替代全文搜索；主要用于编辑后的验证和局部诊断确认。",
+    "当你遇到 TypeScript/Python 编译错误、未解析符号、类型不匹配，或修改完代码后想确认当前文件是否仍有语义错误时使用。它适合先拿到精确的 file/line/symbol 锚点，再决定是否继续用 goToDefinition / findReferences；它不替代 repo 级全文搜索。如果某个文件已经返回 clean，就先把它移出当前修复范围，不要立刻回头重读这个 clean 文件。",
   params: [
     {
       name: "filePath",

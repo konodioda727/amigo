@@ -3,6 +3,7 @@ import {
   AmigoServerBuilder,
   bindGithubContextToTask,
   CUSTOMED_TOOLS,
+  conversationOrchestrator,
   conversationRepository,
   createFileSystemRuleProvider,
   getBaseTools,
@@ -15,10 +16,12 @@ import {
   type SandboxOptions,
   SandboxRegistry,
   SkillRuntime,
-  taskOrchestrator,
 } from "@amigo-llm/backend";
 import dotenv from "dotenv";
-import { getUserCodingAgentTools } from "./appTools/codingAgentTools";
+import {
+  getUserCodingAgentTools,
+  getUserCodingAgentVisibleToolNames,
+} from "./appTools/codingAgentTools";
 import { AutomationScheduler } from "./automations/automationScheduler";
 import { type AutomationDefinition, AutomationStore } from "./automations/automationStore";
 import type { PreviewHostConfig } from "./config/previewHost";
@@ -28,7 +31,6 @@ import {
   listNotificationChannels,
   requireMysqlConfigured,
 } from "./db";
-import { evaluateAmigoSubTaskWaitReview } from "./harness/codingSubTaskPolicy";
 import { createAmigoHttpHandler } from "./http/appHttpHandler";
 import { ConversationChannelRouter } from "./integrations/channels/router";
 import { createFeishuBridge, type FeishuBridge } from "./integrations/feishu/bridge";
@@ -117,7 +119,7 @@ const extractToolNames = (tools: unknown): string[] => {
 const resolveAutomationToolNames = (requestedToolNames?: string[]): string[] => {
   const fallbackToolNames = Array.from(
     new Set([
-      ...getBaseTools("main").map((tool) => tool.name),
+      ...getBaseTools("controller").map((tool) => tool.name),
       ...CUSTOMED_TOOLS.map((tool) => tool.name),
       ...extractToolNames(getGlobalState("registryTools")),
     ]),
@@ -209,12 +211,20 @@ export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<Ami
   // };
   const modelConfigs = options.modelConfigs;
 
+  const hasLspConfig = Boolean(options.lsp && options.lsp.servers.length > 0);
   const resolveTaskConfigFromContext = async (context: unknown) => {
     const resolved = await skillRuntime.resolveCreateTaskConfig(context);
-    if (resolved) {
-      return resolved;
-    }
-    return context !== undefined ? { context } : undefined;
+    const baseConfig = resolved || (context !== undefined ? { context } : undefined);
+    const visibleToolNames = getUserCodingAgentVisibleToolNames({
+      enableLanguageIntelligence: hasLspConfig,
+    });
+    const defaultMainToolNames = Array.from(
+      new Set([...getBaseTools("controller").map((tool) => tool.name), ...visibleToolNames]),
+    );
+    return {
+      ...(baseConfig || {}),
+      toolNames: Array.from(new Set([...(baseConfig?.toolNames || []), ...defaultMainToolNames])),
+    };
   };
 
   const runAutomationTask = async (
@@ -237,7 +247,6 @@ export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<Ami
     const taskConfig = await resolveTaskConfigFromContext(automationContext);
     const automationToolNames = resolveAutomationToolNames(taskConfig?.toolNames);
     const conversation = conversationRepository.create({
-      type: "main",
       ...(parentTaskId ? { parentId: parentTaskId } : {}),
       customPrompt: mergeCustomPrompts(taskConfig?.customPrompt, AUTOMATION_EXECUTION_PROMPT),
       toolNames: automationToolNames,
@@ -247,7 +256,7 @@ export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<Ami
         .filter((name: string) => name && name !== ASK_FOLLOWUP_TOOL_NAME),
     });
 
-    taskOrchestrator.setUserInput(conversation, automation.prompt);
+    await conversationOrchestrator.setUserInput(conversation, automation.prompt);
 
     const onConversationCreate = getGlobalState("onConversationCreate");
     if (onConversationCreate) {
@@ -257,7 +266,7 @@ export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<Ami
       });
     }
 
-    const executor = taskOrchestrator.getExecutor(conversation.id);
+    const executor = conversationOrchestrator.getExecutor(conversation.id);
     await executor.execute(conversation);
     return { conversationId: conversation.id };
   };
@@ -270,8 +279,8 @@ export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<Ami
   const channelRouter = new ConversationChannelRouter([feishuBridge]);
   const autoApproveToolNames = Array.from(
     new Set([
-      ...getBaseTools("main").map((tool) => tool.name),
-      ...getBaseTools("sub").map((tool) => tool.name),
+      ...getBaseTools("controller").map((tool) => tool.name),
+      ...getBaseTools("worker").map((tool) => tool.name),
     ]),
   );
   const memoryConfig =
@@ -303,7 +312,6 @@ export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<Ami
             })
           : undefined
         : undefined;
-  const hasLspConfig = Boolean(options.lsp && options.lsp.servers.length > 0);
   const ruleProvider = createFileSystemRuleProvider({
     rootDir: path.resolve(import.meta.dir, "prompts", "systemPrompt"),
   });
@@ -337,7 +345,6 @@ export async function createAmigoApp(options: AmigoAppOptions = {}): Promise<Ami
 
   let runtimeBuilder = builder
     .rules({ provider: ruleProvider })
-    .subTaskWaitReviewEvaluator(evaluateAmigoSubTaskWaitReview)
     .userModelConfigResolver(resolveUserScopedModelConfig)
     .sandboxManager(sandboxManager)
     .skills({ provider: skillStore })

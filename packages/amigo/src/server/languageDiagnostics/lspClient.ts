@@ -411,24 +411,37 @@ export class LspClient {
 
   private async sendRequest(method: string, params: unknown): Promise<unknown> {
     const id = this.nextRequestId++;
-    await this.writeMessage({
-      jsonrpc: "2.0",
-      id,
-      method,
-      ...(params !== undefined ? { params } : {}),
-    } satisfies JsonRpcRequest);
-
-    return new Promise((resolve, reject) => {
+    let rejectPending!: (error: Error) => void;
+    const requestPromise = new Promise<unknown>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(id);
         reject(new Error(`LSP request timed out: ${method}`));
       }, this.requestTimeoutMs);
+      rejectPending = reject;
       this.pendingRequests.set(id, {
         resolve,
         reject,
         timeout,
       });
     });
+
+    try {
+      await this.writeMessage({
+        jsonrpc: "2.0",
+        id,
+        method,
+        ...(params !== undefined ? { params } : {}),
+      } satisfies JsonRpcRequest);
+    } catch (error) {
+      const pending = this.pendingRequests.get(id);
+      if (pending) {
+        clearTimeout(pending.timeout);
+        this.pendingRequests.delete(id);
+      }
+      rejectPending(error instanceof Error ? error : new Error(String(error)));
+    }
+
+    return requestPromise;
   }
 
   private async writeMessage(

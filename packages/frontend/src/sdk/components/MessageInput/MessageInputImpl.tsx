@@ -2,7 +2,7 @@ import Mention from "@tiptap/extension-mention";
 import Placeholder from "@tiptap/extension-placeholder";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { ArrowUp, Paperclip, Play, Square } from "lucide-react";
+import { ArrowUp, Play, Plus, Square } from "lucide-react";
 import {
   type ChangeEvent,
   type ClipboardEvent,
@@ -67,9 +67,11 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
       onSend,
       createTaskContext,
       modelConfigSnapshot,
+      workflowMode,
       disabled = false,
       showMentions = true,
       bottomAccessory,
+      topAccessory,
     },
     ref,
   ) => {
@@ -242,13 +244,14 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
       const currentTaskTargetId = taskId || mainTaskId;
 
       if (!currentTaskTargetId || currentTaskTargetId.trim() === "") {
-        sendCreateTask(content, attachments, createTaskContext, modelConfigSnapshot);
+        sendCreateTask(content, attachments, createTaskContext, modelConfigSnapshot, workflowMode);
       } else {
         sendMessage(
           content,
           effectiveSessionId || currentTaskTargetId,
           attachments,
           modelConfigSnapshot,
+          workflowMode,
         );
       }
 
@@ -267,6 +270,7 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
       sendMessage,
       targetSessionId,
       taskId,
+      workflowMode,
     ]);
 
     handleSendRef.current = handleSend;
@@ -522,25 +526,34 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
     return (
       <div className={`message-input-container ${className}`}>
         <style>{messageInputEditorStyles}</style>
+
+        <ToolConfirmationRequest
+          taskId={currentTaskId || ""}
+          className="mb-4 mx-auto max-w-[800px]"
+        />
+
         <div
-          className={`tiptap-editor-wrapper ${isImageDragActive ? "is-image-drag-active" : ""}`}
+          className={`message-input-theme-wrapper ${isImageDragActive ? "is-image-drag-active" : ""}`}
           onPasteCapture={handlePasteCapture}
           onDragEnterCapture={handleDragEnterCapture}
           onDragOverCapture={handleDragOverCapture}
           onDragLeaveCapture={handleDragLeaveCapture}
           onDropCapture={handleDropCapture}
         >
-          <ToolConfirmationRequest taskId={currentTaskId || ""} className="mb-4" />
-          <AttachmentList
-            attachments={pendingAttachments}
-            onPreview={(attachment) => {
-              if (attachment.kind === "image" && attachment.previewUrl) {
-                setPreviewImage({ url: attachment.previewUrl, name: attachment.name });
-              }
-            }}
-            onRemove={handleRemoveAttachment}
-          />
-          <EditorContent editor={editor} />
+          {topAccessory}
+          <div className="tiptap-editor-wrapper">
+            <AttachmentList
+              attachments={pendingAttachments}
+              onPreview={(attachment) => {
+                if (attachment.kind === "image" && attachment.previewUrl) {
+                  setPreviewImage({ url: attachment.previewUrl, name: attachment.name });
+                }
+              }}
+              onRemove={handleRemoveAttachment}
+            />
+            <EditorContent editor={editor} />
+          </div>
+
           <input
             ref={fileInputRef}
             type="file"
@@ -548,48 +561,48 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
             className="hidden"
             onChange={handleFileInputChange}
           />
-          <div className="attachment-button-wrapper">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className={`flex items-center justify-center w-[40px] h-[40px] rounded-full border border-[#e5e7eb] transition-all ${
-                isAttachmentButtonDisabled
-                  ? "bg-[#f3f4f6] text-gray-400 cursor-not-allowed"
-                  : "bg-white shadow-[0_1px_3px_rgba(0,0,0,0.05)] text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-              }`}
-              disabled={isAttachmentButtonDisabled}
-              title="上传图片、视频或文件"
-            >
-              <Paperclip className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="send-button-wrapper">
-            <button
-              onClick={handleClick}
-              className={`flex items-center justify-center w-[40px] h-[40px] rounded-full transition-all duration-200 ${
-                buttonState === "stop"
-                  ? "bg-red-500 hover:bg-red-600 text-white shadow-sm"
-                  : buttonState === "resume"
-                    ? "bg-green-500 hover:bg-green-600 text-white shadow-sm"
-                    : isButtonDisabled
-                      ? "bg-[#f3f4f6] text-gray-400 cursor-not-allowed"
-                      : "bg-[#f3f4f6] text-gray-600 hover:bg-[#e5e7eb] hover:text-gray-800 shadow-sm"
-              }`}
-              type="button"
-              disabled={isButtonDisabled}
-            >
-              {buttonState === "stop" && <Square className="w-4 h-4" fill="currentColor" />}
-              {buttonState === "resume" && <Play className="w-4 h-4" fill="currentColor" />}
-              {buttonState === "send" && <ArrowUp className="w-5 h-5" strokeWidth={2.5} />}
-            </button>
+
+          <div className="flex items-center justify-between mt-1 px-2 pb-1 gap-4">
+            <div className="flex items-center gap-2 flex-grow overflow-x-auto no-scrollbar">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className={`flex items-center justify-center shrink-0 w-8 h-8 rounded-full transition-all ${
+                  isAttachmentButtonDisabled
+                    ? "text-gray-300 cursor-not-allowed"
+                    : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                }`}
+                disabled={isAttachmentButtonDisabled}
+                title="上传图片、视频或文件"
+              >
+                <Plus className="w-5 h-5" />
+              </button>
+
+              {bottomAccessory}
+            </div>
+
+            <div className="flex items-center shrink-0">
+              <button
+                onClick={handleClick}
+                className={`flex items-center justify-center w-8 h-8 rounded-full transition-all duration-200 ${
+                  buttonState === "stop"
+                    ? "bg-red-500 hover:bg-red-600 text-white shadow-sm"
+                    : buttonState === "resume"
+                      ? "bg-green-500 hover:bg-green-600 text-white shadow-sm"
+                      : isButtonDisabled
+                        ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                        : "bg-black text-white hover:bg-gray-800 shadow-sm"
+                }`}
+                type="button"
+                disabled={isButtonDisabled}
+              >
+                {buttonState === "stop" && <Square className="w-3.5 h-3.5" fill="currentColor" />}
+                {buttonState === "resume" && <Play className="w-3.5 h-3.5" fill="currentColor" />}
+                {buttonState === "send" && <ArrowUp className="w-4 h-4" strokeWidth={2.5} />}
+              </button>
+            </div>
           </div>
         </div>
-
-        {bottomAccessory && (
-          <div className="mx-auto flex w-full max-w-[800px] justify-start mt-2 px-2">
-            {bottomAccessory}
-          </div>
-        )}
 
         <ImagePreviewModal image={previewImage} onClose={() => setPreviewImage(null)} />
       </div>

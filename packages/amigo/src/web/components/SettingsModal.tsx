@@ -501,7 +501,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
           activeConfigId={activeConfigId}
           activeConfig={activeConfig}
           settings={
-            settings || { modelConfigs: {}, defaultModel: null, memoryExtractorModel: null }
+            settings || {
+              modelConfigs: {},
+              defaultModel: null,
+              memoryExtractorModel: null,
+            }
           }
           onAddConfig={handleAddConfig}
           onDeleteConfig={handleDeleteConfig}

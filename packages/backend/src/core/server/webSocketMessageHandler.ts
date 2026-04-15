@@ -225,7 +225,6 @@ export class ServerWebSocketMessageHandler {
       : undefined;
     const conversation = conversationRepository.create({
       id: taskId,
-      type: "main",
       customPrompt: config?.customPrompt,
       toolNames: config?.toolNames,
       llm: initialLlm,

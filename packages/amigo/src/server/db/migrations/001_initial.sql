@@ -97,6 +97,27 @@ CREATE TABLE IF NOT EXISTS conversation_messages (
   CONSTRAINT fk_conversation_messages_conversation_id FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS conversation_context_snapshots (
+  id CHAR(36) NOT NULL,
+  conversation_id CHAR(36) NOT NULL,
+  request_id CHAR(36) NOT NULL,
+  conversation_type VARCHAR(32) NOT NULL,
+  model VARCHAR(191) NOT NULL,
+  provider VARCHAR(64) NOT NULL,
+  config_id VARCHAR(191) NULL,
+  workflow_phase VARCHAR(32) NULL,
+  agent_role VARCHAR(32) NULL,
+  message_count INT UNSIGNED NOT NULL,
+  tool_names_json JSON NOT NULL,
+  options_json JSON NOT NULL,
+  messages_json JSON NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_conversation_context_snapshots_request_id (request_id),
+  KEY idx_conversation_context_snapshots_conversation_created_at (conversation_id, created_at),
+  CONSTRAINT fk_conversation_context_snapshots_conversation_id FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS conversation_state (
   conversation_id CHAR(36) NOT NULL,
   initial_system_prompt LONGTEXT NULL,
@@ -104,7 +125,7 @@ CREATE TABLE IF NOT EXISTS conversation_state (
   auto_approve_tool_names_json JSON NOT NULL,
   pending_tool_call_json JSON NULL,
   subtasks_json JSON NOT NULL,
-  context_usage_json JSON NOT NULL,
+  context_usage_json JSON NULL,
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (conversation_id),

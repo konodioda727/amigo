@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { createConnection, createServer } from "node:net";
 import path from "node:path";
@@ -158,6 +159,32 @@ const toEnvList = (env?: Record<string, string>): string[] =>
   Object.entries(env || {})
     .map(([key, value]) => ([key.trim(), value].every(Boolean) ? `${key.trim()}=${value}` : ""))
     .filter(Boolean);
+
+function getContainerId(container: Docker.Container): string {
+  const containerId = (container as Docker.Container & { id?: string }).id?.trim();
+  if (!containerId) {
+    throw new Error("沙箱容器缺少可用的 container id");
+  }
+  return containerId;
+}
+
+export function buildDockerExecArgs(
+  containerId: string,
+  params: SpawnStdioProcessParams,
+): string[] {
+  const args = ["exec", "-i"];
+  const cwd = params.cwd?.trim();
+  if (cwd) {
+    args.push("-w", cwd);
+  }
+
+  for (const envValue of toEnvList(params.env)) {
+    args.push("-e", envValue);
+  }
+
+  args.push(containerId, params.command, ...(params.args || []));
+  return args;
+}
 
 const findAvailableHostPort = async (): Promise<number> =>
   new Promise((resolve, reject) => {
@@ -347,26 +374,17 @@ export class Sandbox {
       throw abortError;
     }
 
-    const exec = await this.container.exec({
-      Cmd: [params.command, ...(params.args || [])],
-      AttachStdin: true,
-      AttachStdout: true,
-      AttachStderr: true,
-      WorkingDir: params.cwd?.trim() || "/sandbox",
-      ...(params.env ? { Env: toEnvList(params.env) } : {}),
+    const containerId = getContainerId(this.container);
+    const child = spawn("docker", buildDockerExecArgs(containerId, params), {
+      stdio: ["pipe", "pipe", "pipe"],
     });
-
-    const stream = await exec.start({ hijack: true, stdin: true });
-    const stdout = new PassThrough();
-    const stderr = new PassThrough();
-    docker?.modem.demuxStream(stream, stdout, stderr);
-
     const stdoutListeners = new Set<(chunk: Uint8Array) => void>();
     const stderrListeners = new Set<(chunk: Uint8Array) => void>();
     const exitListeners = new Set<(event: StdioProcessExit) => void>();
     const abortSignal = params.signal;
     let onAbort: (() => void) | undefined;
     let settled = false;
+    let spawnError: Error | null = null;
 
     const emitExit = (event: StdioProcessExit) => {
       if (settled) {
@@ -381,41 +399,31 @@ export class Sandbox {
       });
     };
 
-    stdout.on("data", (chunk: Buffer) => {
+    child.stdout?.on("data", (chunk: Buffer) => {
       const value = new Uint8Array(chunk);
       stdoutListeners.forEach((listener) => {
         listener(value);
       });
     });
 
-    stderr.on("data", (chunk: Buffer) => {
+    child.stderr?.on("data", (chunk: Buffer) => {
       const value = new Uint8Array(chunk);
       stderrListeners.forEach((listener) => {
         listener(value);
       });
     });
 
-    stream.on("end", () => {
-      void exec
-        .inspect()
-        .then((result) => {
-          emitExit({ code: result.ExitCode ?? 0 });
-        })
-        .catch((error) => {
-          logger.warn("[Sandbox] inspect stdio 进程退出状态失败:", error);
-          emitExit({});
-        });
-    });
-
-    stream.on("error", (error: Error) => {
-      logger.warn("[Sandbox] stdio 进程流异常:", error);
+    child.on("error", (error: Error) => {
+      spawnError = error;
+      logger.warn("[Sandbox] 启动 docker exec stdio 进程失败:", error);
       emitExit({});
     });
 
-    stream.on("close", () => {
-      if (!settled) {
-        emitExit({});
-      }
+    child.on("close", (code, signal) => {
+      emitExit({
+        ...(spawnError ? {} : { code: code ?? 0 }),
+        ...(signal ? { signal } : {}),
+      });
     });
 
     onAbort = () => {
@@ -431,7 +439,13 @@ export class Sandbox {
         }
 
         await new Promise<void>((resolve, reject) => {
-          stream.write(Buffer.isBuffer(data) ? data : Buffer.from(data), (error?: Error | null) => {
+          const stdin = child.stdin;
+          if (!stdin || stdin.destroyed || stdin.writableEnded) {
+            reject(new Error("stdio 进程输入流不可写"));
+            return;
+          }
+
+          stdin.write(Buffer.isBuffer(data) ? data : Buffer.from(data), (error?: Error | null) => {
             if (error) {
               reject(error);
               return;
@@ -446,7 +460,13 @@ export class Sandbox {
         }
 
         await new Promise<void>((resolve) => {
-          stream.end(() => resolve());
+          const stdin = child.stdin;
+          if (!stdin || stdin.destroyed || stdin.writableEnded) {
+            resolve();
+            return;
+          }
+
+          stdin.end(() => resolve());
         });
       },
       async kill() {
@@ -454,7 +474,7 @@ export class Sandbox {
           return;
         }
         try {
-          stream.destroy();
+          child.kill("SIGTERM");
         } finally {
           emitExit({ signal: "SIGTERM" });
         }
@@ -481,6 +501,9 @@ export class Sandbox {
 
     if (abortSignal && onAbort) {
       abortSignal.addEventListener("abort", onAbort, { once: true });
+      if (abortSignal.aborted) {
+        onAbort();
+      }
     }
 
     return processHandle;

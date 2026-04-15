@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import type { ChatMessage } from "@amigo-llm/types";
 import { type AmigoLlm, MODEL_PROVIDERS } from "@/core/model";
-import { toModelMessages } from "../modelMessageTransform";
+import { toModelMessages } from "../context/modelMessageTransform";
 import {
   buildAssistantToolCallMemoryMessage,
   buildToolResultMemoryMessage,
-} from "../toolTranscript";
+} from "../context/toolTranscript";
 
 const createStubLlm = (): AmigoLlm => ({
   model: "test-model",
@@ -75,6 +75,27 @@ describe("toModelMessages runtime datetime context", () => {
     expect(String(modelMessages[1]?.content)).toBe("昨天的消息");
     expect(String(modelMessages[3]?.content)).toContain("今天 6:50 提醒我");
     expect(String(modelMessages[3]?.content)).toContain("2026-03-23");
+  });
+
+  it("does not append runtime datetime context onto workflow-state reminder messages", () => {
+    const updateTime = new Date("2026-03-23T10:15:30.000Z").getTime();
+    const messages: ChatMessage[] = [
+      {
+        role: "user",
+        type: "system",
+        content: "[WorkflowState]\n当前阶段：requirements",
+        updateTime,
+      },
+    ];
+
+    const modelMessages = toModelMessages(messages, createStubLlm(), "SYSTEM PROMPT");
+
+    expect(modelMessages).toHaveLength(2);
+    expect(modelMessages[1]?.role).toBe("user");
+    expect(String(modelMessages[1]?.content)).toBe("[WorkflowState]\n当前阶段：requirements");
+    expect(String(modelMessages[1]?.content)).not.toContain(
+      "[系统自动附加的当前时间信息，仅用于解释这条用户消息中的时间表达]",
+    );
   });
 
   it("merges consecutive user text messages before sending them to the model", () => {
@@ -345,8 +366,66 @@ describe("toModelMessages runtime datetime context", () => {
     });
   });
 
-  it("keeps only the most recent 10 tool interactions in full detail", () => {
-    const messages: ChatMessage[] = Array.from({ length: 11 }, (_, index) => [
+  it("keeps assistant messages between duplicate tool interactions even when older duplicates are collapsed", () => {
+    const messages: ChatMessage[] = [
+      buildAssistantToolCallMemoryMessage({
+        toolName: "readFile",
+        toolCallId: "call-1",
+        arguments: { absolutePath: "/repo/README.md" },
+      }),
+      buildToolResultMemoryMessage({
+        toolName: "readFile",
+        toolCallId: "call-1",
+        result: { absolutePath: "/repo/README.md", content: "# README" },
+        summary: "README 已读取",
+      }),
+      {
+        role: "assistant",
+        type: "message",
+        content: "我已经看过 README 了，再继续比对其他文件。",
+      },
+      buildAssistantToolCallMemoryMessage({
+        toolName: "readFile",
+        toolCallId: "call-2",
+        arguments: { absolutePath: "/repo/README.md" },
+      }),
+      buildToolResultMemoryMessage({
+        toolName: "readFile",
+        toolCallId: "call-2",
+        result: { absolutePath: "/repo/README.md", content: "# README" },
+        summary: "README 已读取",
+      }),
+    ];
+
+    const modelMessages = toModelMessages(messages, createStubLlm());
+
+    expect(modelMessages).toHaveLength(3);
+    expect(modelMessages[0]).toEqual({
+      role: "assistant",
+      content: "我已经看过 README 了，再继续比对其他文件。",
+    });
+    expect(modelMessages[0]).toMatchObject({
+      role: "assistant",
+      content: "我已经看过 README 了，再继续比对其他文件。",
+    });
+    expect(modelMessages[1]).toMatchObject({
+      role: "assistant",
+      toolCalls: [
+        {
+          id: "call-2",
+          name: "readFile",
+        },
+      ],
+    });
+    expect(modelMessages[2]).toMatchObject({
+      role: "tool",
+      toolCallId: "call-2",
+      toolName: "readFile",
+    });
+  });
+
+  it("keeps at most 50 detailed tool messages after collapsing duplicates", () => {
+    const messages: ChatMessage[] = Array.from({ length: 26 }, (_, index) => [
       buildAssistantToolCallMemoryMessage({
         toolName: "readFile",
         toolCallId: `call-${index + 1}`,
@@ -365,16 +444,8 @@ describe("toModelMessages runtime datetime context", () => {
 
     const modelMessages = toModelMessages(messages, createStubLlm());
 
-    expect(modelMessages).toHaveLength(22);
-    expect(modelMessages[0]).toEqual({
-      role: "assistant",
-      content: "【已调用 readFile 工具】",
-    });
-    expect(modelMessages[1]).toEqual({
-      role: "user",
-      content: "【readFile 工具已返回结果】",
-    });
-    expect(modelMessages[2]).toMatchObject({
+    expect(modelMessages).toHaveLength(50);
+    expect(modelMessages[0]).toMatchObject({
       role: "assistant",
       toolCalls: [
         {
@@ -384,7 +455,7 @@ describe("toModelMessages runtime datetime context", () => {
         },
       ],
     });
-    expect(modelMessages[3]).toMatchObject({
+    expect(modelMessages[1]).toMatchObject({
       role: "tool",
       toolCallId: "call-2",
       toolName: "readFile",
@@ -393,15 +464,95 @@ describe("toModelMessages runtime datetime context", () => {
       role: "assistant",
       toolCalls: [
         {
-          id: "call-11",
+          id: "call-26",
           name: "readFile",
         },
       ],
     });
     expect(modelMessages.at(-1)).toMatchObject({
       role: "tool",
-      toolCallId: "call-11",
+      toolCallId: "call-26",
       toolName: "readFile",
+    });
+  });
+
+  it("keeps assistant progress messages that sit between tool interactions", () => {
+    const messages: ChatMessage[] = [
+      buildAssistantToolCallMemoryMessage({
+        toolName: "readFile",
+        toolCallId: "call-1",
+        arguments: { absolutePath: "/repo/a.ts" },
+      }),
+      buildToolResultMemoryMessage({
+        toolName: "readFile",
+        toolCallId: "call-1",
+        result: { absolutePath: "/repo/a.ts", content: "export const a = 1;" },
+        summary: "a.ts 已读取",
+      }),
+      {
+        role: "assistant",
+        type: "message",
+        content: "我先看看下一个文件。",
+      },
+      buildAssistantToolCallMemoryMessage({
+        toolName: "readFile",
+        toolCallId: "call-2",
+        arguments: { absolutePath: "/repo/b.ts" },
+      }),
+      buildToolResultMemoryMessage({
+        toolName: "readFile",
+        toolCallId: "call-2",
+        result: { absolutePath: "/repo/b.ts", content: "export const b = 2;" },
+        summary: "b.ts 已读取",
+      }),
+    ];
+
+    const modelMessages = toModelMessages(messages, createStubLlm());
+
+    expect(modelMessages).toHaveLength(5);
+    expect(modelMessages[2]).toEqual({
+      role: "assistant",
+      content: "我先看看下一个文件。",
+    });
+  });
+
+  it("keeps assistant messages that add new facts even when they sit near tool interactions", () => {
+    const messages: ChatMessage[] = [
+      buildAssistantToolCallMemoryMessage({
+        toolName: "readFile",
+        toolCallId: "call-1",
+        arguments: { absolutePath: "/repo/a.ts" },
+      }),
+      buildToolResultMemoryMessage({
+        toolName: "readFile",
+        toolCallId: "call-1",
+        result: { absolutePath: "/repo/a.ts", content: "export const platform = 'web';" },
+        summary: "a.ts 已读取",
+      }),
+      {
+        role: "assistant",
+        type: "message",
+        content: "已确认问题只影响 web 端，不涉及原生端。",
+      },
+      buildAssistantToolCallMemoryMessage({
+        toolName: "readFile",
+        toolCallId: "call-2",
+        arguments: { absolutePath: "/repo/b.ts" },
+      }),
+      buildToolResultMemoryMessage({
+        toolName: "readFile",
+        toolCallId: "call-2",
+        result: { absolutePath: "/repo/b.ts", content: "export const b = 2;" },
+        summary: "b.ts 已读取",
+      }),
+    ];
+
+    const modelMessages = toModelMessages(messages, createStubLlm());
+
+    expect(modelMessages).toHaveLength(5);
+    expect(modelMessages[2]).toEqual({
+      role: "assistant",
+      content: "已确认问题只影响 web 端，不涉及原生端。",
     });
   });
 });

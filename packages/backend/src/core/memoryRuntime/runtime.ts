@@ -218,7 +218,7 @@ export class SdkMemoryRuntime {
     return [
       {
         message: {
-          role: "system",
+          role: "user",
           type: "system",
           content: buildLongTermPrompt(hits),
           partial: false,

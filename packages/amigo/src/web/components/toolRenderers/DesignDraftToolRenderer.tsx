@@ -205,6 +205,14 @@ export const DesignDraftToolRenderer: React.FC<ToolMessageRendererProps<ToolName
   const [deviceMode, setDeviceMode] = useState<DeviceMode>("desktop");
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
   const [critiqueData, setCritiqueData] = useState<DraftCritiqueResponse | null>(null);
+  const paramsRecord = useMemo(() => asRecord(message.params), [message.params]);
+  const draftAction = useMemo(() => {
+    if (typeof paramsRecord?.action === "string" && paramsRecord.action) {
+      return paramsRecord.action;
+    }
+    const output = asRecord(message.toolOutput);
+    return typeof output?.action === "string" ? output.action : "";
+  }, [message.toolOutput, paramsRecord]);
 
   useEffect(() => {
     if (!taskId || !primaryDraftId) {
@@ -214,7 +222,10 @@ export const DesignDraftToolRenderer: React.FC<ToolMessageRendererProps<ToolName
 
     let cancelled = false;
     let timer: number | null = null;
-    const shouldPoll = message.toolName === "orchestrateFinalDesignDraft";
+    const shouldPoll =
+      message.toolName === "orchestrateFinalDesignDraft" ||
+      (message.toolName === "designDraft" &&
+        (draftAction === "generate" || draftAction === "revise"));
 
     const loadCritique = async () => {
       try {
@@ -255,7 +266,7 @@ export const DesignDraftToolRenderer: React.FC<ToolMessageRendererProps<ToolName
         window.clearTimeout(timer);
       }
     };
-  }, [httpBaseUrl, message.toolName, primaryDraftId, taskId]);
+  }, [draftAction, httpBaseUrl, message.toolName, primaryDraftId, taskId]);
 
   const summary =
     typeof (message.toolOutput as Record<string, unknown> | undefined)?.message === "string"

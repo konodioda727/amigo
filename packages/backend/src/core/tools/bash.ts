@@ -44,6 +44,23 @@ function buildContinuationResult(params: {
   };
 }
 
+const looksLikeFileEditCommand = (command: string): boolean => {
+  const normalized = command.toLowerCase();
+  return [
+    "apply_patch",
+    "sed -i",
+    "perl -pi",
+    "python -c",
+    "python3 -c",
+    "node -e",
+    "ruby -e",
+    "tee ",
+    " cat >",
+    " > ",
+    " >> ",
+  ].some((pattern) => normalized.includes(pattern));
+};
+
 /**
  * Bash 工具
  * 用于在沙箱中执行 bash 命令
@@ -52,7 +69,7 @@ export const Bash = createTool({
   name: "bash",
   description: "在沙箱中执行 bash 命令。用于运行脚本、查看目录结构、执行程序等。",
   whenToUse:
-    "需要在沙箱里执行命令（运行脚本、查看目录/环境、快速诊断）时使用。优先短命令并明确 workingDir。",
+    "需要在沙箱里执行命令（搜索、运行脚本、构建/测试、查看目录/环境、快速诊断）时使用。优先短命令并明确 workingDir；不要把 bash 当成文件编辑器，任何文件修改都应改用 editFile。",
   historyProfile: {
     progressKind: "execute",
     getResourceKeys: ({ params }) =>
@@ -82,6 +99,23 @@ export const Bash = createTool({
 
     if (!command || command.trim() === "") {
       const errorMsg = "命令不能为空";
+      return createToolResult(
+        { success: false, output: "", message: errorMsg },
+        {
+          transportMessage: errorMsg,
+          continuationSummary: errorMsg,
+          continuationResult: buildContinuationResult({
+            success: false,
+            output: "",
+            message: errorMsg,
+          }),
+        },
+      );
+    }
+
+    if (looksLikeFileEditCommand(command)) {
+      const errorMsg =
+        "不要使用 bash 编辑文件。请改用 editFile；bash 只用于搜索、构建、测试和诊断。";
       return createToolResult(
         { success: false, output: "", message: errorMsg },
         {

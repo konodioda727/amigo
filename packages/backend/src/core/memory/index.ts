@@ -3,17 +3,40 @@ import {
   type ChatMessage,
   type ContextUsageStatus,
   type ConversationStatus,
+  type ExecutionTaskStatus,
   type PendingToolCall,
   type SERVER_SEND_MESSAGE_NAME,
   StorageType,
-  type SubTaskStatus,
   type USER_SEND_MESSAGE_NAME,
   type WebSocketMessage,
+  type WorkflowState,
 } from "@amigo-llm/types";
 import { getConversationPersistenceProvider } from "@/core/persistence";
 import type { ConversationPersistenceRecord } from "@/core/persistence/types";
 import { getTaskStoragePath } from "@/core/storage";
 import type { ModelConfigSnapshot } from "../model/contextConfig";
+
+const getWebsocketMessageUpdateTime = (
+  message: WebSocketMessage<USER_SEND_MESSAGE_NAME | SERVER_SEND_MESSAGE_NAME> | undefined,
+): number | undefined => {
+  const updateTime = message?.data?.updateTime;
+  return typeof updateTime === "number" && Number.isFinite(updateTime) ? updateTime : undefined;
+};
+
+export const shouldOverwritePrevWebsocketMessage = <
+  K extends USER_SEND_MESSAGE_NAME | SERVER_SEND_MESSAGE_NAME,
+>(
+  previous: WebSocketMessage<USER_SEND_MESSAGE_NAME | SERVER_SEND_MESSAGE_NAME> | undefined,
+  next: WebSocketMessage<K>,
+): boolean => {
+  if (!previous?.data.partial || previous.type !== next.type) {
+    return false;
+  }
+
+  const previousUpdateTime = getWebsocketMessageUpdateTime(previous);
+  const nextUpdateTime = getWebsocketMessageUpdateTime(next);
+  return previousUpdateTime !== undefined && previousUpdateTime === nextUpdateTime;
+};
 
 /**
  * 文件持久化内存管理类
@@ -32,8 +55,9 @@ export class FilePersistedMemory {
   private _modelConfigSnapshot?: ModelConfigSnapshot;
   private _autoApproveToolNames: string[] = [];
   private _pendingToolCall: PendingToolCall | null = null;
-  private _subTasks: Record<string, SubTaskStatus> = {};
+  private _executionTasks: Record<string, ExecutionTaskStatus> = {};
   private _contextUsage?: ContextUsageStatus;
+  private _workflowState?: WorkflowState;
   private _createdAt: string;
   private _hasPersistedState = false;
   private readonly persistenceProvider = getConversationPersistenceProvider();
@@ -65,13 +89,6 @@ export class FilePersistedMemory {
    */
   get messagesPath() {
     return path.join(this.storagePath, "messages");
-  }
-
-  /**
-   * 获取任务文档存储路径
-   */
-  get taskDocsPath() {
-    return path.join(this.storagePath, "taskDocs");
   }
 
   /**
@@ -184,8 +201,9 @@ export class FilePersistedMemory {
     this._modelConfigSnapshot = record.modelConfigSnapshot;
     this._autoApproveToolNames = [...record.autoApproveToolNames];
     this._pendingToolCall = record.pendingToolCall;
-    this._subTasks = { ...record.subTasks };
+    this._executionTasks = { ...record.executionTasks };
     this._contextUsage = record.contextUsage;
+    this._workflowState = record.workflowState;
     this._createdAt = record.createdAt;
     this.fatherTaskId = record.fatherTaskId;
     this._hasPersistedState = true;
@@ -214,8 +232,9 @@ export class FilePersistedMemory {
       modelConfigSnapshot: this._modelConfigSnapshot,
       autoApproveToolNames: [...this._autoApproveToolNames],
       pendingToolCall: this._pendingToolCall,
-      subTasks: { ...this._subTasks },
+      executionTasks: { ...this._executionTasks },
       contextUsage: this._contextUsage,
+      workflowState: this._workflowState,
       createdAt: this._createdAt,
       updatedAt: new Date().toISOString(),
       messages: [...this._messages],
@@ -289,9 +308,7 @@ export class FilePersistedMemory {
     message: WebSocketMessage<K>,
   ): void {
     const lastWebsocketMessage = this._websocketMessages.at(-1);
-    const isUpdatePrevWebsocketMessage =
-      lastWebsocketMessage?.data.partial && message.type === lastWebsocketMessage?.type;
-    if (isUpdatePrevWebsocketMessage) {
+    if (shouldOverwritePrevWebsocketMessage(lastWebsocketMessage, message)) {
       this._websocketMessages[this._websocketMessages.length - 1] =
         message as unknown as WebSocketMessage<USER_SEND_MESSAGE_NAME | SERVER_SEND_MESSAGE_NAME>;
     } else {
@@ -353,10 +370,10 @@ export class FilePersistedMemory {
   }
 
   /**
-   * 获取子任务状态列表
+   * 获取执行任务状态列表
    */
-  public get subTasks(): Record<string, SubTaskStatus> {
-    return { ...this._subTasks };
+  public get executionTasks(): Record<string, ExecutionTaskStatus> {
+    return { ...this._executionTasks };
   }
 
   public get contextUsage(): ContextUsageStatus | undefined {
@@ -368,35 +385,44 @@ export class FilePersistedMemory {
     this.saveTaskStatus();
   }
 
-  /**
-   * 更新子任务状态
-   */
-  public updateSubTask(description: string, status: SubTaskStatus): void {
-    const prev = this._subTasks[description] || {};
-    this._subTasks[description] = { ...prev, ...status };
+  public get workflowState(): WorkflowState | undefined {
+    return this._workflowState;
+  }
+
+  public setWorkflowState(workflowState: WorkflowState | undefined): void {
+    this._workflowState = workflowState;
     this.saveTaskStatus();
   }
 
   /**
-   * 获取子任务状态
+   * 更新执行任务状态
    */
-  public getSubTask(description: string): SubTaskStatus | undefined {
-    return this._subTasks[description];
-  }
-
-  /**
-   * 清理子任务状态
-   */
-  public clearSubTask(description: string): void {
-    delete this._subTasks[description];
+  public updateExecutionTask(description: string, status: ExecutionTaskStatus): void {
+    const prev = this._executionTasks[description] || {};
+    this._executionTasks[description] = { ...prev, ...status };
     this.saveTaskStatus();
   }
 
   /**
-   * 清理所有子任务状态
+   * 获取执行任务状态
    */
-  public clearAllSubTasks(): void {
-    this._subTasks = {};
+  public getExecutionTask(description: string): ExecutionTaskStatus | undefined {
+    return this._executionTasks[description];
+  }
+
+  /**
+   * 清理执行任务状态
+   */
+  public clearExecutionTask(description: string): void {
+    delete this._executionTasks[description];
+    this.saveTaskStatus();
+  }
+
+  /**
+   * 清理所有执行任务状态
+   */
+  public clearAllExecutionTasks(): void {
+    this._executionTasks = {};
     this.saveTaskStatus();
   }
 
@@ -421,6 +447,15 @@ export class FilePersistedMemory {
     this._messages = [];
     this._websocketMessages = [];
     return this.saveOriginalToFile() && this.saveWebsocketToFile();
+  }
+
+  public replaceHistory(params: {
+    messages: ChatMessage[];
+    websocketMessages: Array<WebSocketMessage<USER_SEND_MESSAGE_NAME | SERVER_SEND_MESSAGE_NAME>>;
+  }): boolean {
+    this._messages = [...params.messages];
+    this._websocketMessages = [...params.websocketMessages];
+    return this.persist();
   }
 
   /**

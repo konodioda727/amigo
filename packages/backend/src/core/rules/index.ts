@@ -1,10 +1,11 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
+import type { WorkflowPromptScope } from "../workflow";
 
-export type RuleConversationType = "main" | "sub";
+export type RulePromptScope = WorkflowPromptScope;
 
-const RuleScopeSchema = z.enum(["main", "sub"]);
+const RuleScopeSchema = z.enum(["controller", "worker"]);
 
 export const RuleReferenceSchema = z.object({
   id: z.string().min(1),
@@ -20,13 +21,10 @@ export type RuleDocument = RuleReference & {
 
 export interface RuleProvider {
   getSystemPromptAppendix(params: {
-    conversationType: RuleConversationType;
+    promptScope: RulePromptScope;
     context?: unknown;
   }): string | undefined;
-  getPromptReferences(params: {
-    conversationType: RuleConversationType;
-    context?: unknown;
-  }): RuleReference[];
+  getPromptReferences(params: { promptScope: RulePromptScope; context?: unknown }): RuleReference[];
   getRule(id: string): Promise<RuleDocument | null>;
 }
 
@@ -79,12 +77,23 @@ const parseFrontmatterBlock = (
   return { frontmatter, body };
 };
 
-const parseScopes = (rawScope: string | undefined): RuleConversationType[] => {
+const normalizeLegacyScope = (scope: string): RulePromptScope | null => {
+  if (scope === "controller" || scope === "main") {
+    return "controller";
+  }
+  if (scope === "worker" || scope === "sub") {
+    return "worker";
+  }
+  return null;
+};
+
+const parseScopes = (rawScope: string | undefined): RulePromptScope[] => {
   const normalizedScopes = (rawScope || "")
     .split(",")
     .map((scope) => scope.trim())
-    .filter((scope): scope is RuleConversationType => scope === "main" || scope === "sub");
-  return normalizedScopes.length > 0 ? normalizedScopes : ["main", "sub"];
+    .map((scope) => normalizeLegacyScope(scope))
+    .filter((scope): scope is RulePromptScope => !!scope);
+  return normalizedScopes.length > 0 ? normalizedScopes : ["controller", "worker"];
 };
 
 const buildRuleReferenceFromFile = (filePath: string): RuleReference => {
@@ -116,7 +125,7 @@ const readOptionalMarkdownBody = (filePath: string): string | undefined => {
   return body || undefined;
 };
 
-const MAIN_APPENDIX_PATHS = [
+const CONTROLLER_APPENDIX_PATHS = [
   "shared/critical-rules.md",
   "shared/tool-guide.md",
   "main/identity.md",
@@ -124,7 +133,7 @@ const MAIN_APPENDIX_PATHS = [
   "main/workflow.md",
 ] as const;
 
-const SUB_APPENDIX_PATHS = [
+const WORKER_APPENDIX_PATHS = [
   "shared/critical-rules.md",
   "shared/tool-guide.md",
   "sub/identity.md",
@@ -146,14 +155,14 @@ export const createFileSystemRuleProvider = (options: { rootDir: string }): Rule
     : [];
   const ruleMap = new Map(docs.map((doc) => [doc.reference.id, doc] as const));
 
-  const getAppendixPaths = (conversationType: RuleConversationType) =>
-    (conversationType === "main" ? MAIN_APPENDIX_PATHS : SUB_APPENDIX_PATHS).map((relativePath) =>
-      ensurePathWithinRoot(rootDir, relativePath),
+  const getAppendixPaths = (promptScope: RulePromptScope) =>
+    (promptScope === "controller" ? CONTROLLER_APPENDIX_PATHS : WORKER_APPENDIX_PATHS).map(
+      (relativePath) => ensurePathWithinRoot(rootDir, relativePath),
     );
 
   return {
-    getSystemPromptAppendix({ conversationType }) {
-      const appendixParts = getAppendixPaths(conversationType)
+    getSystemPromptAppendix({ promptScope }) {
+      const appendixParts = getAppendixPaths(promptScope)
         .map((absolutePath) => readOptionalMarkdownBody(absolutePath))
         .filter((part): part is string => !!part);
       if (appendixParts.length === 0) {
@@ -161,10 +170,8 @@ export const createFileSystemRuleProvider = (options: { rootDir: string }): Rule
       }
       return appendixParts.join("\n\n");
     },
-    getPromptReferences({ conversationType }) {
-      return docs
-        .map((doc) => doc.reference)
-        .filter((rule) => rule.scopes.includes(conversationType));
+    getPromptReferences({ promptScope }) {
+      return docs.map((doc) => doc.reference).filter((rule) => rule.scopes.includes(promptScope));
     },
     async getRule(id) {
       const normalizedId = id.trim();
@@ -187,12 +194,12 @@ export const createFileSystemRuleProvider = (options: { rootDir: string }): Rule
 
 export const buildRulesPromptAppendix = (params: {
   provider?: RuleProvider;
-  conversationType: RuleConversationType;
+  promptScope: RulePromptScope;
   context?: unknown;
 }): string | undefined => {
   const references =
     params.provider?.getPromptReferences({
-      conversationType: params.conversationType,
+      promptScope: params.promptScope,
       context: params.context,
     }) || [];
   if (references.length === 0) {

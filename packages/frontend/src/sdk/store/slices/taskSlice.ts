@@ -2,6 +2,7 @@ import type {
   ContextUsageStatus,
   SERVER_SEND_MESSAGE_NAME,
   WebSocketMessage,
+  WorkflowState,
 } from "@amigo-llm/types";
 import type { StateCreator } from "zustand";
 import type { DisplayMessageType } from "../../messages/types";
@@ -36,6 +37,7 @@ export interface TaskSlice {
   taskAutoApproveToolNameMaps: Record<string, string[]>;
   taskContextUsageMaps: Record<string, ContextUsageStatus | undefined>;
   taskContextMaps: Record<string, unknown>;
+  taskWorkflowStateMaps: Record<string, WorkflowState | undefined>;
 
   registerTask: (taskId: string) => void;
   unregisterTask: (taskId: string) => void;
@@ -48,12 +50,13 @@ export interface TaskSlice {
   clearMessages: (taskId: string) => void;
   setMainTaskId: (taskId: string) => void;
   setCurrentTaskIdsForNewConversation: (taskId: string) => void;
-  setTaskStatusMap: (taskId: string, subTasks: Record<string, any>) => void;
+  setTaskStatusMap: (taskId: string, executionTasks: Record<string, any>) => void;
   setTaskAutoApproveToolNames: (taskId: string, toolNames: string[]) => void;
   setTaskContextUsage: (taskId: string, contextUsage: ContextUsageStatus | undefined) => void;
   setTaskContext: (taskId: string, context: unknown) => void;
+  setTaskWorkflowState: (taskId: string, workflowState: WorkflowState | undefined) => void;
   setCreatingConversation: (isCreating: boolean) => void;
-  taskStatusMapUpdated: (taskId: string, subTasks: Record<string, any>) => void;
+  taskStatusMapUpdated: (taskId: string, executionTasks: Record<string, any>) => void;
   createNewConversation: () => void;
   handleSessionHistories: (
     histories: Array<{ taskId: string; title: string; updatedAt: string }>,
@@ -67,14 +70,14 @@ const createInitialTaskState = (): TaskState => ({
   lastUpdateTime: Date.now(),
 });
 
-const mapSubTaskStatusToTaskStatus = (status?: string): TaskStatus => {
+const mapExecutionTaskStatusToTaskStatus = (status?: string): TaskStatus => {
   switch (status) {
     case "running":
       return "streaming";
+    case "interrupted":
+      return "interrupted";
     case "waiting_user_input":
-      return "idle";
-    case "wait_review":
-      return "waiting_tool_call";
+      return "interrupted";
     case "completed":
       return "completed";
     case "failed":
@@ -94,9 +97,10 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
   taskAutoApproveToolNameMaps: {},
   taskContextUsageMaps: {},
   taskContextMaps: {},
+  taskWorkflowStateMaps: {},
 
-  taskStatusMapUpdated: (taskId: string, subTasks: Record<string, any>) => {
-    get().setTaskStatusMap(taskId, subTasks);
+  taskStatusMapUpdated: (taskId: string, executionTasks: Record<string, any>) => {
+    get().setTaskStatusMap(taskId, executionTasks);
   },
 
   registerTask: (taskId: string) => {
@@ -118,23 +122,27 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
       taskContextUsageMaps,
       taskStatusMaps,
       taskAutoApproveToolNameMaps,
+      taskWorkflowStateMaps,
     } = get();
     const newTasks = { ...tasks };
     const nextTaskContextMaps = { ...taskContextMaps };
     const nextTaskContextUsageMaps = { ...taskContextUsageMaps };
     const nextTaskStatusMaps = { ...taskStatusMaps };
     const nextTaskAutoApproveToolNameMaps = { ...taskAutoApproveToolNameMaps };
+    const nextTaskWorkflowStateMaps = { ...taskWorkflowStateMaps };
     delete newTasks[taskId];
     delete nextTaskContextMaps[taskId];
     delete nextTaskContextUsageMaps[taskId];
     delete nextTaskStatusMaps[taskId];
     delete nextTaskAutoApproveToolNameMaps[taskId];
+    delete nextTaskWorkflowStateMaps[taskId];
     set({
       tasks: newTasks,
       taskContextMaps: nextTaskContextMaps,
       taskContextUsageMaps: nextTaskContextUsageMaps,
       taskStatusMaps: nextTaskStatusMaps,
       taskAutoApproveToolNameMaps: nextTaskAutoApproveToolNameMaps,
+      taskWorkflowStateMaps: nextTaskWorkflowStateMaps,
     } as any);
   },
 
@@ -215,11 +223,6 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
     set({ mainTaskId: taskId, activeTaskId: taskId } as any);
     get().registerTask(taskId);
 
-    // Clear doc state immediately when switching conversations.
-    // It will be repopulated by handleTaskHistory if the target conversation has docs.
-    get().resetDocState();
-    get().hydrateDocStateForTask(taskId);
-
     if (socket && socket.readyState === WebSocket.OPEN && taskId) {
       socket.send(
         JSON.stringify({
@@ -241,23 +244,22 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
     }
 
     get().registerTask(taskId);
-    get().hydrateDocStateForTask(taskId);
   },
 
-  setTaskStatusMap: (taskId: string, subTasks: Record<string, any>) => {
+  setTaskStatusMap: (taskId: string, executionTasks: Record<string, any>) => {
     const { taskStatusMaps, tasks } = get();
     const nextTasks = { ...tasks };
     let hasTaskUpdates = false;
 
-    Object.values(subTasks).forEach((subTask: any) => {
-      const subTaskId = subTask?.subTaskId;
-      if (!subTaskId) return;
+    Object.values(executionTasks).forEach((executionTask: any) => {
+      const executionTaskId = executionTask?.executionTaskId;
+      if (!executionTaskId) return;
 
-      const mappedStatus = mapSubTaskStatusToTaskStatus(subTask?.status);
-      const existingTask = nextTasks[subTaskId];
+      const mappedStatus = mapExecutionTaskStatusToTaskStatus(executionTask?.status);
+      const existingTask = nextTasks[executionTaskId];
 
       if (!existingTask) {
-        nextTasks[subTaskId] = {
+        nextTasks[executionTaskId] = {
           ...createInitialTaskState(),
           status: mappedStatus,
         };
@@ -266,7 +268,7 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
       }
 
       if (existingTask.status !== mappedStatus) {
-        nextTasks[subTaskId] = {
+        nextTasks[executionTaskId] = {
           ...existingTask,
           status: mappedStatus,
         };
@@ -277,7 +279,7 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
     set({
       taskStatusMaps: {
         ...taskStatusMaps,
-        [taskId]: subTasks,
+        [taskId]: executionTasks,
       },
       ...(hasTaskUpdates ? { tasks: nextTasks } : {}),
     } as any);
@@ -313,6 +315,16 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
     } as any);
   },
 
+  setTaskWorkflowState: (taskId: string, workflowState: WorkflowState | undefined) => {
+    const { taskWorkflowStateMaps } = get();
+    set({
+      taskWorkflowStateMaps: {
+        ...taskWorkflowStateMaps,
+        [taskId]: workflowState,
+      },
+    } as any);
+  },
+
   setCreatingConversation: (isCreatingConversation) => {
     set({ isCreatingConversation } as any);
   },
@@ -324,9 +336,6 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
       get().clearMessages(mainTaskId);
     }
 
-    // New conversation should not inherit docs from the previous one.
-    get().resetDocState();
-
     // Reset to empty state - server will create new task on first message
     set({
       mainTaskId: "",
@@ -336,6 +345,7 @@ export const createTaskSlice: StateCreator<WebSocketStore, [], [], TaskSlice> = 
       taskContextUsageMaps: {},
       taskStatusMaps: {},
       taskAutoApproveToolNameMaps: {},
+      taskWorkflowStateMaps: {},
     } as any);
   },
 

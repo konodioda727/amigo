@@ -1,8 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import type { RowDataPacket } from "mysql2/promise";
-import { ensureMysqlSchemaUpToDate, isMysqlConfigured, mysqlExecute, mysqlQuery } from "../../db";
+import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/mysql2";
+import {
+  ensureMysqlSchemaUpToDate,
+  formatMysqlDateTime,
+  getDrizzleDb,
+  integrationSessionsTable,
+  isMysqlConfigured,
+  mysqlTransaction,
+} from "../../db";
+import * as schema from "../../db/schema";
 
 interface FeishuSessionRecord {
   taskId: string;
@@ -73,26 +82,25 @@ export class FeishuSessionStore {
 
   private async loadFromDatabase(): Promise<void> {
     await ensureMysqlSchemaUpToDate();
-    const rows = await mysqlQuery<
-      RowDataPacket & {
-        session_key: string;
-        conversation_id: string | null;
-        user_id: string;
-        updated_at: string;
-      }
-    >(
-      "SELECT session_key, conversation_id, user_id, updated_at FROM integration_sessions WHERE provider = 'feishu'",
-    );
+    const rows = await getDrizzleDb()
+      .select({
+        sessionKey: integrationSessionsTable.sessionKey,
+        conversationId: integrationSessionsTable.conversationId,
+        userId: integrationSessionsTable.userId,
+        updatedAt: integrationSessionsTable.updatedAt,
+      })
+      .from(integrationSessionsTable)
+      .where(eq(integrationSessionsTable.provider, "feishu"));
     this.state = Object.fromEntries(
       rows
         .map(
           (row) =>
             [
-              row.session_key,
+              row.sessionKey,
               {
-                taskId: row.conversation_id || "",
-                ...(row.user_id ? { userId: row.user_id } : {}),
-                updatedAt: row.updated_at,
+                taskId: row.conversationId || "",
+                ...(row.userId ? { userId: row.userId } : {}),
+                updatedAt: row.updatedAt,
               },
             ] as const,
         )
@@ -124,24 +132,26 @@ export class FeishuSessionStore {
     const state = this.requireState();
     if (isMysqlConfigured()) {
       await ensureMysqlSchemaUpToDate();
-      await mysqlExecute("DELETE FROM integration_sessions WHERE provider = 'feishu'", []);
-      for (const [sessionKey, record] of Object.entries(state)) {
-        if (!record.userId?.trim()) {
-          continue;
+      await mysqlTransaction(async (connection) => {
+        const db = drizzle(connection, { schema, mode: "default" });
+        await db
+          .delete(integrationSessionsTable)
+          .where(eq(integrationSessionsTable.provider, "feishu"));
+        const rows = Object.entries(state)
+          .filter(([, record]) => !!record.userId?.trim())
+          .map(([sessionKey, record]) => ({
+            id: randomUUID(),
+            provider: "feishu",
+            sessionKey,
+            userId: record.userId!.trim(),
+            conversationId: record.taskId || null,
+            updatedAt: formatMysqlDateTime(new Date(record.updatedAt)),
+            createdAt: formatMysqlDateTime(new Date(record.updatedAt)),
+          }));
+        if (rows.length > 0) {
+          await db.insert(integrationSessionsTable).values(rows);
         }
-        await mysqlExecute(
-          `
-            INSERT INTO integration_sessions (
-              id, provider, session_key, user_id, conversation_id, updated_at
-            ) VALUES (?, 'feishu', ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE
-              user_id = VALUES(user_id),
-              conversation_id = VALUES(conversation_id),
-              updated_at = VALUES(updated_at)
-          `,
-          [randomUUID(), sessionKey, record.userId.trim(), record.taskId, record.updatedAt],
-        );
-      }
+      });
       return;
     }
 

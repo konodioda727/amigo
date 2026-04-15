@@ -379,6 +379,40 @@ describe("Property 5: Message Processing Order", () => {
     });
   });
 
+  test("CompleteTask workflow phase is restored from websocketData", () => {
+    const combined = combineMessages([
+      {
+        type: "tool",
+        data: {
+          message: JSON.stringify({
+            toolName: "completeTask",
+            toolCallId: "call-complete-1",
+            params: {
+              summary: "最终完成",
+              result: "最终答复",
+            },
+            result: "任务已完成",
+            websocketData: {
+              kind: "task_complete",
+              completedPhase: "complete",
+              currentPhase: "complete",
+              agentRole: "controller",
+            },
+          }),
+          partial: false,
+          updateTime: 1000,
+          taskId: "task-1",
+        },
+      },
+    ] as any);
+
+    expect(combined[0]).toMatchObject({
+      type: "tool",
+      toolName: "completeTask",
+      workflowPhase: "complete",
+    });
+  });
+
   test("Distinct tool calls stay separate when toolCallId is reused with different updateTime", () => {
     const messages: WebSocketMessage<SERVER_SEND_MESSAGE_NAME>[] = [
       {

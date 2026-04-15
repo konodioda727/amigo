@@ -90,7 +90,6 @@ export {
   DefaultListFilesRenderer,
   DefaultMessageRenderer,
   DefaultReadFileRenderer,
-  DefaultRunChecksRenderer,
   DefaultToolRenderer,
   DefaultUserMessageRenderer,
   defaultRenderers,
@@ -99,7 +98,8 @@ export {
   ToolAccordion,
   ToolCodeBlock,
 } from "./components/renderers";
-
+// Re-export all types from the types module
+export type * from "./types";
 export type {
   AlertRendererProps,
   AskFollowupQuestionRendererProps,
@@ -112,14 +112,6 @@ export type {
   ToolMessageRendererProps,
   UserMessageRendererProps,
 } from "./types/renderers";
-
-// ============================================================================
-// Types
-// ============================================================================
-
-export type { DocType } from "./store/slices/docSlice";
-// Re-export all types from the types module
-export type * from "./types";
 
 // ============================================================================
 // Context (for advanced use cases)
