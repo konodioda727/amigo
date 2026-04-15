@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import type {
   SERVER_SEND_MESSAGE_NAME,
   USER_SEND_MESSAGE_NAME,
@@ -107,6 +107,11 @@ export const buildSessionTitle = (record: ConversationPersistenceRecord): string
 };
 
 export const buildMessageRows = (record: ConversationPersistenceRecord) => {
+  const buildStableMessageRowId = (seq: number): string => {
+    const hex = createHash("md5").update(`${record.taskId}:${seq}`).digest("hex");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+  };
+
   const rows: Array<{
     id: string;
     seq: number;
@@ -120,9 +125,10 @@ export const buildMessageRows = (record: ConversationPersistenceRecord) => {
   }> = [];
 
   for (const [index, message] of record.messages.entries()) {
+    const seq = index + 1;
     rows.push({
-      id: randomUUID(),
-      seq: index + 1,
+      id: buildStableMessageRowId(seq),
+      seq,
       role: message.role,
       messageType: `${CHAT_PREFIX}${message.type}`,
       content: message.content,
@@ -134,9 +140,10 @@ export const buildMessageRows = (record: ConversationPersistenceRecord) => {
   }
 
   for (const [index, message] of record.websocketMessages.entries()) {
+    const seq = record.messages.length + index + 1;
     rows.push({
-      id: randomUUID(),
-      seq: record.messages.length + index + 1,
+      id: buildStableMessageRowId(seq),
+      seq,
       role: "system",
       messageType: `${WEBSOCKET_PREFIX}${message.type}`,
       content: JSON.stringify(message.data || {}),

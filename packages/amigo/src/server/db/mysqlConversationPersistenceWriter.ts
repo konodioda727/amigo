@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, gt, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import type {
   ConversationContextSnapshotRecord,
@@ -113,11 +113,34 @@ export const persistConversationRecord = async (
         },
       });
 
-    await db
-      .delete(conversationMessagesTable)
-      .where(eq(conversationMessagesTable.conversationId, record.taskId));
     if (conversationMessageRows.length > 0) {
-      await db.insert(conversationMessagesTable).values(conversationMessageRows);
+      await db
+        .insert(conversationMessagesTable)
+        .values(conversationMessageRows)
+        .onDuplicateKeyUpdate({
+          set: {
+            role: sql`values(${conversationMessagesTable.role})`,
+            messageType: sql`values(${conversationMessagesTable.messageType})`,
+            content: sql`values(${conversationMessagesTable.content})`,
+            attachmentsJson: sql`values(${conversationMessagesTable.attachmentsJson})`,
+            partial: sql`values(${conversationMessagesTable.partial})`,
+            sourceUpdateTime: sql`values(${conversationMessagesTable.sourceUpdateTime})`,
+            createdAt: sql`values(${conversationMessagesTable.createdAt})`,
+          },
+        });
+
+      await db
+        .delete(conversationMessagesTable)
+        .where(
+          and(
+            eq(conversationMessagesTable.conversationId, record.taskId),
+            gt(conversationMessagesTable.seq, conversationMessageRows.length),
+          ),
+        );
+    } else {
+      await db
+        .delete(conversationMessagesTable)
+        .where(eq(conversationMessagesTable.conversationId, record.taskId));
     }
   });
 };

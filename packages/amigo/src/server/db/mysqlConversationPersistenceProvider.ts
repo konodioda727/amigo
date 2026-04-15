@@ -70,7 +70,10 @@ const inspectError = (error: unknown): string =>
   });
 
 export class MysqlConversationPersistenceProvider implements ConversationPersistenceProvider {
+  private static readonly FLUSH_DEBOUNCE_MS = 5_000;
   private readonly cache = new Map<string, ConversationPersistenceRecord>();
+  private readonly pendingRecordFlushes = new Map<string, ConversationPersistenceRecord>();
+  private readonly pendingFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private initPromise: Promise<void> | null = null;
   private flushChain: Promise<void> = Promise.resolve();
 
@@ -95,9 +98,7 @@ export class MysqlConversationPersistenceProvider implements ConversationPersist
     if (!hasPersistableUserId(record.context)) {
       return true;
     }
-    this.enqueueFlush(async () => {
-      await persistConversationRecord(record);
-    }, `save taskId=${record.taskId}`);
+    this.scheduleRecordFlush(record);
     return true;
   }
 
@@ -109,6 +110,8 @@ export class MysqlConversationPersistenceProvider implements ConversationPersist
 
   delete(taskId: string): boolean {
     const existed = this.cache.delete(taskId);
+    this.pendingRecordFlushes.delete(taskId);
+    this.clearPendingFlushTimer(taskId);
     this.enqueueFlush(async () => {
       await ensureMysqlSchemaUpToDate();
       await getDrizzleDb().delete(conversationsTable).where(eq(conversationsTable.id, taskId));
@@ -167,6 +170,33 @@ export class MysqlConversationPersistenceProvider implements ConversationPersist
         );
       }
     });
+  }
+
+  private scheduleRecordFlush(record: ConversationPersistenceRecord): void {
+    const clonedRecord = structuredClone(record);
+    this.pendingRecordFlushes.set(record.taskId, clonedRecord);
+    this.clearPendingFlushTimer(record.taskId);
+    const timer = setTimeout(() => {
+      this.pendingFlushTimers.delete(record.taskId);
+      this.enqueueFlush(async () => {
+        const pendingRecord = this.pendingRecordFlushes.get(record.taskId);
+        if (!pendingRecord) {
+          return;
+        }
+        this.pendingRecordFlushes.delete(record.taskId);
+        await persistConversationRecord(pendingRecord);
+      }, `save taskId=${record.taskId}`);
+    }, MysqlConversationPersistenceProvider.FLUSH_DEBOUNCE_MS);
+    this.pendingFlushTimers.set(record.taskId, timer);
+  }
+
+  private clearPendingFlushTimer(taskId: string): void {
+    const timer = this.pendingFlushTimers.get(taskId);
+    if (!timer) {
+      return;
+    }
+    clearTimeout(timer);
+    this.pendingFlushTimers.delete(taskId);
   }
 
   private async hydrate(): Promise<void> {
