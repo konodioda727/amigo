@@ -18,7 +18,6 @@ export class CreateTaskMessageResolver extends BaseMessageResolver<"createTask">
       this.conversation,
       message.message,
       message.attachments,
-      message.workflowMode,
     );
 
     const onConversationCreate = getGlobalState("onConversationCreate");

@@ -21,7 +21,7 @@ export const EXECUTION_WORKER_BASE_TOOL_NAMES = [
   "listFiles",
   "readFile",
   "bash",
-  "completeTask",
+  "finishPhase",
   "updateDevServer",
 ] as const;
 export const OPTIONAL_EXECUTION_WORKER_LANGUAGE_TOOL_NAMES = [
@@ -164,13 +164,16 @@ export const buildSubAgentPrompt = ({
     "5. 代码内符号定位、定义追踪、引用分析优先用 `goToDefinition` / `findReferences` / `getDiagnostics`；尤其当诊断、编译错误或现有上下文已经给出 filePath + line + symbolName 时，不要先用 `bash rg` 反复搜同一批 symbol。典型链路：看到 `Cannot find name 'X'`，先用 `getDiagnostics` 确认锚点，再用 `goToDefinition` / `findReferences`，只有失败时才回退到 `bash/rg`。",
     "6. 查看文件内容只用 `readFile`；只有在 inherited history 缺少关键信息、需要读取此前未覆盖的文件，或信息可能过期时，才最小化调用 `readFile` / `listFiles` / `bash`。",
     "7. 修改文件只用 `editFile`；一旦已经知道要改哪个文件、改什么内容，就直接用 `editFile`，不要继续反复 `readFile` / `listFiles` / `bash`。",
-    "7.5. 如果 inherited history、诊断结果或当前上下文已经足以确定下一步修改动作，下一步就直接调用对应推进工具；如果仍下不了手，就在 `completeTask` 里明确说明卡点，让 controller 决定是否回到 design。不要围绕同一结论继续读文件。",
+    "7.5. 如果 inherited history、诊断结果或当前上下文已经足以确定下一步修改动作，下一步就直接调用对应推进工具；如果仍下不了手，就在 `finishPhase` 里明确说明卡点，让 controller 决定是否回到 design。不要围绕同一结论继续读文件。",
     "8. 若某一处修复已经明确且风险可控，就先改这一处，再继续诊断、验证或读取下一处；不要为了攒成一次大改而把其他相关文件都先读一遍。默认采用小步快跑、边改边验。",
-    "9. 不要用 `bash` 编辑文件；`bash` 只用于 repo 级粗搜索、构建、测试和诊断。若只是代码符号导航，不要拿 `bash/rg` 代替 LSP。",
+    "9. 不要用 `bash` 编辑文件；`bash` 只用于 repo 级粗搜索、安装明确依赖、构建、测试和诊断。若只是代码符号导航，不要拿 `bash/rg` 代替 LSP。",
+    "9.2. 如果检查明确提示 `node_modules missing`、缺少 CLI、`command not found` 或等价的依赖/工具链缺失信号，且包管理器与安装命令清楚，就直接用 `bash` 安装并重跑；不要把这类问题先上抛成 design。",
     "9.5. 已知源文件和缺失符号时，不要回退去读 `build/` 产物、生成文件或旧输出做对照；先改源文件，只有第一次 `editFile` 失败或源文件证据冲突时，才允许读取这些产物。",
-    "10. 如果你在执行当前任务时发现问题类型、影响范围或关键约束已经明显超出当前 task scope，不要继续扩张读取和实现范围；在 `completeTask` 的 `## 遗留问题` / `## 下游说明` 中明确写出新发现，让 controller 决定是否 `overridePhase` 回到 design。",
-    "11. 调用 `completeTask` 时，`summary` 必须是 1-2 句话，`result` 必须包含且仅按这个标题输出四个非空章节：`## 交付物`、`## 验证`、`## 遗留问题`、`## 下游说明`。",
-    "12. 只有在当前任务已经真正解决、并且已经完成必要自查时，才能使用 completeTask。",
+    "10. 如果你在执行当前任务时发现问题类型、影响范围或关键约束已经明显超出当前 task scope，不要继续扩张读取和实现范围；在 `finishPhase` 的 `## 遗留问题` / `## 下游说明` 中明确写出新发现，让 controller 通过 `finishPhase(nextPhase=design)` 回到 design。",
+    "11. 调用 `finishPhase` 时，`summary` 必须是 1-2 句话，`result` 必须包含且仅按这个标题输出四个非空章节：`## 交付物`、`## 验证`、`## 遗留问题`、`## 下游说明`。",
+    "12. `## 验证` 必须优先写真实证据：先确认 LSP/diagnostics 是否 clean，再确认对应 build/lint/工程级检查结果，最后确认真实链路上的集成测试已经运行；不要只写“已自测”。",
+    "13. 验证当前任务时，不要只跑孤立模块测试、纯单元测试或与主链路脱节的 mock 测试；测试必须和其他部分集成，能证明修改真的接入了目标链路。",
+    "14. 只有在当前任务已经真正解决、并且已经完成必要自查时，才能使用 finishPhase。",
   );
 
   if (retryFeedback) {

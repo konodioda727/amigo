@@ -48,12 +48,12 @@ export const buildDependencyResultContext = ({
     const dependencyStatus = parentConversation.memory.executionTasks[dependencyId];
 
     if (!dependencyStatus?.executionTaskId) {
-      return `### Task ${dependencyId}\n未找到该依赖任务的 completeTask 内容。`;
+      return `### Task ${dependencyId}\n未找到该依赖任务的 finishPhase 内容。`;
     }
 
     const dependencyConversation = resolveConversation(dependencyStatus.executionTaskId);
     if (!dependencyConversation) {
-      return `### Task ${dependencyId}\n未能加载该依赖任务的 completeTask 内容。`;
+      return `### Task ${dependencyId}\n未能加载该依赖任务的 finishPhase 内容。`;
     }
 
     const dependencyPayload = extractCompletedExecutionTaskPayload(dependencyConversation);
@@ -61,7 +61,7 @@ export const buildDependencyResultContext = ({
       ? formatCompletedExecutionTaskPayload(dependencyPayload)
       : "";
     if (!dependencyResult.trim()) {
-      return `### Task ${dependencyId}\n未提取到有效的 completeTask 内容。`;
+      return `### Task ${dependencyId}\n未提取到有效的 finishPhase 内容。`;
     }
 
     return `### Task ${dependencyId}\n${trimDependencyResult(dependencyResult)}`;

@@ -483,17 +483,38 @@ const buildEditFileContinuationSummary = (filePath: string): string => `【已�
 
 const buildEditFileContinuationResult = (params: {
   success: boolean;
+  status?: "success" | "partial_success" | "failed";
   filePath: string;
   message: string;
+  failureReason?: string;
   linesWritten?: number;
   diagnostics?: EditFileDiagnostics;
 }) => ({
   success: params.success,
+  ...(params.status ? { status: params.status } : {}),
   filePath: params.filePath,
   message: params.message,
+  ...(params.failureReason ? { failureReason: params.failureReason } : {}),
   ...(typeof params.linesWritten === "number" ? { linesWritten: params.linesWritten } : {}),
   ...(params.diagnostics ? { diagnostics: params.diagnostics } : {}),
 });
+
+const buildBatchEditSummary = (fileResults: EditFileSingleResult[]): string => {
+  const successResults = fileResults.filter((result) => result.success);
+  const failedResults = fileResults.filter((result) => !result.success);
+
+  const summaryParts = [`成功 ${successResults.length} 个`, `失败 ${failedResults.length} 个`];
+
+  const failedPreview = failedResults
+    .slice(0, 3)
+    .map(
+      (result) => `${result.filePath}（${result.failureReason || result.message || "编辑失败"}）`,
+    );
+
+  return failedPreview.length > 0
+    ? `批量编辑完成：${summaryParts.join("，")}。失败文件：${failedPreview.join("；")}`
+    : `成功批量修改 ${successResults.length} 个文件`;
+};
 
 async function loadFileContent(
   sandbox: Sandbox,
@@ -578,8 +599,10 @@ async function executeFileEdits(params: {
       return {
         success: false,
         result: {
+          success: false,
           filePath: cleanPath,
           message: error || "编辑失败",
+          failureReason: error || "编辑失败",
         },
       };
     }
@@ -601,6 +624,7 @@ async function executeFileEdits(params: {
   });
 
   const result: EditFileSingleResult = {
+    success: true,
     filePath: cleanPath,
     message:
       operations.length === 1
@@ -829,6 +853,7 @@ export const EditFile = createTool({
           return createToolResult(
             {
               success: false,
+              status: "failed",
               ...(requests.length === 1 ? { filePath: cleanPath } : {}),
               message: error || "editFile 参数无效",
             },
@@ -859,23 +884,13 @@ export const EditFile = createTool({
           operations,
         });
 
-        if (!execution.success) {
-          return createToolResult(
-            {
-              success: false,
-              ...(grouped.size === 1 ? { filePath: cleanPath } : {}),
-              message: execution.result.message,
-              ...(grouped.size > 1 ? { edits: [...fileResults, execution.result] } : {}),
-            },
-            {
-              transportMessage: execution.result.message,
-            },
-          );
-        }
-
-        logger.info(`[EditFile] ${execution.result.message}`);
         fileResults.push(execution.result);
-        previewEntries.push({ filePath: cleanPath, websocketData: execution.websocketData });
+        if (execution.success) {
+          logger.info(`[EditFile] ${execution.result.message}`);
+          previewEntries.push({ filePath: cleanPath, websocketData: execution.websocketData });
+        } else {
+          logger.warn(`[EditFile] ${execution.result.message}`);
+        }
       }
 
       if (fileResults.length === 1) {
@@ -886,9 +901,11 @@ export const EditFile = createTool({
         }
         return createToolResult(
           {
-            success: true,
+            success: single.success,
+            status: single.success ? "success" : "failed",
             filePath: single.filePath,
             message: single.message,
+            ...(single.failureReason ? { failureReason: single.failureReason } : {}),
             ...(typeof single.linesWritten === "number"
               ? { linesWritten: single.linesWritten }
               : {}),
@@ -898,9 +915,11 @@ export const EditFile = createTool({
             transportMessage: buildEditFileTransportMessage(single.message, single.diagnostics),
             continuationSummary: buildEditFileContinuationSummary(single.filePath),
             continuationResult: buildEditFileContinuationResult({
-              success: true,
+              success: single.success,
+              status: single.success ? "success" : "failed",
               filePath: single.filePath,
               message: single.message,
+              failureReason: single.failureReason,
               linesWritten: single.linesWritten,
               diagnostics: single.diagnostics,
             }),
@@ -909,20 +928,35 @@ export const EditFile = createTool({
         );
       }
 
-      const successMsg = `成功批量修改 ${fileResults.length} 个文件`;
+      const successResults = fileResults.filter((fileResult) => fileResult.success);
+      const failedResults = fileResults.filter((fileResult) => !fileResult.success);
       const totalLinesWritten = fileResults.reduce(
         (sum, fileResult) => sum + (fileResult.linesWritten ?? 0),
         0,
       );
+      const status: EditFileResult["status"] =
+        failedResults.length === 0
+          ? "success"
+          : successResults.length === 0
+            ? "failed"
+            : "partial_success";
+      const summaryMessage = buildBatchEditSummary(fileResults);
       const transportResult: EditFileResult = {
-        success: true,
-        message: `${successMsg}（累计 ${totalLinesWritten} 行）`,
+        success: successResults.length > 0,
+        status,
+        message:
+          totalLinesWritten > 0
+            ? `${summaryMessage}（累计 ${totalLinesWritten} 行）`
+            : summaryMessage,
         edits: fileResults,
       };
 
       return createToolResult(transportResult, {
         transportMessage: transportResult.message,
-        continuationSummary: `【已批量修改 ${fileResults.length} 个文件】`,
+        continuationSummary:
+          status === "success"
+            ? `【已批量修改 ${successResults.length} 个文件】`
+            : `【批量编辑：成功 ${successResults.length} 个，失败 ${failedResults.length} 个】`,
         continuationResult: transportResult,
       });
     } catch (error) {
@@ -931,6 +965,7 @@ export const EditFile = createTool({
       return createToolResult(
         {
           success: false,
+          status: "failed",
           ...(requests.length === 1 && typeof requests[0]?.filePath === "string"
             ? { filePath: normalizeEditFilePath(requests[0].filePath) }
             : {}),

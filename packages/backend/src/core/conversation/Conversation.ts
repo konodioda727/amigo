@@ -9,7 +9,6 @@ import type {
   ToolInterface,
   WebSocketMessage,
   WorkflowAgentRole,
-  WorkflowMode,
   WorkflowPhase,
   WorkflowState,
 } from "@amigo-llm/types";
@@ -61,6 +60,8 @@ const isCheckpointMessage = (
   message: (typeof FilePersistedMemory.prototype.messages)[number],
 ): boolean => message.type === "checkpoint";
 
+const isFinishPhaseToolName = (toolName: unknown): boolean => toolName === "finishPhase";
+
 const collectSeedHistoryFromLastCompletion = (
   memory: FilePersistedMemory,
 ): NonNullable<WorkflowState["completionSeedState"]> | null => {
@@ -89,18 +90,16 @@ const collectSeedHistoryFromLastCompletion = (
     : null;
 
   if (!completionMessage) {
-    const lastCompleteTaskResultIndex = cycleMessages.findLastIndex((message) => {
+    const lastFinishPhaseResultIndex = cycleMessages.findLastIndex((message) => {
       const payload = parseToolResultMessage(message);
-      return payload?.toolName === "completeTask";
+      return isFinishPhaseToolName(payload?.toolName);
     });
 
-    if (lastCompleteTaskResultIndex >= 0) {
-      const resultMessage = cycleMessages[lastCompleteTaskResultIndex]!;
+    if (lastFinishPhaseResultIndex >= 0) {
+      const resultMessage = cycleMessages[lastFinishPhaseResultIndex]!;
       const resultPayload = parseToolResultMessage(resultMessage);
       const previousMessage =
-        lastCompleteTaskResultIndex > 0
-          ? cycleMessages[lastCompleteTaskResultIndex - 1]
-          : undefined;
+        lastFinishPhaseResultIndex > 0 ? cycleMessages[lastFinishPhaseResultIndex - 1] : undefined;
       const callPayload = previousMessage ? parseAssistantToolCallMessage(previousMessage) : null;
       const summary =
         resultPayload?.summary?.trim() ||
@@ -155,7 +154,7 @@ export class Conversation {
   private _userInput = "";
   private _isAborted = false;
   private _pendingToolCall: PendingToolCall | null = null;
-  private _lastCompleteTaskDisposition: "phase_advanced" | "task_completed" | null = null;
+  private _lastFinishPhaseDisposition: "phase_advanced" | "task_completed" | null = null;
 
   private constructor(params: {
     id: string;
@@ -261,15 +260,11 @@ export class Conversation {
   public changeWorkflowPhase(
     targetPhase: WorkflowPhase,
     metadata: { reason?: string; evidence?: string } = {},
-    options?: { mode?: WorkflowMode },
   ): void {
     const nextState = transitionWorkflowState(this.workflowState, targetPhase, "change", metadata, {
       phaseSequence: CONTROLLER_DEFAULT_WORKFLOW_PHASE_SEQUENCE,
     });
-    this.setWorkflowState({
-      ...nextState,
-      ...(options?.mode ? { mode: options.mode } : {}),
-    });
+    this.setWorkflowState(nextState);
   }
 
   public restartMainWorkflowCycleForNextUserTurn(): void {
@@ -388,15 +383,15 @@ export class Conversation {
     return this.memory.isNewSession();
   }
 
-  public setLastCompleteTaskDisposition(
+  public setLastFinishPhaseDisposition(
     disposition: "phase_advanced" | "task_completed" | null,
   ): void {
-    this._lastCompleteTaskDisposition = disposition;
+    this._lastFinishPhaseDisposition = disposition;
   }
 
-  public consumeLastCompleteTaskDisposition(): "phase_advanced" | "task_completed" | null {
-    const disposition = this._lastCompleteTaskDisposition;
-    this._lastCompleteTaskDisposition = null;
+  public consumeLastFinishPhaseDisposition(): "phase_advanced" | "task_completed" | null {
+    const disposition = this._lastFinishPhaseDisposition;
+    this._lastFinishPhaseDisposition = null;
     return disposition;
   }
 

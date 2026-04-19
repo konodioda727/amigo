@@ -7,11 +7,12 @@ type MinimalConversation = {
   };
 };
 
-export type CompleteTaskPayload = {
+export type FinishPhasePayload = {
   toolName?: string;
   params?: {
     summary?: string;
     result?: string;
+    nextPhase?: string;
     achievements?: string;
     usage?: string;
   };
@@ -30,11 +31,14 @@ type MinimalPendingToolConversation = {
     params?: {
       summary?: string;
       result?: string;
+      nextPhase?: string;
       achievements?: string;
       usage?: string;
     };
   } | null;
 };
+
+const isFinishPhaseToolName = (toolName: unknown): boolean => toolName === "finishPhase";
 
 const REQUIRED_RESULT_SECTIONS = ["交付物", "验证", "遗留问题", "下游说明"] as const;
 
@@ -97,7 +101,7 @@ export const extractCompletedExecutionTaskPayloadFromMessages = (
 
     try {
       const parsed = JSON.parse(message.content || "") as
-        | CompleteTaskPayload
+        | FinishPhasePayload
         | {
             kind?: string;
             toolName?: string;
@@ -108,7 +112,7 @@ export const extractCompletedExecutionTaskPayloadFromMessages = (
         parsed &&
         typeof parsed === "object" &&
         parsed.kind === "assistant_tool_call" &&
-        parsed.toolName === "completeTask"
+        isFinishPhaseToolName(parsed.toolName)
       ) {
         const transcriptPayload = extractPayloadFromRecord(parsed.arguments);
         if (transcriptPayload) {
@@ -116,7 +120,7 @@ export const extractCompletedExecutionTaskPayloadFromMessages = (
         }
       }
 
-      if ("toolName" in parsed && parsed.toolName === "completeTask") {
+      if ("toolName" in parsed && isFinishPhaseToolName(parsed.toolName)) {
         const payload = extractPayloadFromRecord(parsed.params);
         if (payload) {
           return payload;
@@ -162,11 +166,11 @@ export const extractCompletedExecutionTaskPayload = (
   return extractCompletedExecutionTaskPayloadFromMessages(conversation.memory.messages);
 };
 
-export const extractPendingCompleteTaskPayload = (
+export const extractPendingFinishPhasePayload = (
   conversation: MinimalPendingToolConversation,
 ): CompletedExecutionTaskPayload | null => {
   const pending = conversation.pendingToolCall;
-  if (!pending || pending.toolName !== "completeTask") {
+  if (!pending || !isFinishPhaseToolName(pending.toolName)) {
     return null;
   }
 
@@ -208,7 +212,7 @@ export const validateCompletedExecutionTaskPayload = (
   const details: string[] = [];
 
   if (!payload) {
-    details.push("未找到 completeTask 交付内容。");
+    details.push("未找到 finishPhase 交付内容。");
   } else {
     if (!payload.summary?.trim()) {
       details.push("缺少 `summary`。");

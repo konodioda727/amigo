@@ -28,7 +28,7 @@ describe("useSendMessage sendConfirm", () => {
     cleanup();
   });
 
-  it("keeps completeTask confirmations out of streaming state", () => {
+  it("keeps finishPhase confirmations out of streaming state", () => {
     const store = createWebSocketStore({ autoConnect: false });
     const send = mock();
 
@@ -46,7 +46,7 @@ describe("useSendMessage sendConfirm", () => {
           status: "waiting_tool_call",
           lastUpdateTime: Date.now(),
           pendingToolCall: {
-            toolName: "completeTask",
+            toolName: "finishPhase",
             params: { result: "done" },
           },
         },

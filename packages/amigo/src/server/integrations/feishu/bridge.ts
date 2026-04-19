@@ -626,7 +626,11 @@ export class FeishuBridge implements ConversationChannelProvider {
     const conversation = conversationRepository.get(taskId) || conversationRepository.load(taskId);
     const toolName = payload.toolName.trim();
     const tool = conversation?.toolService.getToolFromName(toolName);
-    return toolName === "completeTask" || tool?.completionBehavior === "idle";
+    return (
+      toolName === "finishPhase" ||
+      toolName === "finishPhase" ||
+      tool?.completionBehavior === "idle"
+    );
   }
 
   private parseToolTransportPayload(content: string): ToolTransportPayload | null {

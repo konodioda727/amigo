@@ -124,6 +124,7 @@ describe("EditFile", () => {
     });
 
     expect(result.transport.result.success).toBe(false);
+    expect(result.transport.result.status).toBe("failed");
     expect(result.transport.result.message).toBe(
       "editFile 不再支持按行替换。若只传 newString，则表示整文件写入；局部修改请同时提供 oldString/newString。",
     );
@@ -144,6 +145,7 @@ describe("EditFile", () => {
     });
 
     expect(result.transport.result.success).toBe(false);
+    expect(result.transport.result.status).toBe("failed");
     expect(result.transport.result.message).toBe(
       "editFile 不再支持 expectedOriginalContent。局部修改请使用 oldString/newString，startLine/endLine 仅作 oldString 的定位提示。",
     );
@@ -176,6 +178,7 @@ describe("EditFile", () => {
     });
 
     expect(result.transport.result.success).toBe(false);
+    expect(result.transport.result.status).toBe("failed");
     expect(result.transport.result.message).toContain("同等接近");
     expect(commands).toEqual([
       "mkdir -p '/tmp'",
@@ -213,6 +216,7 @@ describe("EditFile", () => {
     });
 
     expect(result.transport.result.success).toBe(true);
+    expect(result.transport.result.status).toBe("success");
     expect(result.transport.result.linesWritten).toBe(1);
     expect(result.transport.result.message).toContain("成功精确替换文件");
     expect(result.continuation.summary).toBe("【已修改 /tmp/example.txt】");
@@ -250,6 +254,7 @@ describe("EditFile", () => {
     });
 
     expect(result.transport.result.success).toBe(false);
+    expect(result.transport.result.status).toBe("failed");
     expect(result.transport.result.message).toContain("命中 2 次");
     expect(commands).toEqual([
       "mkdir -p '/tmp'",
@@ -307,6 +312,7 @@ describe("EditFile", () => {
     });
 
     expect(result.transport.result.success).toBe(true);
+    expect(result.transport.result.status).toBe("success");
     expect(result.transport.result.diagnostics?.language).toBe("typescript");
     expect(result.transport.result.diagnostics?.errorCount).toBe(1);
     expect(result.transport.message).toContain("发现 1 个 TypeScript 语法错误");
@@ -364,6 +370,7 @@ describe("EditFile", () => {
     });
 
     expect(result.transport.result.success).toBe(true);
+    expect(result.transport.result.status).toBe("success");
     expect(result.transport.result.diagnostics?.language).toBe("python");
     expect(result.transport.result.diagnostics?.errorCount).toBe(1);
     expect(result.transport.message).toContain("发现 1 个 Python 语法错误");
@@ -412,6 +419,7 @@ describe("EditFile", () => {
     });
 
     expect(result.transport.result.success).toBe(true);
+    expect(result.transport.result.status).toBe("success");
     expect(result.transport.result.filePath).toBe("/tmp/example.txt");
     expect(result.transport.result.linesWritten).toBe(3);
     expect(result.transport.result.message).toContain("共 2 处编辑");
@@ -466,6 +474,7 @@ describe("EditFile", () => {
     });
 
     expect(result.transport.result.success).toBe(true);
+    expect(result.transport.result.status).toBe("success");
     expect(result.transport.result.filePath).toBeUndefined();
     expect(result.transport.result.edits).toHaveLength(2);
     expect(result.transport.result.message).toContain("成功批量修改 2 个文件");
@@ -478,6 +487,75 @@ describe("EditFile", () => {
       "mkdir -p '/tmp'",
       `test -f '/tmp/two.txt' && echo "exists" || echo "not_found"`,
       "printf '%s' 'bmV3CmZpbGU=' | base64 -d > '/tmp/two.txt'",
+    ]);
+  });
+
+  it("keeps successful files applied and reports failed files clearly in batch mode", async () => {
+    const commands: string[] = [];
+    const context = createContext(async (cmd) => {
+      commands.push(cmd);
+      if (cmd === "mkdir -p '/tmp'") {
+        return "";
+      }
+      if (cmd === `test -f '/tmp/one.txt' && echo "exists" || echo "not_found"`) {
+        return "exists";
+      }
+      if (cmd === "cat '/tmp/one.txt'") {
+        return "hello\nworld";
+      }
+      if (cmd === "printf '%s' 'aGVsbG8KYW1pZ28=' | base64 -d > '/tmp/one.txt'") {
+        return "";
+      }
+      if (cmd === `test -f '/tmp/two.txt' && echo "exists" || echo "not_found"`) {
+        return "exists";
+      }
+      if (cmd === "cat '/tmp/two.txt'") {
+        return "same\ncontent";
+      }
+      return "";
+    });
+
+    const result = await EditFile.invoke({
+      params: {
+        edits: [
+          {
+            filePath: "/tmp/one.txt",
+            oldString: "world",
+            newString: "amigo",
+          },
+          {
+            filePath: "/tmp/two.txt",
+            oldString: "missing",
+            newString: "changed",
+          },
+        ],
+      },
+      context,
+    });
+
+    expect(result.transport.result.success).toBe(true);
+    expect(result.transport.result.status).toBe("partial_success");
+    expect(result.transport.result.message).toContain("成功 1 个，失败 1 个");
+    expect(result.transport.result.message).toContain("/tmp/two.txt");
+    expect(result.transport.result.edits).toHaveLength(2);
+    expect(result.transport.result.edits?.[0]).toMatchObject({
+      success: true,
+      filePath: "/tmp/one.txt",
+    });
+    expect(result.transport.result.edits?.[1]).toMatchObject({
+      success: false,
+      filePath: "/tmp/two.txt",
+    });
+    expect(result.transport.result.edits?.[1]?.failureReason).toContain("oldString 未在文件中命中");
+    expect(result.continuation.summary).toBe("【批量编辑：成功 1 个，失败 1 个】");
+    expect(commands).toEqual([
+      "mkdir -p '/tmp'",
+      `test -f '/tmp/one.txt' && echo "exists" || echo "not_found"`,
+      "cat '/tmp/one.txt'",
+      "printf '%s' 'aGVsbG8KYW1pZ28=' | base64 -d > '/tmp/one.txt'",
+      "mkdir -p '/tmp'",
+      `test -f '/tmp/two.txt' && echo "exists" || echo "not_found"`,
+      "cat '/tmp/two.txt'",
     ]);
   });
 });

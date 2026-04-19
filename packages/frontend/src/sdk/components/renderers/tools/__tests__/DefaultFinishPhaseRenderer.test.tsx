@@ -1,17 +1,17 @@
 import "../../../../provider/__tests__/setup";
 import { describe, expect, it } from "bun:test";
 import { fireEvent, render } from "@testing-library/react";
-import { DefaultCompleteTaskRenderer } from "../DefaultCompleteTaskRenderer";
+import { DefaultFinishPhaseRenderer } from "../DefaultFinishPhaseRenderer";
 
-describe("DefaultCompleteTaskRenderer", () => {
+describe("DefaultFinishPhaseRenderer", () => {
   it("renders result preview before the tool is confirmed", () => {
     const view = render(
-      <DefaultCompleteTaskRenderer
+      <DefaultFinishPhaseRenderer
         isLatest
         message={{
           type: "tool",
           updateTime: Date.now(),
-          toolName: "completeTask",
+          toolName: "finishPhase",
           params: {
             summary: "完成了子任务",
             result: "## 交付内容\n\n这里是完整结果。",
@@ -22,7 +22,7 @@ describe("DefaultCompleteTaskRenderer", () => {
       />,
     );
 
-    fireEvent.click(view.getByRole("button"));
+    fireEvent.click(view.getByText("正在完成设计阶段"));
 
     expect(view.getByText("完成了子任务")).toBeTruthy();
     expect(view.getByText("这里是完整结果。")).toBeTruthy();
@@ -31,12 +31,12 @@ describe("DefaultCompleteTaskRenderer", () => {
 
   it("renders complete-stage content as plain text instead of an accordion", () => {
     const view = render(
-      <DefaultCompleteTaskRenderer
+      <DefaultFinishPhaseRenderer
         isLatest
         message={{
           type: "tool",
           updateTime: Date.now(),
-          toolName: "completeTask",
+          toolName: "finishPhase",
           workflowPhase: "complete",
           params: {
             summary: "全部完成",
@@ -48,7 +48,7 @@ describe("DefaultCompleteTaskRenderer", () => {
       />,
     );
 
-    expect(view.queryByRole("button")).toBeNull();
+    expect(view.queryByText("最终交付")).toBeNull();
     expect(view.getByText("全部完成")).toBeTruthy();
     expect(view.getByText("最终答复正文")).toBeTruthy();
   });

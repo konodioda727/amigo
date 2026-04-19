@@ -3,7 +3,7 @@ import type { ChatMessage } from "@amigo-llm/types";
 import { buildDependencyResultContext } from "../dependencyContext";
 
 describe("buildDependencyResultContext", () => {
-  it("injects completeTask results for declared dependencies", () => {
+  it("injects finishPhase results for declared dependencies", () => {
     const dependencyConversation = {
       memory: {
         messages: [
@@ -12,7 +12,7 @@ describe("buildDependencyResultContext", () => {
             type: "tool",
             partial: false,
             content: JSON.stringify({
-              toolName: "completeTask",
+              toolName: "finishPhase",
               params: {
                 summary: "首页设计稿已完成。",
                 result: "已完成首页设计稿，pageId=home-page。",

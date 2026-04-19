@@ -1,14 +1,24 @@
 import { MessageInput, useTasks, useWebSocketContext } from "@amigo-llm/frontend";
-import type { ContextUsageStatus, WorkflowMode, WorkflowState } from "@amigo-llm/types";
-import { AlertCircle, ChevronDown, Github, Loader2, X, Zap } from "lucide-react";
+import type { ContextUsageStatus } from "@amigo-llm/types";
+import { AlertCircle, ChevronDown, Github, Loader2, X } from "lucide-react";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { cancelGithubBootstrap, type GithubBootstrapSummary } from "@/utils/githubBootstrap";
+import {
+  clearNewConversationDraft,
+  getNewConversationDraft,
+  setNewConversationDraft,
+} from "@/utils/newConversationDraft";
 import {
   clearPendingBootstrap,
   getPendingBootstrap,
   subscribePendingBootstrap,
 } from "@/utils/pendingBootstrap";
+import {
+  clearPendingConversationLaunch,
+  getPendingConversationLaunch,
+  setPendingConversationLaunch,
+} from "@/utils/pendingConversationLaunch";
 import {
   flattenModelConfigs,
   getUserModelConfigs,
@@ -38,14 +48,11 @@ export const getTaskModelKey = (context: unknown): string => {
     : "";
 };
 
-export const getTaskWorkflowMode = (
-  workflowState: WorkflowState | null | undefined,
-): WorkflowMode => (workflowState?.mode === "fast" ? "fast" : "phased");
-
 export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }) => {
   const { config } = useWebSocketContext();
-  const { mainTaskId, taskContextMaps, taskContextUsageMaps, taskWorkflowStateMaps, tasks } =
-    useTasks();
+  const { mainTaskId, taskContextMaps, taskContextUsageMaps, taskStatusMaps, tasks } = useTasks();
+  const initialDraft = getNewConversationDraft();
+  const initialPendingLaunch = getPendingConversationLaunch();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [pendingBootstrap, setPendingBootstrapState] = useState<GithubBootstrapSummary | null>(
     () => (typeof window === "undefined" ? null : getPendingBootstrap()),
@@ -53,27 +60,48 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
   const [isCancelling, setIsCancelling] = useState(false);
   const [availableSkills, setAvailableSkills] = useState<SkillSummary[]>([]);
   const [modelSettings, setModelSettings] = useState<UserModelConfigSettings | null>(null);
-  const [selectedModelKey, setSelectedModelKey] = useState("");
-  const [selectedWorkflowMode, setSelectedWorkflowMode] = useState<WorkflowMode>("fast");
+  const [selectedModelKey, setSelectedModelKey] = useState(
+    initialDraft.selectedModelKey || initialPendingLaunch?.selectedModelKey || "",
+  );
   const effectiveTaskId = taskId || mainTaskId;
+  const [pendingConversationLaunch, setPendingConversationLaunchState] =
+    useState(initialPendingLaunch);
   const rawTaskContext =
     (effectiveTaskId && taskContextMaps[effectiveTaskId]) ||
     (mainTaskId ? taskContextMaps[mainTaskId] : undefined);
   const activeTaskContext = useMemo(() => resolveTaskContext(rawTaskContext), [rawTaskContext]);
   const activeTaskModelKey = useMemo(() => getTaskModelKey(rawTaskContext), [rawTaskContext]);
-  const activeWorkflowMode = useMemo(
-    () =>
-      getTaskWorkflowMode(
-        (effectiveTaskId && taskWorkflowStateMaps[effectiveTaskId]) ||
-          (mainTaskId ? taskWorkflowStateMaps[mainTaskId] : undefined),
-      ),
-    [effectiveTaskId, mainTaskId, taskWorkflowStateMaps],
-  );
   const activeSkillIds = extractSkillIds(rawTaskContext);
-  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>(
+    initialDraft.selectedSkillIds.length > 0
+      ? initialDraft.selectedSkillIds
+      : initialPendingLaunch?.selectedSkillIds || [],
+  );
   const currentTaskContextUsage =
     (effectiveTaskId && taskContextUsageMaps[effectiveTaskId]) ||
     (mainTaskId ? taskContextUsageMaps[mainTaskId] : undefined);
+  const hasActiveTaskStatusSnapshot = Boolean(effectiveTaskId && taskStatusMaps[effectiveTaskId]);
+  const pendingLaunchMatchesActiveTask = Boolean(
+    pendingConversationLaunch &&
+      effectiveTaskId &&
+      (!pendingConversationLaunch.taskId || pendingConversationLaunch.taskId === effectiveTaskId),
+  );
+  const pendingLaunchTaskContext = useMemo(
+    () => resolvePendingLaunchTaskContext(pendingConversationLaunch),
+    [pendingConversationLaunch],
+  );
+  const displayTaskContext =
+    activeTaskContext ||
+    (pendingLaunchMatchesActiveTask && !hasActiveTaskStatusSnapshot
+      ? pendingLaunchTaskContext
+      : null);
+  const displaySkillIds =
+    effectiveTaskId &&
+    activeSkillIds.length === 0 &&
+    pendingLaunchMatchesActiveTask &&
+    !hasActiveTaskStatusSnapshot
+      ? pendingConversationLaunch?.selectedSkillIds || []
+      : activeSkillIds;
   const currentTaskStatus = (effectiveTaskId && tasks[effectiveTaskId]?.status) || "idle";
   const canSwitchModel = canSwitchTaskModel(effectiveTaskId, currentTaskStatus);
   const availableModels = useMemo(
@@ -96,6 +124,13 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
   const selectedModel = useMemo(
     () => availableModels.find((item) => getModelOptionKey(item) === selectedModelKey) || null,
     [availableModels, selectedModelKey],
+  );
+  const selectedModelLabel = useMemo(
+    () =>
+      selectedModel
+        ? getModelOptionLabel(selectedModel, duplicateModelNames)
+        : getModelLabelFromKey(selectedModelKey),
+    [duplicateModelNames, selectedModel, selectedModelKey],
   );
   const defaultModelKey = useMemo(
     () => getModelSelectionKey(modelSettings?.defaultModel || null),
@@ -152,28 +187,50 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
   }, [config.url]);
 
   useEffect(() => {
-    const nextKey = resolveInitialModelKey({
+    if (!effectiveTaskId || !pendingConversationLaunch || pendingConversationLaunch.taskId) {
+      return;
+    }
+
+    const nextLaunch = {
+      ...pendingConversationLaunch,
+      taskId: effectiveTaskId,
+    };
+    setPendingConversationLaunch(nextLaunch);
+    setPendingConversationLaunchState(nextLaunch);
+  }, [effectiveTaskId, pendingConversationLaunch]);
+
+  useEffect(() => {
+    if (!effectiveTaskId || !pendingLaunchMatchesActiveTask || !hasActiveTaskStatusSnapshot) {
+      return;
+    }
+
+    clearPendingConversationLaunch();
+    setPendingConversationLaunchState(null);
+    clearNewConversationDraft();
+    clearPendingBootstrap();
+  }, [effectiveTaskId, hasActiveTaskStatusSnapshot, pendingLaunchMatchesActiveTask]);
+
+  useEffect(() => {
+    const nextKey = resolveComposerModelKey({
+      effectiveTaskId,
       availableModels,
       defaultModelKey,
       activeTaskModelKey,
+      currentSelectedModelKey: selectedModelKey,
     });
-    if (!nextKey) {
-      return;
-    }
-
     setSelectedModelKey((currentKey) => (currentKey === nextKey ? currentKey : nextKey));
-  }, [activeTaskModelKey, availableModels, defaultModelKey]);
+  }, [activeTaskModelKey, availableModels, defaultModelKey, effectiveTaskId, selectedModelKey]);
 
   useEffect(() => {
-    if (!effectiveTaskId) {
-      setSelectedWorkflowMode((currentMode) => (currentMode === "fast" ? currentMode : "fast"));
+    if (effectiveTaskId) {
       return;
     }
 
-    setSelectedWorkflowMode((currentMode) =>
-      currentMode === activeWorkflowMode ? currentMode : activeWorkflowMode,
-    );
-  }, [activeWorkflowMode, effectiveTaskId]);
+    setNewConversationDraft({
+      selectedModelKey,
+      selectedSkillIds,
+    });
+  }, [effectiveTaskId, selectedModelKey, selectedSkillIds]);
 
   const handleCancelBootstrap = async () => {
     if (!pendingBootstrap) {
@@ -223,28 +280,23 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
               }
             : undefined
         }
-        workflowMode={selectedWorkflowMode}
         onSend={() => {
-          if (!effectiveTaskId && pendingBootstrap) {
-            clearPendingBootstrap();
-          }
           if (!effectiveTaskId) {
-            setSelectedSkillIds([]);
+            const nextPendingLaunch = {
+              selectedModelKey,
+              selectedSkillIds,
+              pendingBootstrap,
+            };
+            setPendingConversationLaunch(nextPendingLaunch);
+            setPendingConversationLaunchState(nextPendingLaunch);
           }
         }}
         bottomAccessory={
           <>
-            <WorkflowModeSwitch
-              mode={selectedWorkflowMode}
-              onChange={(nextMode) => setSelectedWorkflowMode(nextMode)}
-            />
-
             {availableModels.length > 0 ? (
               <label className="relative flex shrink-0 items-center justify-center bg-transparent hover:bg-black/[0.04] rounded-lg px-2 py-1.5 transition-colors cursor-pointer group">
                 <span className="text-[12px] font-medium text-gray-700 mr-1 max-w-[150px] sm:max-w-[200px] truncate pr-1">
-                  {selectedModel
-                    ? getModelOptionLabel(selectedModel, duplicateModelNames)
-                    : "选择模型"}
+                  {selectedModelLabel}
                 </span>
                 <ChevronDown className="h-3.5 w-3.5 text-gray-400 group-hover:text-gray-600" />
                 <select
@@ -255,7 +307,7 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
                   title={
                     selectedModel
                       ? `${selectedModel.model} · ${selectedModel.configId}`
-                      : "选择模型"
+                      : selectedModelLabel
                   }
                 >
                   {availableModels.map((item) => (
@@ -269,6 +321,10 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
                   ))}
                 </select>
               </label>
+            ) : selectedModelKey ? (
+              <div className="flex shrink-0 items-center justify-center rounded-lg px-2 py-1.5 text-[12px] font-medium text-gray-700">
+                {selectedModelLabel}
+              </div>
             ) : (
               <button
                 type="button"
@@ -286,16 +342,16 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
                 disabled
                 className="flex shrink-0 items-center gap-1.5 bg-transparent rounded-lg px-2 py-1.5 text-[12px] font-medium text-gray-400 disabled:cursor-not-allowed"
                 title={
-                  activeTaskContext?.repoUrl
-                    ? `${activeTaskContext.repoUrl}${
-                        activeTaskContext.branch ? ` · ${activeTaskContext.branch}` : ""
+                  displayTaskContext?.repoUrl
+                    ? `${displayTaskContext.repoUrl}${
+                        displayTaskContext.branch ? ` · ${displayTaskContext.branch}` : ""
                       }`
                     : "当前会话未绑定 GitHub 仓库"
                 }
               >
                 <Github className="h-3.5 w-3.5 shrink-0" />
                 <span className="max-w-[150px] truncate">
-                  {activeTaskContext?.repoLabel || "未绑定 GitHub 仓库"}
+                  {displayTaskContext?.repoLabel || "未绑定 GitHub 仓库"}
                 </span>
               </button>
             ) : pendingBootstrap ? (
@@ -325,7 +381,7 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
                 className="flex shrink-0 items-center gap-1.5 bg-transparent hover:bg-black/[0.04] rounded-lg px-2 py-1.5 text-[12px] font-medium text-gray-600 hover:text-gray-800 transition-colors"
               >
                 <Github className="h-3.5 w-3.5 shrink-0" />
-                <span>IDE 背景信息</span>
+                <span>远程仓库</span>
               </button>
             )}
 
@@ -355,8 +411,8 @@ export const AppMessageComposer: React.FC<AppMessageComposerProps> = ({ taskId }
               })}
 
             {effectiveTaskId &&
-              activeSkillIds.length > 0 &&
-              activeSkillIds.map((skillId) => {
+              displaySkillIds.length > 0 &&
+              displaySkillIds.map((skillId) => {
                 const skillName =
                   availableSkills.find((skill) => skill.id === skillId)?.name || skillId;
                 return (
@@ -497,16 +553,30 @@ const getModelOptionLabel = (
     : option.model;
 };
 
-const resolveInitialModelKey = (params: {
+export const resolveComposerModelKey = (params: {
+  effectiveTaskId?: string | null;
   availableModels: ResolvedModelOption[];
   defaultModelKey: string;
   activeTaskModelKey: string;
+  currentSelectedModelKey: string;
 }): string => {
-  if (
-    params.activeTaskModelKey &&
-    params.availableModels.some((item) => getModelOptionKey(item) === params.activeTaskModelKey)
-  ) {
+  const hasModel = (key: string): boolean =>
+    !!key && params.availableModels.some((item) => getModelOptionKey(item) === key);
+
+  if (params.availableModels.length === 0) {
+    if (params.effectiveTaskId && params.activeTaskModelKey) {
+      return params.activeTaskModelKey;
+    }
+
+    return params.currentSelectedModelKey || params.defaultModelKey;
+  }
+
+  if (params.effectiveTaskId && hasModel(params.activeTaskModelKey)) {
     return params.activeTaskModelKey;
+  }
+
+  if (hasModel(params.currentSelectedModelKey)) {
+    return params.currentSelectedModelKey;
   }
 
   if (
@@ -517,6 +587,27 @@ const resolveInitialModelKey = (params: {
   }
 
   return params.availableModels[0] ? getModelOptionKey(params.availableModels[0]) : "";
+};
+
+const getModelLabelFromKey = (modelKey: string): string => {
+  if (!modelKey) {
+    return "选择模型";
+  }
+
+  const [, model] = modelKey.split("::");
+  return model || "选择模型";
+};
+
+const resolvePendingLaunchTaskContext = (
+  pendingLaunch: {
+    pendingBootstrap: GithubBootstrapSummary | null;
+  } | null,
+): TaskGithubContext | null => {
+  if (!pendingLaunch?.pendingBootstrap) {
+    return null;
+  }
+
+  return resolveTaskContext(pendingLaunch.pendingBootstrap);
 };
 
 const ContextUsageRing: React.FC<{ contextUsage: ContextUsageStatus }> = ({ contextUsage }) => {
@@ -564,28 +655,5 @@ const ContextUsageRing: React.FC<{ contextUsage: ContextUsageStatus }> = ({ cont
         />
       </svg>
     </div>
-  );
-};
-
-const WorkflowModeSwitch: React.FC<{
-  mode: WorkflowMode;
-  onChange: (mode: WorkflowMode) => void;
-}> = ({ mode, onChange }) => {
-  const isWorkflow = mode === "phased";
-
-  return (
-    <button
-      type="button"
-      title={isWorkflow ? "当前为工作流模式" : "切换到工作流模式"}
-      onClick={() => onChange(isWorkflow ? "fast" : "phased")}
-      className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px] font-medium transition-colors ${
-        isWorkflow
-          ? "bg-blue-50 text-blue-600 hover:bg-blue-100"
-          : "bg-transparent text-gray-600 hover:bg-black/[0.04]"
-      }`}
-    >
-      <Zap className="h-3.5 w-3.5" />
-      <span>工作流模式</span>
-    </button>
   );
 };

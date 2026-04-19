@@ -332,7 +332,7 @@ describe("Property 5: Message Processing Order", () => {
         type: "tool",
         data: {
           message: JSON.stringify({
-            toolName: "completeTask",
+            toolName: "finishPhase",
             toolCallId: "call-1",
             params: { summary: "done", result: "result" },
           }),
@@ -354,7 +354,7 @@ describe("Property 5: Message Processing Order", () => {
         type: "tool",
         data: {
           message: JSON.stringify({
-            toolName: "completeTask",
+            toolName: "finishPhase",
             toolCallId: "call-1",
             params: { summary: "done", result: "result" },
             result: "final result",
@@ -372,20 +372,20 @@ describe("Property 5: Message Processing Order", () => {
     expect(toolMessages).toHaveLength(1);
     expect(toolMessages[0]).toMatchObject({
       type: "tool",
-      toolName: "completeTask",
+      toolName: "finishPhase",
       toolCallId: "call-1",
       partial: false,
       toolOutput: "final result",
     });
   });
 
-  test("CompleteTask workflow phase is restored from websocketData", () => {
+  test("FinishPhase workflow phase is restored from websocketData", () => {
     const combined = combineMessages([
       {
         type: "tool",
         data: {
           message: JSON.stringify({
-            toolName: "completeTask",
+            toolName: "finishPhase",
             toolCallId: "call-complete-1",
             params: {
               summary: "最终完成",
@@ -408,7 +408,7 @@ describe("Property 5: Message Processing Order", () => {
 
     expect(combined[0]).toMatchObject({
       type: "tool",
-      toolName: "completeTask",
+      toolName: "finishPhase",
       workflowPhase: "complete",
     });
   });

@@ -1,4 +1,4 @@
-import type { WorkflowAgentRole, WorkflowMode, WorkflowPhase, WorkflowState } from "../workflow";
+import type { WorkflowAgentRole, WorkflowPhase, WorkflowState } from "../workflow";
 import type { ToolInterface } from "./index";
 
 /**
@@ -18,8 +18,6 @@ export interface ToolExecutionContext {
   currentPhase?: WorkflowPhase;
   /** 当前工作流运行角色 */
   agentRole?: WorkflowAgentRole;
-  /** 当前工作流模式 */
-  workflowMode?: WorkflowMode;
   /** 获取当前会话的 sandbox（懒加载） */
   getSandbox: () => Promise<unknown>;
   /** 获取语言运行时宿主（懒加载） */

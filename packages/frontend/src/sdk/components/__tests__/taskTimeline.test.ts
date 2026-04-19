@@ -31,7 +31,7 @@ describe("taskTimeline", () => {
       },
       {
         type: "tool",
-        toolName: "completeTask",
+        toolName: "finishPhase",
         workflowPhase: "requirements",
         websocketData: {
           kind: "phase_complete",
@@ -61,7 +61,7 @@ describe("taskTimeline", () => {
       },
       {
         type: "tool",
-        toolName: "completeTask",
+        toolName: "finishPhase",
         workflowPhase: "execution",
         websocketData: {
           kind: "phase_complete",
@@ -93,7 +93,7 @@ describe("taskTimeline", () => {
     expect(timeline.map((node) => node.message)).toEqual(messages);
   });
 
-  it("keeps completeTask visible without folding earlier process output", () => {
+  it("keeps finishPhase visible without folding earlier process output", () => {
     const messages: DisplayMessageType[] = [
       {
         type: "userSendMessage",
@@ -120,7 +120,7 @@ describe("taskTimeline", () => {
       },
       {
         type: "tool",
-        toolName: "completeTask",
+        toolName: "finishPhase",
         workflowPhase: "design",
         websocketData: {
           kind: "phase_complete",
@@ -152,13 +152,13 @@ describe("taskTimeline", () => {
     expect(timeline[4]?.message).toEqual(
       expect.objectContaining({
         type: "tool",
-        toolName: "completeTask",
+        toolName: "finishPhase",
         workflowPhase: "design",
       }),
     );
   });
 
-  it("does not collapse assistant output runs that are not followed by completeTask", () => {
+  it("does not collapse assistant output runs that are not followed by finishPhase", () => {
     const messages: DisplayMessageType[] = [
       {
         type: "message",
@@ -189,7 +189,7 @@ describe("taskTimeline", () => {
     expect(timeline.every((node) => node.kind === "message")).toBe(true);
   });
 
-  it("supports legacy completeTask messages without workflow metadata", () => {
+  it("supports legacy finishPhase messages without workflow metadata", () => {
     const messages: DisplayMessageType[] = [
       {
         type: "message",
@@ -198,7 +198,7 @@ describe("taskTimeline", () => {
       },
       {
         type: "tool",
-        toolName: "completeTask",
+        toolName: "finishPhase",
         params: {
           summary: "最终结果",
           result: "这是最终答复",
@@ -223,7 +223,7 @@ describe("taskTimeline", () => {
     expect(timeline[1]?.message).toEqual(
       expect.objectContaining({
         type: "tool",
-        toolName: "completeTask",
+        toolName: "finishPhase",
       }),
     );
   });

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getTaskListStatusMap } from "../DocSidebar";
+import { getTaskListStatusMap } from "../TaskListDropdown";
 
 describe("getTaskListStatusMap", () => {
   test("returns an empty object when the main task status map is not ready yet", () => {

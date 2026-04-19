@@ -39,7 +39,6 @@ export class CompletionHandler {
       .getAllToolsForWorkflow({
         currentPhase: conversation.currentWorkflowPhase,
         agentRole: conversation.workflowAgentRole,
-        workflowMode: conversation.workflowState.mode,
       })
       .map((tool) => tool.name);
   }
@@ -51,7 +50,6 @@ export class CompletionHandler {
     return buildControllerNoToolRetryMessage({
       phase: conversation.currentWorkflowPhase,
       allowedToolNames,
-      workflowMode: conversation.workflowState?.mode,
       phaseSequence: conversation.workflowState?.phaseSequence,
     });
   }
@@ -70,7 +68,7 @@ export class CompletionHandler {
           content: `上一条回复没有调用任何工具。
 
 你是 execution_worker。下一条回复必须立刻调用工具：
-1. 实现、检查都已完成，且可以提交执行结果：调用 completeTask
+1. 实现、检查都已完成，且可以提交执行结果：调用 finishPhase
 2. 仍需继续实现、读取代码或执行检查：调用当前允许的执行类工具
 
 不要再输出普通文本。
@@ -148,8 +146,8 @@ export class CompletionHandler {
 
     // 根据不同的工具类型处理完成逻辑
     switch (currentTool) {
-      case "completeTask":
-        return this.handleCompleteTask(conversation);
+      case "finishPhase":
+        return this.handleFinishPhase(conversation);
 
       case "message":
         return this.handleMessage(conversation);
@@ -186,10 +184,10 @@ export class CompletionHandler {
   }
 
   /**
-   * 处理 completeTask 工具
+   * 处理 finishPhase 工具
    */
-  private handleCompleteTask(conversation: Conversation): CompletionDecision {
-    const disposition = conversation.consumeLastCompleteTaskDisposition();
+  private handleFinishPhase(conversation: Conversation): CompletionDecision {
+    const disposition = conversation.consumeLastFinishPhaseDisposition();
     if (disposition === "phase_advanced") {
       logger.info(`[CompletionHandler] 会话 ${conversation.id} 已完成当前阶段，继续进入下一阶段`);
       conversation.setWorkflowState(conversation.workflowState, {
@@ -200,18 +198,18 @@ export class CompletionHandler {
       return continueDecision();
     }
 
-    logger.info("\n任务已完成（completeTask）。");
+    logger.info("\n任务已完成（finishPhase）。");
     conversation.status = "completed";
 
     // 广播 conversationOver
     broadcaster.broadcastConversation(conversation, {
       type: "conversationOver",
       data: {
-        reason: "completeTask",
+        reason: "finishPhase",
       },
     });
 
-    logger.info(`[CompletionHandler] 会话 ${conversation.id} 已通过 completeTask 完成`);
+    logger.info(`[CompletionHandler] 会话 ${conversation.id} 已通过 finishPhase 完成`);
     conversation.userInput = "";
     return stopDecision();
   }

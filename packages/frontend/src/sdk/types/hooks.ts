@@ -7,7 +7,6 @@ import type {
   UserMessageAttachment,
   UserSendMessageData,
   WebSocketMessage,
-  WorkflowMode,
   WorkflowState,
 } from "@amigo-llm/types";
 import type { DisplayMessageType } from "../messages/types";
@@ -111,14 +110,12 @@ export interface UseSendMessageReturn {
     taskId?: string,
     attachments?: UserMessageAttachment[],
     modelConfigSnapshot?: UserSendMessageData<"userSendMessage">["modelConfigSnapshot"],
-    workflowMode?: WorkflowMode,
   ) => void;
   sendCreateTask: (
     message: string,
     attachments?: UserMessageAttachment[],
     context?: unknown,
     modelConfigSnapshot?: UserSendMessageData<"createTask">["modelConfigSnapshot"],
-    workflowMode?: WorkflowMode,
   ) => void;
   sendInterrupt: (taskId?: string) => void;
   sendResume: (

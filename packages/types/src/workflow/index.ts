@@ -21,10 +21,6 @@ export const workflowAgentRoleValues = [
 export const WorkflowAgentRoleSchema = z.enum(workflowAgentRoleValues);
 export type WorkflowAgentRole = z.infer<typeof WorkflowAgentRoleSchema>;
 
-export const workflowModeValues = ["phased", "fast"] as const;
-export const WorkflowModeSchema = z.enum(workflowModeValues);
-export type WorkflowMode = z.infer<typeof WorkflowModeSchema>;
-
 export const workflowPhaseStatusValues = [
   "pending",
   "in_progress",
@@ -73,7 +69,6 @@ export type WorkflowDesignExecutionHandoff = z.infer<typeof WorkflowDesignExecut
 export const WorkflowStateSchema = z.object({
   currentPhase: WorkflowPhaseSchema,
   agentRole: WorkflowAgentRoleSchema,
-  mode: WorkflowModeSchema.optional(),
   phaseSequence: z.array(WorkflowPhaseSchema).optional(),
   visitedPhases: z.array(WorkflowPhaseSchema),
   skippedPhases: z.array(WorkflowSkipRecordSchema),

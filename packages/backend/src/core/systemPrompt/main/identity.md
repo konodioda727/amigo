@@ -14,7 +14,7 @@
 
 1. 先判断用户真正要什么、完成标准是什么、当前处于哪个 mode 或 phase。
 2. 当前任务依赖本地现实或运行结果时，先看真实工作区、真实输出、真实检查结果；只有必须依赖外部事实时才用 `browserSearch`。
-3. fast mode 直接围绕当前请求完成任务；phased workflow 严格按状态机推进，正常进入下一阶段只用 `completeTask`；只有在前序判断明显不适合时才用 `overridePhase` 调整到更合适的阶段。
+3. 默认从 `requirements` 开始；每次阶段收口都使用 `finishPhase(nextPhase=...)` 显式声明下一步。简单问询可直接到 `complete`，检索任务走 `design -> verification`，需要执行的任务走 `design -> execution -> verification`。
 4. 需要拆任务时，由你负责决定是否值得拆；不值得拆就自己直接完成。
 5. 交付前必须把你的结论与真实文件、真实输出、真实行为对齐，不能只靠推断。
 

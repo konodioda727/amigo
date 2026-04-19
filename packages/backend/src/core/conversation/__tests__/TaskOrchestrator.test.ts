@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { logger } from "@/utils/logger";
 import { conversationRepository } from "../ConversationRepository";
+import { broadcaster } from "../lifecycle/WebSocketBroadcaster";
 import {
   conversationOrchestrator,
   resolveObservedExecutionTaskStatus,
@@ -16,26 +17,33 @@ mock.module("@/utils/logger", () => ({
   },
 }));
 
-mock.module("@/core/conversation/ConversationRepository", () => ({
-  conversationRepository: {
-    get: mock(),
-    getAll: mock(),
-  },
-}));
+const broadcast = mock();
+const broadcastConversation = mock();
+const getAll = mock(() => []);
 
-mock.module("@/core/conversation/lifecycle/WebSocketBroadcaster", () => ({
-  broadcaster: {
-    broadcast: mock(),
-    broadcastConversation: mock(),
-  },
-}));
+const originalGetAll = conversationRepository.getAll.bind(conversationRepository);
+const originalBroadcast = broadcaster.broadcast.bind(broadcaster);
+const originalBroadcastConversation = broadcaster.broadcastConversation.bind(broadcaster);
 
 describe("ConversationOrchestrator Interrupt Logic", () => {
   beforeEach(() => {
     // Reset mocks
     (logger.info as any).mockClear();
-    (conversationRepository.getAll as any).mockReturnValue([]);
+    getAll.mockReset();
+    getAll.mockReturnValue([]);
+    broadcast.mockClear();
+    broadcastConversation.mockClear();
+    conversationRepository.getAll = getAll as typeof conversationRepository.getAll;
+    broadcaster.broadcast = broadcast as typeof broadcaster.broadcast;
+    broadcaster.broadcastConversation =
+      broadcastConversation as typeof broadcaster.broadcastConversation;
     (conversationOrchestrator as any).executors.clear();
+  });
+
+  afterEach(() => {
+    conversationRepository.getAll = originalGetAll;
+    broadcaster.broadcast = originalBroadcast;
+    broadcaster.broadcastConversation = originalBroadcastConversation;
   });
 
   it("should not interrupt if status is aborted", () => {
@@ -98,7 +106,7 @@ describe("ConversationOrchestrator Interrupt Logic", () => {
         addWebsocketMessage: mock(),
       },
     } as any;
-    (conversationRepository.getAll as any).mockReturnValue([child]);
+    getAll.mockReturnValue([child]);
 
     const conversation = {
       id: "parent-idle",

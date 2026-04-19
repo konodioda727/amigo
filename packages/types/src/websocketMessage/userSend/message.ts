@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { WorkflowModeSchema } from "../../workflow";
 import { ResolvedModelConfigSnapshotSchema } from "./modelConfigSnapshot";
 
 export const UserMessageAttachmentKindSchema = z.enum(["image", "video", "audio", "file"]);
@@ -23,6 +22,5 @@ export const UserSendMessageSchema = z.object({
     taskId: z.string(),
     attachments: z.array(UserMessageAttachmentSchema).optional(),
     modelConfigSnapshot: ResolvedModelConfigSnapshotSchema.optional(),
-    workflowMode: WorkflowModeSchema.optional(),
   }),
 });

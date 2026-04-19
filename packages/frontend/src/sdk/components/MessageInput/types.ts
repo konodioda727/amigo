@@ -1,4 +1,4 @@
-import type { UserSendMessageData, WorkflowMode } from "@amigo-llm/types";
+import type { UserSendMessageData } from "@amigo-llm/types";
 import type { ReactNode } from "react";
 
 export interface MessageInputProps {
@@ -10,7 +10,6 @@ export interface MessageInputProps {
   modelConfigSnapshot?:
     | UserSendMessageData<"createTask">["modelConfigSnapshot"]
     | UserSendMessageData<"userSendMessage">["modelConfigSnapshot"];
-  workflowMode?: WorkflowMode;
   disabled?: boolean;
   showMentions?: boolean;
   bottomAccessory?: ReactNode;

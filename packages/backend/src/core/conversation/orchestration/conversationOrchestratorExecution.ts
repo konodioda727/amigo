@@ -61,14 +61,12 @@ const getDesignHistoryEndIndex = (
     : messages.length;
 };
 
-const isCompleteTaskToolMessage = (
-  message: Conversation["memory"]["messages"][number],
-): boolean => {
+const isFinishPhaseToolMessage = (message: Conversation["memory"]["messages"][number]): boolean => {
   if (message.type !== "tool" || typeof message.content !== "string") {
     return false;
   }
 
-  return message.content.includes('"toolName":"completeTask"');
+  return message.content.includes('"toolName":"finishPhase"');
 };
 
 const shouldInheritParentHistoryMessage = (
@@ -86,7 +84,7 @@ const shouldInheritParentHistoryMessage = (
     return false;
   }
 
-  if (isCompleteTaskToolMessage(message)) {
+  if (isFinishPhaseToolMessage(message)) {
     return false;
   }
 

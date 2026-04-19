@@ -1,5 +1,5 @@
-import type { UserMessageAttachment, WorkflowMode } from "@amigo-llm/types";
-import { createFastWorkflowState, createWorkflowState } from "@/core/workflow";
+import type { UserMessageAttachment } from "@amigo-llm/types";
+import { createWorkflowState } from "@/core/workflow";
 import { getGlobalState } from "@/globalState";
 import { logger } from "@/utils/logger";
 import type { Conversation } from "../Conversation";
@@ -17,67 +17,14 @@ const shouldRestartWorkflowCycle = (conversation: Conversation): boolean =>
   conversation.status === "completed" &&
   conversation.currentWorkflowPhase === "complete";
 
-const FAST_MODE_PATTERNS = [/快速模式/i, /fast\s*mode/i, /quick\s*mode/i, /直达模式/i];
-
-const PHASED_MODE_PATTERNS = [
-  /工作流模式/i,
-  /标准模式/i,
-  /spec\s*mode/i,
-  /退出快速模式/i,
-  /切回工作流/i,
-];
-
-const detectWorkflowModeDirective = (message: string): "fast" | "phased" | null => {
-  if (FAST_MODE_PATTERNS.some((pattern) => pattern.test(message))) {
-    return "fast";
-  }
-
-  if (PHASED_MODE_PATTERNS.some((pattern) => pattern.test(message))) {
-    return "phased";
-  }
-
-  return null;
-};
-
 const resolveNextMainWorkflowState = async (
   conversation: Conversation,
   message: string,
   _attachments?: UserMessageAttachment[],
-  preferredWorkflowMode?: WorkflowMode,
   options?: {
     allowRouteReclassification?: boolean;
   },
 ) => {
-  if (preferredWorkflowMode === "fast") {
-    if (
-      options?.allowRouteReclassification === false &&
-      conversation.workflowState.mode === "fast"
-    ) {
-      return null;
-    }
-    return createFastWorkflowState();
-  }
-
-  if (preferredWorkflowMode === "phased") {
-    if (
-      options?.allowRouteReclassification === false &&
-      conversation.workflowState.mode === "phased"
-    ) {
-      return null;
-    }
-    return createWorkflowState();
-  }
-
-  const modeDirective = detectWorkflowModeDirective(message);
-
-  if (modeDirective === "fast") {
-    return createFastWorkflowState();
-  }
-
-  if (modeDirective === "phased") {
-    return createWorkflowState();
-  }
-
   if (options?.allowRouteReclassification === false) {
     return null;
   }
@@ -89,7 +36,6 @@ const restartMainTaskWorkflowIfNeeded = async (
   conversation: Conversation,
   message: string,
   attachments?: UserMessageAttachment[],
-  preferredWorkflowMode?: WorkflowMode,
 ): Promise<void> => {
   if (!isMainControllerConversation(conversation)) {
     return;
@@ -103,7 +49,7 @@ const restartMainTaskWorkflowIfNeeded = async (
     `[ConversationOrchestrator] taskId=${conversation.id} 已完成，收到新用户输入后重启新一轮主工作流`,
   );
   const nextWorkflowState =
-    (await resolveNextMainWorkflowState(conversation, message, attachments, preferredWorkflowMode, {
+    (await resolveNextMainWorkflowState(conversation, message, attachments, {
       allowRouteReclassification: true,
     })) ||
     createWorkflowState({
@@ -119,19 +65,17 @@ export const setConversationUserInput = async (
   conversation: Conversation,
   message: string,
   attachments?: UserMessageAttachment[],
-  preferredWorkflowMode?: WorkflowMode,
 ): Promise<void> => {
   logger.info(
     `[ConversationOrchestrator] setUserInput - taskId: ${conversation.id}, message: ${message}, attachments: ${attachments?.length || 0}`,
   );
-  await restartMainTaskWorkflowIfNeeded(conversation, message, attachments, preferredWorkflowMode);
+  await restartMainTaskWorkflowIfNeeded(conversation, message, attachments);
 
   if (isMainControllerConversation(conversation) && !shouldRestartWorkflowCycle(conversation)) {
     const nextWorkflowState = await resolveNextMainWorkflowState(
       conversation,
       message,
       attachments,
-      preferredWorkflowMode,
       { allowRouteReclassification: false },
     );
     if (nextWorkflowState) {
@@ -176,7 +120,6 @@ export const setConversationUserInput = async (
       attachments,
       updateTime: Date.now(),
       taskId: conversation.id,
-      workflowMode: preferredWorkflowMode,
     },
   };
   conversation.memory.addWebsocketMessage(wsMessage);

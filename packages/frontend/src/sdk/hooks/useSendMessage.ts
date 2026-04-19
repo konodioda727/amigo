@@ -3,14 +3,13 @@ import type {
   UserMessageAttachment,
   UserSendMessageData,
   WebSocketMessage,
-  WorkflowMode,
 } from "@amigo-llm/types";
 import { useCallback } from "react";
 import { useWebSocketContext } from "../context/WebSocketContext";
 import type { UseSendMessageReturn } from "../types/hooks";
 
 const getConfirmOptimisticStatus = (toolName?: string): "idle" | "streaming" =>
-  toolName === "completeTask" ? "idle" : "streaming";
+  toolName === "finishPhase" ? "idle" : "streaming";
 
 /**
  * Hook to send messages to the WebSocket server.
@@ -74,7 +73,6 @@ export function useSendMessage(): UseSendMessageReturn {
       taskId?: string,
       attachments?: UserMessageAttachment[],
       modelConfigSnapshot?: UserSendMessageData<"userSendMessage">["modelConfigSnapshot"],
-      workflowMode?: WorkflowMode,
     ) => {
       let effectiveTaskId = resolveTaskId(taskId);
 
@@ -91,7 +89,6 @@ export function useSendMessage(): UseSendMessageReturn {
           taskId: effectiveTaskId,
           attachments,
           modelConfigSnapshot,
-          workflowMode,
         },
       });
     },
@@ -107,7 +104,6 @@ export function useSendMessage(): UseSendMessageReturn {
       attachments?: UserMessageAttachment[],
       context?: unknown,
       modelConfigSnapshot?: UserSendMessageData<"createTask">["modelConfigSnapshot"],
-      workflowMode?: WorkflowMode,
     ) => {
       sendWsMessage("", {
         type: "createTask",
@@ -116,7 +112,6 @@ export function useSendMessage(): UseSendMessageReturn {
           attachments,
           context,
           modelConfigSnapshot,
-          workflowMode,
         },
       });
     },

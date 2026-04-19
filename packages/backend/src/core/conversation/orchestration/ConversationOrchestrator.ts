@@ -1,4 +1,4 @@
-import type { UserMessageAttachment, WorkflowMode } from "@amigo-llm/types";
+import type { UserMessageAttachment } from "@amigo-llm/types";
 import type { Conversation } from "../Conversation";
 import { ConversationExecutor } from "../lifecycle/ConversationExecutor";
 import {
@@ -47,9 +47,8 @@ export class ConversationOrchestrator {
     conversation: Conversation,
     message: string,
     attachments?: UserMessageAttachment[],
-    workflowMode?: WorkflowMode,
   ): Promise<void> {
-    await setConversationUserInput(conversation, message, attachments, workflowMode);
+    await setConversationUserInput(conversation, message, attachments);
   }
 
   interrupt(conversation: Conversation): void {

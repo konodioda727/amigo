@@ -6,15 +6,9 @@ import { filterToolsForWorkflow, isToolAllowedForWorkflow } from "../workflow";
 import { buildToolParametersSchema, normalizeToolCallParams } from "./toolParams";
 
 type GenericTool = ToolInterface<any>;
-type WorkflowToolScope = Pick<ToolExecutionContext, "currentPhase" | "agentRole"> & {
-  workflowMode?: ToolExecutionContext["workflowMode"];
-};
+type WorkflowToolScope = Pick<ToolExecutionContext, "currentPhase" | "agentRole">;
 
-const TOOL_NAME_ALIASES: Record<string, string> = {
-  changePhase: "overridePhase",
-};
-
-const resolveToolName = (toolName: string): string => TOOL_NAME_ALIASES[toolName] || toolName;
+const resolveToolName = (toolName: string): string => toolName;
 
 const getToolParameterDefinitions = (tool: GenericTool, _scope?: WorkflowToolScope) => {
   return tool.params;
@@ -44,11 +38,11 @@ const buildWorkflowToolBlockedMessage = ({
     context.agentRole === "controller" &&
     context.currentPhase &&
     ["requirements", "design", "execution", "verification"].includes(context.currentPhase) &&
-    toolName !== "completeTask"
+    toolName !== "finishPhase"
   ) {
     const transitionHint = nextPhase
-      ? `如果你判断当前阶段已经完成，请调用 completeTask 结束当前阶段，进入 ${nextPhase} 后再继续。`
-      : "如果你判断当前阶段已经完成，请调用 completeTask 推进 workflow。";
+      ? `调用 finishPhase 并显式填写 nextPhase=${nextPhase}，进入 ${nextPhase} 后再继续。`
+      : "调用 finishPhase 并显式填写 nextPhase。";
     return `工具 '${toolName}' 在当前 workflow 阶段/角色不可用。${details}。请先完成当前阶段要求的工作；如果你判断当前阶段已经完成，${transitionHint}`;
   }
 
@@ -219,7 +213,6 @@ export class ToolService {
         !isToolAllowedForWorkflow(tool, {
           currentPhase: context.currentPhase,
           agentRole: context.agentRole,
-          workflowMode: context.workflowMode,
         })
       ) {
         const errorMsg = buildWorkflowToolBlockedMessage({
@@ -227,7 +220,6 @@ export class ToolService {
           context: {
             currentPhase: context.currentPhase,
             agentRole: context.agentRole,
-            workflowMode: context.workflowMode,
           },
         });
         return {

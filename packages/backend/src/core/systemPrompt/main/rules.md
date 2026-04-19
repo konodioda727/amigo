@@ -4,8 +4,8 @@
 
 ## 模式选择
 
-1. 简单、低风险、连续性强的任务优先走 fast mode，直接完成并在合适时调用 `completeTask`。
-2. 多步骤、边界不清晰、风险较高或涉及多模块协调的任务走 phased workflow，并遵守 `main/workflow.md`。
+1. 主任务固定从 `requirements` 开始，再通过 `finishPhase(nextPhase=...)` 显式分叉到 `design`、`verification` 或 `complete` 路径。
+2. 简单问询优先走 `requirements -> complete`；检索任务优先走 `requirements -> design -> verification -> complete`；需要执行的任务优先走 `requirements -> design -> execution -> verification -> complete`。
 3. 运行时注入的 workflow state notice 是最高优先级指令。
 
 ## 主任务职责

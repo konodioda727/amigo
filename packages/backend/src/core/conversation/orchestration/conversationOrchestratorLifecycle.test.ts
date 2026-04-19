@@ -205,7 +205,7 @@ describe("setConversationUserInput workflow restart", () => {
     expect(conversation.userInput).toBe("顺手把前端那个样式也一起修掉并回归验证");
   });
 
-  it("does not reset an in-progress phased workflow when the frontend resends the same workflowMode", async () => {
+  it("does not reset an in-progress workflow while the current turn is still active", async () => {
     const conversation = Conversation.create({
       id: "task-restart-workflow",
       toolService: new ToolService([], []),
@@ -213,7 +213,6 @@ describe("setConversationUserInput workflow restart", () => {
       workflowState: {
         currentPhase: "execution",
         agentRole: "controller",
-        mode: "phased",
         phaseSequence: ["requirements", "design", "execution", "verification", "complete"],
         visitedPhases: ["requirements", "design", "execution"],
         skippedPhases: [],
@@ -229,10 +228,9 @@ describe("setConversationUserInput workflow restart", () => {
     conversation.status = "idle";
     conversationRepository.save(conversation);
 
-    await setConversationUserInput(conversation, "继续把剩下的问题修完", undefined, "phased");
+    await setConversationUserInput(conversation, "继续把剩下的问题修完");
 
     expect(conversation.currentWorkflowPhase).toBe("execution");
-    expect(conversation.workflowState.mode).toBe("phased");
     expect(conversation.workflowState.phaseSequence).toEqual([
       "requirements",
       "design",
@@ -251,7 +249,6 @@ describe("setConversationUserInput workflow restart", () => {
       workflowState: {
         currentPhase: "complete",
         agentRole: "controller",
-        mode: "phased",
         phaseSequence: ["requirements", "design", "execution", "verification", "complete"],
         visitedPhases: ["requirements", "design", "execution", "verification", "complete"],
         skippedPhases: [],
@@ -281,7 +278,7 @@ describe("setConversationUserInput workflow restart", () => {
       role: "assistant",
       content: JSON.stringify({
         kind: "assistant_tool_call",
-        toolName: "completeTask",
+        toolName: "finishPhase",
         arguments: {
           summary: "旧任务已完成",
           result: "交付结果",
@@ -294,7 +291,7 @@ describe("setConversationUserInput workflow restart", () => {
       role: "user",
       content: JSON.stringify({
         kind: "tool_result",
-        toolName: "completeTask",
+        toolName: "finishPhase",
         result: "交付结果",
         summary: "旧任务已完成",
       }),
@@ -311,7 +308,7 @@ describe("setConversationUserInput workflow restart", () => {
       type: "tool",
       data: {
         message: JSON.stringify({
-          toolName: "completeTask",
+          toolName: "finishPhase",
           params: {
             summary: "旧任务已完成",
             result: "交付结果",
@@ -349,33 +346,5 @@ describe("setConversationUserInput workflow restart", () => {
       },
     ]);
     expect(conversation.workflowState.completionSeedState?.sourceMessageCount).toBe(6);
-  });
-
-  it("switches a new turn into fast mode when the user asks for it", async () => {
-    const conversation = Conversation.create({
-      id: "task-restart-workflow",
-      toolService: new ToolService([], []),
-      llm: {} as unknown as AmigoLlm,
-    });
-
-    await setConversationUserInput(conversation, "用快速模式直接处理这个问题");
-
-    expect(conversation.workflowState.mode).toBe("fast");
-    expect(conversation.currentWorkflowPhase).toBe("complete");
-    expect(conversation.workflowState.phaseSequence).toEqual(["complete"]);
-  });
-
-  it("switches workflow mode from explicit message metadata", async () => {
-    const conversation = Conversation.create({
-      id: "task-explicit-workflow-mode",
-      toolService: new ToolService([], []),
-      llm: {} as unknown as AmigoLlm,
-    });
-
-    await setConversationUserInput(conversation, "继续处理", undefined, "fast");
-
-    expect(conversation.workflowState.mode).toBe("fast");
-    expect(conversation.currentWorkflowPhase).toBe("complete");
-    expect(conversation.workflowState.phaseSequence).toEqual(["complete"]);
   });
 });

@@ -4,23 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { setGlobalState } from "@/globalState";
 
-const conversationGet = mock(() => undefined);
-const conversationLoad = mock(() => undefined);
 const persistenceLoad = mock((_taskId: string): Record<string, unknown> | null => null);
 let tempCacheRoot = "";
-
-mock.module("@/core/conversation", () => ({
-  conversationRepository: {
-    get: conversationGet,
-    load: conversationLoad,
-  },
-}));
-
-mock.module("@/core/persistence", () => ({
-  getConversationPersistenceProvider: () => ({
-    load: persistenceLoad,
-  }),
-}));
 
 import { getGithubSandboxBindingForTask } from "./bootstrap";
 
@@ -28,11 +13,20 @@ describe("getGithubSandboxBindingForTask", () => {
   beforeEach(() => {
     tempCacheRoot = mkdtempSync(path.join(os.tmpdir(), "amigo-github-cache-"));
     setGlobalState("globalCachePath", tempCacheRoot);
+    setGlobalState("conversationPersistenceProvider", {
+      exists: () => false,
+      load: persistenceLoad,
+      save: () => true,
+      delete: () => true,
+      listConversationRelations: () => [],
+      listSessionHistories: () => [],
+    });
     persistenceLoad.mockReset();
   });
 
   afterEach(() => {
     rmSync(tempCacheRoot, { recursive: true, force: true });
+    setGlobalState("conversationPersistenceProvider", undefined);
   });
 
   it("returns repoUrl alongside mirror binding data", async () => {

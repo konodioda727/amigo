@@ -692,7 +692,7 @@ describe("SdkMemoryRuntime", () => {
         {
           role: "assistant",
           type: "tool",
-          content: '{"toolName":"completeTask","result":"foo"}',
+          content: '{"toolName":"finishPhase","result":"foo"}',
           partial: false,
           updateTime: Date.now(),
         } as ChatMessage,

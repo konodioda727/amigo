@@ -148,7 +148,7 @@ describe("ToolExecutor", () => {
     expect(String(addMessage.mock.calls[1]?.[0]?.content)).not.toContain("transport content");
   });
 
-  it("stores execution-worker completeTask history as transcript messages", async () => {
+  it("stores execution-worker finishPhase history as transcript messages", async () => {
     const executor = new ToolExecutor();
     const addMessage = mock();
     const addWebsocketMessage = mock();
@@ -186,7 +186,7 @@ describe("ToolExecutor", () => {
     await executor.executeToolCall(
       conversation,
       {
-        name: "completeTask",
+        name: "finishPhase",
         arguments: {
           summary: "修复已完成",
           result:
@@ -201,7 +201,7 @@ describe("ToolExecutor", () => {
     expect(String(addMessage.mock.calls[0]?.[0]?.content)).toContain(
       '"kind":"assistant_tool_call"',
     );
-    expect(String(addMessage.mock.calls[0]?.[0]?.content)).toContain('"toolName":"completeTask"');
+    expect(String(addMessage.mock.calls[0]?.[0]?.content)).toContain('"toolName":"finishPhase"');
     expect(String(addMessage.mock.calls[0]?.[0]?.content)).toContain('"summary":"修复已完成"');
     expect(String(addMessage.mock.calls[1]?.[0]?.content)).toContain('"kind":"tool_result"');
     expect(String(addMessage.mock.calls[1]?.[0]?.content)).toContain('"summary":"执行完成"');
@@ -249,7 +249,7 @@ describe("ToolExecutor", () => {
     await executor.executeToolCall(
       conversation,
       {
-        name: "completeTask",
+        name: "finishPhase",
         arguments: {
           summary: "需求已拆解完成",
           result: "需求文档已完成，下一步进入 discovery。",

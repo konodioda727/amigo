@@ -25,7 +25,7 @@ describe("handleTaskDeleted", () => {
         type: "taskDeleted",
         data: {
           taskId: "task-main",
-          deletedSubTaskIds: ["task-child"],
+          deletedChildTaskIds: ["task-child"],
         },
       } as WebSocketMessage<"taskDeleted">,
       store.getState(),

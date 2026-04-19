@@ -17,10 +17,10 @@ export type TaskExecutionReviewResult = {
 const buildVerificationFeedback = (feedback?: string) => {
   const normalized = feedback?.trim();
   if (!normalized) {
-    return "自动审阅未通过。请根据当前任务要求补齐问题后重新提交 completeTask。";
+    return "自动审阅未通过。请根据当前任务要求补齐问题后重新提交 finishPhase。";
   }
 
-  return `自动审阅未通过，请按以下意见修改后重新提交 completeTask：\n\n${normalized}`;
+  return `自动审阅未通过，请按以下意见修改后重新提交 finishPhase：\n\n${normalized}`;
 };
 
 export const applyTaskExecutionReview = async ({
@@ -69,7 +69,7 @@ export const applyTaskExecutionReview = async ({
       success: false,
       status: "error",
       executionTaskId,
-      message: `执行任务 ${executionTaskId} 当前没有可审阅的 completeTask 结果`,
+      message: `执行任务 ${executionTaskId} 当前没有可审阅的 finishPhase 结果`,
     };
   }
 

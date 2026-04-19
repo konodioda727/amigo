@@ -2,11 +2,11 @@ import { AlertCircle } from "lucide-react";
 import type React from "react";
 import { Streamdown } from "streamdown";
 import type { ToolMessageRendererProps } from "../../../types/renderers";
-import { COMPLETE_TASK_PHASE_TITLES } from "../../taskTimeline";
+import { FINISH_PHASE_TITLES } from "../../taskTimeline";
 import { prepareStreamdownContent } from "../streamdownContent";
 import { ToolAccordion } from "./ToolAccordion";
 
-const getPreviewContent = (message: ToolMessageRendererProps<"completeTask">["message"]) => {
+const getPreviewContent = (message: ToolMessageRendererProps<"finishPhase">["message"]) => {
   const summary = typeof message.params?.summary === "string" ? message.params.summary : "";
   const result = typeof message.params?.result === "string" ? message.params.result : "";
   const achievements =
@@ -22,7 +22,7 @@ const getPreviewContent = (message: ToolMessageRendererProps<"completeTask">["me
   };
 };
 
-export const CompleteTaskResultBody: React.FC<ToolMessageRendererProps<"completeTask">> = ({
+export const FinishPhaseResultBody: React.FC<ToolMessageRendererProps<"finishPhase">> = ({
   message,
 }) => {
   const { summary, result, achievements, usage, hasPreview } = getPreviewContent(message);
@@ -56,10 +56,8 @@ export const CompleteTaskResultBody: React.FC<ToolMessageRendererProps<"complete
   );
 };
 
-const getCompleteTaskTitle = (message: ToolMessageRendererProps<"completeTask">["message"]) => {
-  const phaseTitle = message.workflowPhase
-    ? COMPLETE_TASK_PHASE_TITLES[message.workflowPhase]
-    : null;
+const getFinishPhaseTitle = (message: ToolMessageRendererProps<"finishPhase">["message"]) => {
+  const phaseTitle = message.workflowPhase ? FINISH_PHASE_TITLES[message.workflowPhase] : null;
 
   if (message.partial === true) {
     return phaseTitle ? `正在完成${phaseTitle}` : "正在完成任务";
@@ -72,7 +70,7 @@ const getCompleteTaskTitle = (message: ToolMessageRendererProps<"completeTask">[
   return phaseTitle ? `${phaseTitle}已完成` : "完成任务";
 };
 
-export const CompleteTaskTextNode: React.FC<ToolMessageRendererProps<"completeTask">> = ({
+export const FinishPhaseTextNode: React.FC<ToolMessageRendererProps<"finishPhase">> = ({
   message,
 }) => {
   if (message.hasError && message.error) {
@@ -87,13 +85,13 @@ export const CompleteTaskTextNode: React.FC<ToolMessageRendererProps<"completeTa
   return (
     <div className="group -mb-5 max-w-[85%] text-neutral-900">
       <div className="break-words overflow-hidden px-1">
-        <CompleteTaskResultBody message={message} isLatest={false} />
+        <FinishPhaseResultBody message={message} isLatest={false} />
       </div>
     </div>
   );
 };
 
-export const DefaultCompleteTaskRenderer: React.FC<ToolMessageRendererProps<"completeTask">> = ({
+export const DefaultFinishPhaseRenderer: React.FC<ToolMessageRendererProps<"finishPhase">> = ({
   message,
 }) => {
   const { toolOutput, error, hasError, partial } = message;
@@ -102,19 +100,19 @@ export const DefaultCompleteTaskRenderer: React.FC<ToolMessageRendererProps<"com
   const isLoading = partial === true;
 
   if (message.workflowPhase === "complete") {
-    return <CompleteTaskTextNode message={message} isLatest={false} />;
+    return <FinishPhaseTextNode message={message} isLatest={false} />;
   }
 
   return (
     <ToolAccordion
-      title={getCompleteTaskTitle(message)}
+      title={getFinishPhaseTitle(message)}
       isLoading={isLoading}
       hasError={hasError}
       error={error}
     >
       {(isCompleted || hasPreview) && (
         <div className="text-sm">
-          <CompleteTaskResultBody message={message} isLatest={false} />
+          <FinishPhaseResultBody message={message} isLatest={false} />
         </div>
       )}
     </ToolAccordion>

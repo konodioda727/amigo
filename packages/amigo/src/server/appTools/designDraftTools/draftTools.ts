@@ -335,7 +335,7 @@ ${themeTokenLines}
 
 如果本条消息附带了图片，请优先基于图片评审；如果没有图片，则退回基于 HTML 和布局/主题摘要评审。
 
-你必须调用 completeTask，并在 result 的 "## 交付物" 小节里输出一个 JSON code block，结构严格如下：
+你必须调用 finishPhase，并在 result 的 "## 交付物" 小节里输出一个 JSON code block，结构严格如下：
 \`\`\`json
 {
   "summary": "整体评审摘要",

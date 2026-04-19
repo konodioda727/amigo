@@ -4,9 +4,8 @@ import type { WorkflowPromptScope } from "../workflow";
 import { AskFollowupQuestions } from "./askFollowupQuestions";
 import { Bash } from "./bash";
 import { BrowserSearch } from "./browserSearch";
-import { OverridePhase } from "./changePhase";
-import { CompleteTask } from "./completeTask";
 import { EditFile } from "./editFile";
+import { FinishPhase } from "./finishPhase";
 import { ListFiles } from "./listFiles";
 import { ReadFile } from "./readFile";
 import { createReadRulesTool, READ_RULES_TOOL_NAME } from "./readRules";
@@ -19,8 +18,7 @@ type GenericTool = ToolInterface<any>;
 
 export const DEFAULT_CONTROLLER_BASIC_TOOLS: GenericTool[] = [
   AskFollowupQuestions,
-  CompleteTask,
-  OverridePhase,
+  FinishPhase,
   BrowserSearch,
   EditFile,
   ListFiles,
@@ -36,7 +34,7 @@ export const DEFAULT_WORKER_BASIC_TOOLS: GenericTool[] = [
   ListFiles,
   ReadFile,
   Bash,
-  CompleteTask,
+  FinishPhase,
   SubmitTaskReview,
   UpdateDevServer,
 ];
@@ -55,8 +53,7 @@ export const CUSTOMED_TOOLS: GenericTool[] = [];
 export {
   ToolService,
   AskFollowupQuestions,
-  CompleteTask,
-  OverridePhase,
+  FinishPhase,
   BrowserSearch,
   EditFile,
   ListFiles,

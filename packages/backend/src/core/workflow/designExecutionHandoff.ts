@@ -92,7 +92,7 @@ export const parseDesignExecutionHandoff = ({
     return {
       ok: false,
       errors: [
-        `design 阶段的 completeTask.result 缺少必填章节：${missingSections
+        `design 阶段的 finishPhase.result 缺少必填章节：${missingSections
           .map((section) => `## ${section}`)
           .join("、")}。`,
       ],

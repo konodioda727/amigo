@@ -2,7 +2,7 @@ import { getGlobalState } from "@/globalState";
 
 export const DEFAULT_AUTO_APPROVE_TOOL_NAMES = [
   "askFollowupQuestion",
-  "completeTask",
+  "finishPhase",
   "browserSearch",
   "readRules",
   "readSkillBundle",

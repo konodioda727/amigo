@@ -77,7 +77,7 @@ export interface GlobalStateType {
   }) => void | Promise<void>;
   /** 在 createTask 真正创建会话前解析任务配置 */
   createTaskConfigResolver?: CreateTaskConfigResolver;
-  /** 执行子会话 completeTask 扩展校验 hook */
+  /** 执行子会话 finishPhase 扩展校验 hook */
   taskExecutionCompletionValidator?: (
     payload: TaskExecutionCompletionValidationHookPayload,
   ) => TaskExecutionValidationResult | Promise<TaskExecutionValidationResult>;

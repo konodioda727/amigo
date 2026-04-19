@@ -221,8 +221,12 @@ describe("buildSubAgentPrompt", () => {
     expect(prompt).toContain("小步快跑、边改边验");
     expect(prompt).toContain("足以确定下一步修改动作");
     expect(prompt).toContain("不要回退去读 `build/` 产物");
-    expect(prompt).toContain("让 controller 决定是否 `overridePhase` 回到 design");
+    expect(prompt).toContain("让 controller 通过 `finishPhase(nextPhase=design)` 回到 design");
     expect(prompt).toContain("## 交付物");
+    expect(prompt).toContain("LSP/diagnostics 是否 clean");
+    expect(prompt).toContain("build/lint/工程级检查结果");
+    expect(prompt).toContain("真实链路上的集成测试已经运行");
+    expect(prompt).toContain("不要只跑孤立模块测试、纯单元测试");
     expect(prompt).toContain("## 下游说明");
     expect(prompt).not.toContain("第一条先调用 `readTaskDocs`");
     expect(prompt).not.toContain("父任务 ID");

@@ -1,16 +1,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import {
-  type CompleteTaskWebsocketData,
-  getNextWorkflowPhase,
-  normalizeWorkflowPhaseSequence,
-  type WorkflowAgentRole,
-  type WorkflowPhase,
-} from "@amigo-llm/types";
-import {
-  broadcaster,
-  conversationRepository,
-  hasConversationContinuations,
-} from "@/core/conversation";
+import type { FinishPhaseWebsocketData, WorkflowAgentRole, WorkflowPhase } from "@amigo-llm/types";
+import { conversationRepository } from "@/core/conversation/ConversationRepository";
+import { hasConversationContinuations } from "@/core/conversation/context/asyncContinuations";
+import { broadcaster } from "@/core/conversation/lifecycle/WebSocketBroadcaster";
 import { parseDesignExecutionHandoff } from "@/core/workflow/designExecutionHandoff";
 import { logger } from "@/utils/logger";
 import {
@@ -24,8 +16,14 @@ import { asyncToolJobRegistry } from "./base/asyncJobRegistry";
 import { createToolResult } from "./result";
 import { getTaskListPath } from "./taskList/utils";
 
-const COMPLETE_TASK_CONTINUATION_SUMMARY = "【任务已完成】";
+const FINISH_PHASE_CONTINUATION_SUMMARY = "【任务已完成】";
 const buildPhaseAdvanceSummary = (phase: string) => `【当前阶段 ${phase}】`;
+const CONTROLLER_PHASE_ROUTES: Partial<Record<WorkflowPhase, WorkflowPhase[]>> = {
+  requirements: ["design", "complete"],
+  design: ["execution", "verification"],
+  execution: ["verification", "design"],
+  verification: ["complete", "design"],
+};
 const resolveCompletedPhase = ({
   currentPhase,
   agentRole,
@@ -48,27 +46,27 @@ const resolveCompletedPhase = ({
   return undefined;
 };
 
-const buildCompleteTaskWebsocketData = ({
+const buildFinishPhaseWebsocketData = ({
   kind,
   completedPhase,
   currentPhase,
   agentRole,
-}: CompleteTaskWebsocketData): CompleteTaskWebsocketData => ({
+}: FinishPhaseWebsocketData): FinishPhaseWebsocketData => ({
   kind,
   ...(completedPhase ? { completedPhase } : {}),
   ...(currentPhase ? { currentPhase } : {}),
   ...(agentRole ? { agentRole } : {}),
 });
 
-const buildCompleteTaskResult = (
+const buildFinishPhaseResult = (
   message: string,
   result: string,
   summary?: string,
-  websocketData?: CompleteTaskWebsocketData,
+  websocketData?: FinishPhaseWebsocketData,
 ) =>
   createToolResult(result, {
     transportMessage: message,
-    continuationSummary: COMPLETE_TASK_CONTINUATION_SUMMARY,
+    continuationSummary: FINISH_PHASE_CONTINUATION_SUMMARY,
     continuationResult: summary?.trim() || message,
     ...(websocketData ? { websocketData } : {}),
   });
@@ -81,28 +79,105 @@ const buildToolErrorResult = (result: string, errorMessage: string) =>
     error: errorMessage,
   });
 
+const normalizeCompletionText = (value: string | undefined): string => value?.trim() || "";
+
+const formatAllowedNextPhases = (phases: WorkflowPhase[]): string => phases.join(" / ");
+
+const validateControllerNextPhase = ({
+  currentPhase,
+  nextPhase,
+}: {
+  currentPhase: WorkflowPhase;
+  nextPhase?: string;
+}): { ok: true; nextPhase: WorkflowPhase } | { ok: false; errorMessage: string } => {
+  if (!nextPhase) {
+    return {
+      ok: false,
+      errorMessage: `当前阶段 ${currentPhase} 调用 finishPhase 时必须显式填写 nextPhase。`,
+    };
+  }
+
+  const allowedNextPhases = CONTROLLER_PHASE_ROUTES[currentPhase] || [];
+  if (!allowedNextPhases.includes(nextPhase as WorkflowPhase)) {
+    return {
+      ok: false,
+      errorMessage: `当前阶段 ${currentPhase} 不允许进入 ${nextPhase}。允许的 nextPhase: ${formatAllowedNextPhases(
+        allowedNextPhases,
+      )}。`,
+    };
+  }
+
+  return {
+    ok: true,
+    nextPhase: nextPhase as WorkflowPhase,
+  };
+};
+
+const parseVerificationCompletionVerdict = ({
+  summary,
+  result,
+}: {
+  summary?: string;
+  result: string;
+}): {
+  blocked: boolean;
+  matchedKeyword?: string;
+} => {
+  const normalized = `${normalizeCompletionText(summary)}\n${normalizeCompletionText(result)}`;
+  const blockedPatterns = [
+    "验证不通过",
+    "本轮验证结论：不通过",
+    "本轮最终结论为验证不通过",
+    "未通过",
+    "不通过",
+    "阻塞",
+    "不能放行",
+    "不可放行",
+    "无法放行",
+    "不能标记为已完成",
+    "未跑通",
+    "未执行",
+    "无法证明",
+    "未完成验证",
+    "不能进入 complete",
+    "不能将本轮标记为已放行",
+  ];
+
+  const matchedKeyword = blockedPatterns.find((pattern) => normalized.includes(pattern));
+  return {
+    blocked: Boolean(matchedKeyword),
+    ...(matchedKeyword ? { matchedKeyword } : {}),
+  };
+};
+
 /**
  * 完成工具
  * controller 用于收尾当前阶段或任务；execution worker 额外会自动更新父任务的 execution 文档。
  */
-export const CompleteTask = createTool({
-  name: "completeTask",
+export const FinishPhase = createTool({
+  name: "finishPhase",
   description:
-    "🎯 用于完成当前职责。controller 用它完成当前 workflow 阶段；在 complete 阶段调用时才真正结束整个任务。execution worker 用它提交执行结果，并自动更新父任务的待办列表。",
+    "🎯 用于收口当前阶段并显式声明下一步。controller 在非 complete 阶段必须通过 nextPhase 指定下一阶段；在 complete 阶段调用时才真正结束整个任务。execution worker 用它提交执行结果，并自动更新父任务的待办列表。",
   whenToUse:
-    "仅在当前职责已真正完成时调用。controller：requirements/design/execution/verification 阶段中，表示当前阶段已经完成并应切换到下一阶段；complete 阶段中，表示整个任务最终完成。execution worker：表示当前执行任务已实现并自查完成。部分完成、仅汇报进度或未完成状态不要调用。",
+    "仅在当前职责已真正完成时调用。controller：一开始总在 requirements 阶段，先完成需求分析，再用 nextPhase 显式分叉；推荐路径是 简单问询 requirements -> complete、检索任务 requirements -> design -> verification -> complete、需要执行的任务 requirements -> design -> execution -> verification -> complete。verification 未通过时应回到 design，不得进入 complete。execution worker：表示当前执行任务已实现并自查完成。部分完成、仅汇报进度或未完成状态不要调用。",
   params: [
     {
       name: "summary",
       optional: false,
       description:
-        "任务完成摘要。controller 用于简短面向用户总结；在 requirements 阶段应清楚概括整理后的用户需求和范围；execution worker 用于父任务自动验收与通知。",
+        "当前阶段摘要。controller 用于简短总结当前阶段结论；在 requirements 阶段应清楚概括整理后的用户需求和范围；execution worker 用于父任务自动验收与通知。",
     },
     {
       name: "result",
       optional: false,
       description:
-        "任务完成的详细结果。controller：面向用户清晰说明阶段或最终结果；在 requirements 阶段必须把澄清后的用户需求、目标、约束和范围写清楚；在 design 阶段必须包含 `## 已确认事实`、`## 关键约束`、`## 实施计划` 三个二级标题，只有当仍有阻塞 execution 的事项时才额外填写 `## 未决问题`。execution worker：必须包含 `## 交付物`、`## 验证`、`## 遗留问题`、`## 下游说明` 四个二级标题。",
+        "当前阶段的详细结果。controller：在 requirements 阶段必须把澄清后的用户需求、目标、约束和范围写清楚；在 design 阶段必须包含 `## 已确认事实`、`## 关键约束`、`## 实施计划` 三个二级标题，只有当仍有阻塞 execution 的事项时才额外填写 `## 未决问题`；在 verification 阶段必须写清真实检查记录和最终判定，如果是不通过、阻塞、未跑通、未执行或不能放行，就只能把 nextPhase 设为 design。execution worker：必须包含 `## 交付物`、`## 验证`、`## 遗留问题`、`## 下游说明` 四个二级标题，其中 `## 验证` 需要按 LSP/diagnostics、build/lint/工程级检查、真实链路集成测试的顺序写真实证据，不能只写局部测试或口头判断。",
+    },
+    {
+      name: "nextPhase",
+      optional: true,
+      description:
+        "controller 主任务在非 complete 阶段必填，表示下一步进入哪个阶段。允许路径：requirements -> design/complete；design -> execution/verification；execution -> verification/design；verification -> complete/design。execution worker 不需要填写。",
     },
     {
       name: "achievements",
@@ -128,16 +203,16 @@ export const CompleteTask = createTool({
     if (context.parentId && (pendingAsyncJobs.length > 0 || hasPendingContinuation)) {
       const pendingJobSummary = pendingAsyncJobs.map((job) => job.toolName).join("、");
       const errorMessage = [
-        "执行任务仍有未完成的异步后续动作，暂时不能调用 completeTask。",
+        "执行任务仍有未完成的异步后续动作，暂时不能调用 finishPhase。",
         pendingAsyncJobs.length > 0 ? `仍在运行的后台任务：${pendingJobSummary}` : undefined,
         hasPendingContinuation ? "仍有等待消费的 continuation 队列。" : undefined,
-        "请等待这些异步步骤回到当前执行任务并执行完毕后，再提交 completeTask。",
+        "请等待这些异步步骤回到当前执行任务并执行完毕后，再提交 finishPhase。",
       ]
         .filter(Boolean)
         .join("\n");
 
       logger.warn(
-        `[completeTask] 阻止执行任务 ${context.taskId} 过早完成：${errorMessage.replace(/\n/g, " | ")}`,
+        `[finishPhase] 阻止执行任务 ${context.taskId} 过早完成：${errorMessage.replace(/\n/g, " | ")}`,
       );
       return createToolResult(result, {
         transportMessage: errorMessage,
@@ -157,18 +232,22 @@ export const CompleteTask = createTool({
           return buildToolErrorResult(result, errorMessage);
         }
 
-        const phaseSequence = normalizeWorkflowPhaseSequence(
-          mainConversation.workflowState.phaseSequence,
-        );
-        const nextPhase = context.currentPhase
-          ? getNextWorkflowPhase(context.currentPhase, phaseSequence)
-          : undefined;
-        if (!nextPhase) {
-          const errorMessage = `当前阶段 ${context.currentPhase || "unknown"} 没有可推进的后续阶段`;
+        const currentPhase = context.currentPhase;
+        if (!currentPhase) {
+          const errorMessage = "未提供当前阶段，无法推进 workflow。";
           return buildToolErrorResult(result, errorMessage);
         }
 
-        if (context.currentPhase === "design" && nextPhase === "execution") {
+        const nextPhaseValidation = validateControllerNextPhase({
+          currentPhase,
+          nextPhase: typeof params.nextPhase === "string" ? params.nextPhase : undefined,
+        });
+        if (!nextPhaseValidation.ok) {
+          return buildToolErrorResult(result, nextPhaseValidation.errorMessage);
+        }
+        const nextPhase = nextPhaseValidation.nextPhase;
+
+        if (currentPhase === "design" && nextPhase === "execution") {
           const parsedHandoff = parseDesignExecutionHandoff({
             summary: params.summary?.trim() || "design 阶段完成",
             result,
@@ -177,10 +256,10 @@ export const CompleteTask = createTool({
             const errorMessage = [
               "design 阶段尚未形成可直接执行的 handoff，暂时不能进入 execution。",
               ...parsedHandoff.errors,
-              "请继续停留在 design，补齐缺失章节或收敛未决问题后再调用 completeTask。",
+              "请继续停留在 design，补齐缺失章节或收敛未决问题后再调用 finishPhase。",
             ].join("\n");
             logger.warn(
-              `[completeTask] 阻止主任务 ${context.taskId} 从 design 进入 execution：${parsedHandoff.errors.join(" | ")}`,
+              `[finishPhase] 阻止主任务 ${context.taskId} 从 design 进入 execution：${parsedHandoff.errors.join(" | ")}`,
             );
             return buildToolErrorResult(result, errorMessage);
           }
@@ -191,18 +270,39 @@ export const CompleteTask = createTool({
           });
         }
 
-        mainConversation.advanceWorkflowPhase(nextPhase);
-        mainConversation.setLastCompleteTaskDisposition("phase_advanced");
+        if (currentPhase === "verification" && nextPhase === "complete") {
+          const verificationVerdict = parseVerificationCompletionVerdict({
+            summary: params.summary?.trim(),
+            result,
+          });
+          if (verificationVerdict.blocked) {
+            const errorMessage = [
+              "verification 结果显示当前仍是“不通过”或“阻塞”，暂时不能进入 complete。",
+              `识别到的阻塞信号：${verificationVerdict.matchedKeyword}`,
+              "检查未通过、未运行、命令失败、环境缺失或真实链路未打通时，不能把 nextPhase 设为 complete。",
+              "请继续当前会话推进：若只是补检查或补证据，继续留在 verification；若需要补环境、补实现或重新调查，请重新调用 finishPhase 并把 nextPhase 设为 design。",
+            ].join("\n");
+            logger.warn(
+              `[finishPhase] 阻止主任务 ${context.taskId} 从 verification 进入 complete：${verificationVerdict.matchedKeyword}`,
+            );
+            return buildToolErrorResult(result, errorMessage);
+          }
+        }
 
-        const message = `阶段 ${context.currentPhase} 已完成，已进入 ${nextPhase}`;
+        mainConversation.changeWorkflowPhase(nextPhase, {
+          reason: `finishPhase 显式指定 nextPhase=${nextPhase}`,
+        });
+        mainConversation.setLastFinishPhaseDisposition("phase_advanced");
+
+        const message = `阶段 ${currentPhase} 已完成，已进入 ${nextPhase}`;
         logger.info(
-          `[completeTask] 主任务 ${context.taskId} 完成阶段 ${context.currentPhase}，切换到 ${nextPhase}`,
+          `[finishPhase] 主任务 ${context.taskId} 完成阶段 ${currentPhase}，切换到 ${nextPhase}`,
         );
         return createToolResult(result, {
           transportMessage: message,
           continuationSummary: buildPhaseAdvanceSummary(nextPhase),
           continuationResult: params.summary?.trim() || message,
-          websocketData: buildCompleteTaskWebsocketData({
+          websocketData: buildFinishPhaseWebsocketData({
             kind: "phase_complete",
             completedPhase: resolveCompletedPhase({
               currentPhase: context.currentPhase,
@@ -225,13 +325,13 @@ export const CompleteTask = createTool({
         });
       }
 
-      mainConversation?.setLastCompleteTaskDisposition("task_completed");
-      logger.info(`[completeTask] 主任务 ${context.taskId} 完成，直接返回最终结果`);
-      return buildCompleteTaskResult(
+      mainConversation?.setLastFinishPhaseDisposition("task_completed");
+      logger.info(`[finishPhase] 主任务 ${context.taskId} 完成，直接返回最终结果`);
+      return buildFinishPhaseResult(
         params.summary?.trim() || "任务已完成",
         result,
         params.summary,
-        buildCompleteTaskWebsocketData({
+        buildFinishPhaseWebsocketData({
           kind: "task_complete",
           completedPhase: resolveCompletedPhase({
             currentPhase: context.currentPhase,
@@ -248,7 +348,7 @@ export const CompleteTask = createTool({
     const parentTaskId = context.parentId;
 
     logger.info(
-      `[completeTask] 执行任务 ${executionTaskId} 完成，准备更新父任务 ${parentTaskId} 的 taskList`,
+      `[finishPhase] 执行任务 ${executionTaskId} 完成，准备更新父任务 ${parentTaskId} 的 taskList`,
     );
 
     try {
@@ -256,13 +356,13 @@ export const CompleteTask = createTool({
       const parentConversation =
         conversationRepository.get(parentTaskId) || conversationRepository.load(parentTaskId);
       if (!parentConversation) {
-        logger.warn(`[completeTask] 未找到父任务 ${parentTaskId}`);
+        logger.warn(`[finishPhase] 未找到父任务 ${parentTaskId}`);
         // 即使找不到父任务，也返回结果
-        return buildCompleteTaskResult(
+        return buildFinishPhaseResult(
           "任务完成（警告：未找到父任务）",
           result,
           params.summary,
-          buildCompleteTaskWebsocketData({
+          buildFinishPhaseWebsocketData({
             kind: "task_complete",
             completedPhase: resolveCompletedPhase({
               currentPhase: context.currentPhase,
@@ -294,12 +394,12 @@ export const CompleteTask = createTool({
       try {
         taskListContent = readFileSync(taskListPath, "utf-8");
       } catch (error) {
-        logger.warn(`[completeTask] 无法读取父任务的 taskList: ${error}`);
-        return buildCompleteTaskResult(
+        logger.warn(`[finishPhase] 无法读取父任务的 taskList: ${error}`);
+        return buildFinishPhaseResult(
           "任务完成（警告：无法读取父任务 taskList）",
           result,
           params.summary,
-          buildCompleteTaskWebsocketData({
+          buildFinishPhaseWebsocketData({
             kind: "task_complete",
             completedPhase: resolveCompletedPhase({
               currentPhase: context.currentPhase,
@@ -326,7 +426,7 @@ export const CompleteTask = createTool({
       }
 
       if (!targetItem) {
-        logger.warn(`[completeTask] 未找到执行任务 ${executionTaskId} 对应的 taskList 条目`);
+        logger.warn(`[finishPhase] 未找到执行任务 ${executionTaskId} 对应的 taskList 条目`);
         if (taskDescription || taskKey) {
           parentConversation.updateExecutionTaskStatus(taskDescription || taskKey || "", {
             status: "completed",
@@ -334,11 +434,11 @@ export const CompleteTask = createTool({
             executionTaskId,
           });
         }
-        return buildCompleteTaskResult(
+        return buildFinishPhaseResult(
           "任务完成（警告：未找到 taskList 条目）",
           result,
           params.summary,
-          buildCompleteTaskWebsocketData({
+          buildFinishPhaseWebsocketData({
             kind: "task_complete",
             completedPhase: resolveCompletedPhase({
               currentPhase: context.currentPhase,
@@ -367,7 +467,7 @@ export const CompleteTask = createTool({
 
       // 写回文件
       writeFileSync(taskListPath, finalContent, "utf-8");
-      logger.info(`[completeTask] 已更新父任务 ${parentTaskId} 的 taskList`);
+      logger.info(`[finishPhase] 已更新父任务 ${parentTaskId} 的 taskList`);
 
       const parsedAfterComplete = parseChecklist(finalContent);
       const hasPendingTasks = parsedAfterComplete.items.some((item) => !item.completed);
@@ -387,10 +487,10 @@ export const CompleteTask = createTool({
       if (hasPendingTasks && !parentIsRunning && !hasBlockingExecutionTasks) {
         const taskListTool = parentConversation.toolService.getToolFromName("taskList");
         if (!taskListTool) {
-          logger.warn("[completeTask] 父任务缺少 taskList 工具，无法自动续跑 execution");
+          logger.warn("[finishPhase] 父任务缺少 taskList 工具，无法自动续跑 execution");
         } else {
           logger.info(
-            `[completeTask] 父任务 ${parentTaskId} 当前未运行，自动触发 taskList(execute) 继续执行剩余任务`,
+            `[finishPhase] 父任务 ${parentTaskId} 当前未运行，自动触发 taskList(execute) 继续执行剩余任务`,
           );
           try {
             await taskListTool.invoke({
@@ -413,7 +513,7 @@ export const CompleteTask = createTool({
             });
           } catch (resumeError) {
             logger.error(
-              `[completeTask] 自动触发父任务 taskList(execute) 失败: ${
+              `[finishPhase] 自动触发父任务 taskList(execute) 失败: ${
                 resumeError instanceof Error ? resumeError.message : String(resumeError)
               }`,
             );
@@ -435,11 +535,11 @@ export const CompleteTask = createTool({
         },
       });
 
-      return buildCompleteTaskResult(
+      return buildFinishPhaseResult(
         "任务完成，已更新父任务 taskList",
         result,
         params.summary,
-        buildCompleteTaskWebsocketData({
+        buildFinishPhaseWebsocketData({
           kind: "task_complete",
           completedPhase: resolveCompletedPhase({
             currentPhase: context.currentPhase,
@@ -451,13 +551,13 @@ export const CompleteTask = createTool({
         }),
       );
     } catch (error) {
-      logger.error(`[completeTask] 更新父任务 taskList 失败: ${error}`);
+      logger.error(`[finishPhase] 更新父任务 taskList 失败: ${error}`);
       // 即使更新失败，也返回结果
-      return buildCompleteTaskResult(
+      return buildFinishPhaseResult(
         `任务完成（警告：更新父任务失败 - ${error}）`,
         result,
         params.summary,
-        buildCompleteTaskWebsocketData({
+        buildFinishPhaseWebsocketData({
           kind: "task_complete",
           completedPhase: resolveCompletedPhase({
             currentPhase: context.currentPhase,

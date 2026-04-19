@@ -115,7 +115,7 @@ export const Bash = createTool({
 
     if (looksLikeFileEditCommand(command)) {
       const errorMsg =
-        "不要使用 bash 编辑文件。请改用 editFile；bash 只用于搜索、构建、测试和诊断。";
+        "不要使用 bash 编辑文件。请改用 editFile；bash 只用于搜索、安装明确依赖、构建、测试和诊断。";
       return createToolResult(
         { success: false, output: "", message: errorMsg },
         {

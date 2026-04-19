@@ -3,8 +3,6 @@ import type { WorkflowAgentRole, WorkflowPhase } from "../workflow";
 import { AskFollowupQuestionSchema } from "./askFollowupQuestions";
 import { BashSchema } from "./bash";
 import { BrowserSearchSchema } from "./browserSearch";
-import { ChangePhaseSchema, OverridePhaseSchema } from "./changePhase";
-import { CompleteTaskSchema } from "./completeTask";
 import type { ToolExecutionContext } from "./context";
 import {
   DesignDraftToolSchema,
@@ -24,6 +22,7 @@ import {
   UpsertThemeOptionsSchema,
 } from "./designDraft";
 import { EditFileSchema } from "./editFile";
+import { FinishPhaseSchema } from "./finishPhase";
 import { ListFilesSchema } from "./listFiles";
 import { ReadFileSchema } from "./readFile";
 import { ReadRulesSchema } from "./readRules";
@@ -36,9 +35,7 @@ export type { ToolExecutionContext } from "./context";
 
 export const toolSchemas = z.discriminatedUnion("name", [
   AskFollowupQuestionSchema,
-  CompleteTaskSchema,
-  OverridePhaseSchema,
-  ChangePhaseSchema,
+  FinishPhaseSchema,
   BrowserSearchSchema,
   TaskListSchema,
   EditFileSchema,
@@ -71,14 +68,6 @@ export type ToolNames = z.infer<typeof toolSchemas>["name"];
 
 export type ToolSchema = z.infer<typeof toolSchemas>;
 export type {
-  ChangePhaseParams,
-  ChangePhaseResult,
-  OverridePhaseParams,
-  OverridePhaseResult,
-} from "./changePhase";
-export type { CompleteTaskWebsocketData } from "./completeTask";
-export { CompleteTaskWebsocketDataSchema } from "./completeTask";
-export type {
   DesignDraftParams,
   DesignDraftResult,
   DesignOptionsParams,
@@ -110,6 +99,8 @@ export type {
   UpsertThemeOptionsParams,
   UpsertThemeOptionsResult,
 } from "./designDraft";
+export type { FinishPhaseWebsocketData } from "./finishPhase";
+export { FinishPhaseWebsocketDataSchema } from "./finishPhase";
 export type { ListFilesParams, ListFilesResult } from "./listFiles";
 export type { ReadRulesParams, ReadRulesResult } from "./readRules";
 export type {

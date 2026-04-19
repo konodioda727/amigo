@@ -106,7 +106,7 @@ describe("ContextCompressionManager helpers", () => {
         role: "assistant",
         type: "tool",
         content: JSON.stringify({
-          toolName: "completeTask",
+          toolName: "finishPhase",
           result: "done",
           params: {
             summary: "done",
@@ -138,7 +138,7 @@ describe("ContextCompressionManager helpers", () => {
         role: "assistant",
         type: "tool",
         content: JSON.stringify({
-          toolName: "completeTask",
+          toolName: "finishPhase",
           result: "done",
           params: {
             summary: "done",
@@ -225,14 +225,14 @@ describe("ContextCompressionManager helpers", () => {
             role: "assistant",
             type: "tool",
             content:
-              '{"kind":"assistant_tool_call","toolName":"completeTask","arguments":{"summary":"旧任务已完成","result":"交付结果"}}',
+              '{"kind":"assistant_tool_call","toolName":"finishPhase","arguments":{"summary":"旧任务已完成","result":"交付结果"}}',
             updateTime: 3,
           },
           {
             role: "user",
             type: "tool",
             content:
-              '{"kind":"tool_result","toolName":"completeTask","result":"交付结果","summary":"旧任务已完成"}',
+              '{"kind":"tool_result","toolName":"finishPhase","result":"交付结果","summary":"旧任务已完成"}',
             updateTime: 4,
           },
           {

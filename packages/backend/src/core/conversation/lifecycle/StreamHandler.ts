@@ -66,7 +66,6 @@ export class StreamHandler {
       const toolDefinitions = conversation.toolService.getToolDefinitions({
         currentPhase: conversation.currentWorkflowPhase,
         agentRole: conversation.workflowAgentRole,
-        workflowMode: conversation.workflowState?.mode,
       });
       debugSession = createModelContextDebugSession({
         conversationId: conversation.id,
@@ -372,7 +371,6 @@ export class StreamHandler {
     const tool = conversation.toolService?.getToolFromName?.(toolName, {
       currentPhase: conversation.currentWorkflowPhase,
       agentRole: conversation.workflowAgentRole,
-      workflowMode: conversation.workflowState?.mode,
     });
 
     if (tool?.completionBehavior === "idle") {

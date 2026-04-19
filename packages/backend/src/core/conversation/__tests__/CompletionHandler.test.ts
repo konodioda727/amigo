@@ -156,7 +156,7 @@ describe("CompletionHandler default tool flow", () => {
     expect(conversation.status).toBe("streaming");
   });
 
-  it("re-announces the current workflow state after a phase-completing completeTask", async () => {
+  it("re-announces the current workflow state after a phase-completing finishPhase", async () => {
     const handler = new CompletionHandler();
     const setWorkflowState = mock();
     const conversation = {
@@ -169,7 +169,7 @@ describe("CompletionHandler default tool flow", () => {
         currentPhase: "discovery",
         agentRole: "controller",
       },
-      consumeLastCompleteTaskDisposition: mock(() => "phase_advanced"),
+      consumeLastFinishPhaseDisposition: mock(() => "phase_advanced"),
       setWorkflowState,
       toolService: {
         getToolFromName: mock(() => undefined),
@@ -181,7 +181,7 @@ describe("CompletionHandler default tool flow", () => {
 
     const completion = await handler.handleStreamCompletion(
       conversation,
-      "completeTask",
+      "finishPhase",
       false,
       null,
     );
@@ -278,7 +278,7 @@ describe("CompletionHandler default tool flow", () => {
         type: "message",
         partial: false,
         content:
-          "你已经连续 5 次使用读取/搜索类工具（listFiles、readFile、browserSearch），但还没有推进任务状态。不要继续只读空转；如果执行方案已经清楚，下一步直接调用 taskList（action=execute，必要时连 tasks 一起传入），或进入 editFile / bash / completeTask。",
+          "你已经连续 5 次使用读取/搜索类工具（listFiles、readFile、browserSearch），但还没有推进任务状态。不要继续只读空转；如果执行方案已经清楚，下一步直接调用 taskList（action=execute，必要时连 tasks 一起传入），或进入 editFile / bash / finishPhase。",
       },
     ]);
     expect(conversation.status).toBe("streaming");

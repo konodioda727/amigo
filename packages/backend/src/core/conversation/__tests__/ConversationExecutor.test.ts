@@ -53,7 +53,7 @@ describe("ConversationExecutor waiting_tool_confirmation", () => {
       isAborted: false,
       userInput: "先别提交，我补一句说明",
       pendingToolCall: {
-        toolName: "completeTask",
+        toolName: "finishPhase",
         params: { result: "done" },
         toolCallId: "call-1",
         type: "tool",
@@ -73,7 +73,7 @@ describe("ConversationExecutor waiting_tool_confirmation", () => {
     expect(addMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         role: "user",
-        content: "用户取消了工具 'completeTask' 的执行。",
+        content: "用户取消了工具 'finishPhase' 的执行。",
       }),
     );
   });
@@ -91,7 +91,7 @@ describe("ConversationExecutor waiting_tool_confirmation", () => {
       isAborted: false,
       userInput: "confirm",
       pendingToolCall: {
-        toolName: "completeTask",
+        toolName: "finishPhase",
         params: { result: "done" },
         toolCallId: "call-2",
         type: "tool",
@@ -100,7 +100,7 @@ describe("ConversationExecutor waiting_tool_confirmation", () => {
       toolService: {
         getToolFromName: mock(() => undefined),
       },
-      consumeLastCompleteTaskDisposition: mock(() => null),
+      consumeLastFinishPhaseDisposition: mock(() => null),
       memory: {
         addMessage: mock(),
       },
@@ -114,7 +114,7 @@ describe("ConversationExecutor waiting_tool_confirmation", () => {
     expect(broadcaster.broadcastConversation).toHaveBeenCalledWith(conversation, {
       type: "conversationOver",
       data: {
-        reason: "completeTask",
+        reason: "finishPhase",
       },
     });
   });
@@ -198,7 +198,7 @@ describe("ConversationExecutor waiting_tool_confirmation", () => {
       expect(conversation.memory.addMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           role: "user",
-          content: "依赖安装已完成。",
+          content: "异步准备已完成。",
         }),
       );
       return { currentTool: "message", toolCalls: [] };
@@ -234,7 +234,7 @@ describe("ConversationExecutor waiting_tool_confirmation", () => {
       injectBeforeNextTurn: (currentConversation) => {
         currentConversation.memory.addMessage({
           role: "user",
-          content: "依赖安装已完成。",
+          content: "异步准备已完成。",
           type: "system",
           partial: false,
         });
@@ -392,7 +392,7 @@ describe("ConversationExecutor waiting_tool_confirmation", () => {
       pendingToolCall: null,
       currentWorkflowPhase: "execution",
       workflowAgentRole: "controller",
-      workflowState: { mode: "phased" },
+      workflowState: {},
       toolService: {
         getToolFromName: mock(() => undefined),
       },

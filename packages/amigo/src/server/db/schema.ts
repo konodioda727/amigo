@@ -208,7 +208,6 @@ export const conversationContextSnapshotsTable = mysqlTable(
     messageCount: int("message_count", { unsigned: true }).notNull(),
     toolNamesJson: json("tool_names_json").$type<string[]>().notNull(),
     optionsJson: json("options_json").$type<Record<string, unknown>>().notNull(),
-    messagesJson: json("messages_json").$type<unknown[]>().notNull(),
     createdAt: datetime("created_at", { mode: "string", fsp: 3 }).notNull(),
   },
   (table) => ({

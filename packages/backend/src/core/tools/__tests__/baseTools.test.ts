@@ -6,9 +6,9 @@ import {
   Bash,
   DEFAULT_CONTROLLER_BASIC_TOOLS,
   DEFAULT_WORKER_BASIC_TOOLS,
+  FinishPhase,
   getBaseTools,
   ListFiles,
-  OverridePhase,
 } from "../index";
 
 describe("getBaseTools", () => {
@@ -34,13 +34,12 @@ describe("getBaseTools", () => {
     expect(getBaseTools("worker")).toEqual(customWorkerTools);
   });
 
-  it("does not include installDependencies in default tool sets", () => {
-    expect(DEFAULT_CONTROLLER_BASIC_TOOLS.map((tool) => tool.name)).not.toContain(
-      "installDependencies",
-    );
-    expect(DEFAULT_WORKER_BASIC_TOOLS.map((tool) => tool.name)).not.toContain(
-      "installDependencies",
-    );
+  it("keeps removed dependency-install helpers out of default tool sets", () => {
+    const controllerNames = DEFAULT_CONTROLLER_BASIC_TOOLS.map((tool) => tool.name);
+    const workerNames = DEFAULT_WORKER_BASIC_TOOLS.map((tool) => tool.name);
+
+    expect(controllerNames.some((name) => name.toLowerCase().includes("install"))).toBe(false);
+    expect(workerNames.some((name) => name.toLowerCase().includes("install"))).toBe(false);
   });
 
   it("includes listFiles in default tool sets", () => {
@@ -48,8 +47,8 @@ describe("getBaseTools", () => {
     expect(DEFAULT_WORKER_BASIC_TOOLS).toContain(ListFiles);
   });
 
-  it("exposes overridePhase in controller defaults", () => {
-    expect(DEFAULT_CONTROLLER_BASIC_TOOLS).toContain(OverridePhase);
-    expect(DEFAULT_CONTROLLER_BASIC_TOOLS.map((tool) => tool.name)).toContain("overridePhase");
+  it("exposes finishPhase in controller defaults", () => {
+    expect(DEFAULT_CONTROLLER_BASIC_TOOLS).toContain(FinishPhase);
+    expect(DEFAULT_CONTROLLER_BASIC_TOOLS.map((tool) => tool.name)).toContain("finishPhase");
   });
 });

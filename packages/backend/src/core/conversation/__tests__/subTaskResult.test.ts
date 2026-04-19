@@ -8,14 +8,14 @@ import {
 } from "../execution/taskExecutionResult";
 
 describe("extractCompletedExecutionTaskResultFromMessages", () => {
-  it("returns completeTask result when present", () => {
+  it("returns finishPhase result when present", () => {
     const result = extractCompletedExecutionTaskResultFromMessages([
       {
         role: "assistant",
         type: "tool",
         partial: false,
         content: JSON.stringify({
-          toolName: "completeTask",
+          toolName: "finishPhase",
           params: {
             result: "设计稿已创建，pageId 为 home-page。",
           },
@@ -26,14 +26,14 @@ describe("extractCompletedExecutionTaskResultFromMessages", () => {
     expect(result).toBe("设计稿已创建，pageId 为 home-page。");
   });
 
-  it("extracts the full completeTask payload when present", () => {
+  it("extracts the full finishPhase payload when present", () => {
     const payload = extractCompletedExecutionTaskPayloadFromMessages([
       {
         role: "assistant",
         type: "tool",
         partial: false,
         content: JSON.stringify({
-          toolName: "completeTask",
+          toolName: "finishPhase",
           params: {
             summary: "首页设计稿已完成。",
             result:
@@ -54,7 +54,7 @@ describe("extractCompletedExecutionTaskResultFromMessages", () => {
     });
   });
 
-  it("extracts the completeTask payload from transcript-style tool calls", () => {
+  it("extracts the finishPhase payload from transcript-style tool calls", () => {
     const payload = extractCompletedExecutionTaskPayloadFromMessages([
       {
         role: "assistant",
@@ -62,7 +62,7 @@ describe("extractCompletedExecutionTaskResultFromMessages", () => {
         partial: false,
         content: JSON.stringify({
           kind: "assistant_tool_call",
-          toolName: "completeTask",
+          toolName: "finishPhase",
           toolCallId: "call-complete-1",
           arguments: {
             summary: "首页设计稿已完成。",
@@ -79,7 +79,7 @@ describe("extractCompletedExecutionTaskResultFromMessages", () => {
         partial: false,
         content: JSON.stringify({
           kind: "tool_result",
-          toolName: "completeTask",
+          toolName: "finishPhase",
           toolCallId: "call-complete-1",
           result: {
             success: true,
@@ -98,14 +98,14 @@ describe("extractCompletedExecutionTaskResultFromMessages", () => {
     });
   });
 
-  it("ignores inherited parent completeTask records and only reads the latest local execution turn", () => {
+  it("ignores inherited parent finishPhase records and only reads the latest local execution turn", () => {
     const payload = extractCompletedExecutionTaskPayloadFromMessages([
       {
         role: "assistant",
         type: "tool",
         partial: false,
         content: JSON.stringify({
-          toolName: "completeTask",
+          toolName: "finishPhase",
           params: {
             summary: "父任务设计阶段已完成。",
             result: "普通阶段总结，不是子任务交付。",
@@ -123,7 +123,7 @@ describe("extractCompletedExecutionTaskResultFromMessages", () => {
         type: "tool",
         partial: false,
         content: JSON.stringify({
-          toolName: "completeTask",
+          toolName: "finishPhase",
           params: {
             summary: "子任务已完成。",
             result:
@@ -142,7 +142,7 @@ describe("extractCompletedExecutionTaskResultFromMessages", () => {
     });
   });
 
-  it("falls back to the latest assistant message when completeTask payload is missing", () => {
+  it("falls back to the latest assistant message when finishPhase payload is missing", () => {
     const result = extractCompletedExecutionTaskResultFromMessages([
       {
         role: "assistant",
@@ -170,7 +170,7 @@ describe("extractCompletedExecutionTaskResultFromMessages", () => {
     expect(formatted).toContain("### 使用说明");
   });
 
-  it("validates the required completeTask structure", () => {
+  it("validates the required finishPhase structure", () => {
     const validResult = validateCompletedExecutionTaskPayload({
       summary: "首页设计稿已完成。",
       result:

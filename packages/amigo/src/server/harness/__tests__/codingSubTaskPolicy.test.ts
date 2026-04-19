@@ -6,9 +6,13 @@ import {
 
 describe("codingTaskExecutionPolicy", () => {
   it("documents the execution worker completion discipline", () => {
-    expect(AMIGO_EXECUTION_WORKER_COMPLETION_PROMPT).toContain("completeTask");
+    expect(AMIGO_EXECUTION_WORKER_COMPLETION_PROMPT).toContain("finishPhase");
     expect(AMIGO_EXECUTION_WORKER_COMPLETION_PROMPT).toContain("## 验证");
     expect(AMIGO_EXECUTION_WORKER_COMPLETION_PROMPT).toContain("不要把“还在排查");
+    expect(AMIGO_EXECUTION_WORKER_COMPLETION_PROMPT).toContain("LSP/diagnostics");
+    expect(AMIGO_EXECUTION_WORKER_COMPLETION_PROMPT).toContain("build、lint");
+    expect(AMIGO_EXECUTION_WORKER_COMPLETION_PROMPT).toContain("真实链路上的集成测试");
+    expect(AMIGO_EXECUTION_WORKER_COMPLETION_PROMPT).toContain("不要只写孤立模块测试、纯单元测试");
   });
 
   it("bypasses the legacy independent reviewer flow", async () => {
@@ -23,7 +27,7 @@ describe("codingTaskExecutionPolicy", () => {
       parentTaskId: "parent-reviewer-main",
       parentMessages: [],
       executionTaskMessages: [],
-      toolNames: ["completeTask", "bash"],
+      toolNames: ["finishPhase", "bash"],
       context: undefined,
     });
 

@@ -14,7 +14,6 @@ export class CommonMessageResolver extends BaseMessageResolver<"userSendMessage"
       this.conversation,
       message.message,
       message.attachments,
-      message.workflowMode,
     );
     const executor = conversationOrchestrator.getExecutor(this.conversation.id);
     const manualExecuteStatus: ConversationStatus[] = [

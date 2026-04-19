@@ -35,7 +35,7 @@ describe("asyncContinuations", () => {
       expect(addMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           role: "user",
-          content: "依赖安装已完成。",
+          content: "异步准备已完成。",
         }),
       );
     });
@@ -56,7 +56,7 @@ describe("asyncContinuations", () => {
       injectBeforeNextTurn: (currentConversation) => {
         currentConversation.memory.addMessage({
           role: "user",
-          content: "依赖安装已完成。",
+          content: "异步准备已完成。",
           type: "system",
           partial: false,
         });

@@ -375,7 +375,6 @@ export class ToolExecutor {
       workflowState: conversation.workflowState,
       currentPhase: conversation.currentWorkflowPhase,
       agentRole: conversation.workflowAgentRole,
-      workflowMode: conversation.workflowState?.mode,
       getSandbox: () => sandboxManager.getOrCreate(conversation.parentId || conversation.id),
       getLanguageRuntimeHost: languageRuntimeHostManager
         ? () =>
@@ -388,7 +387,6 @@ export class ToolExecutor {
         conversation.toolService.getToolFromName(name, {
           currentPhase: conversation.currentWorkflowPhase,
           agentRole: conversation.workflowAgentRole,
-          workflowMode: conversation.workflowState?.mode,
         }),
       signal: abortSignal,
       postMessage: (msg: string | object) => {

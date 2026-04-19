@@ -60,7 +60,7 @@ const inferTaskStatusFromHistory = (
       const reason = (msg.data as { reason?: string }).reason;
       if (reason === "interrupt") return "interrupted";
       if (reason === "error") return "error";
-      if (reason === "completeTask") return "completed";
+      if (reason === "finishPhase") return "completed";
       return "idle";
     }
 

@@ -44,8 +44,10 @@ export const EditFileOperationInputSchema = z.object({
 });
 
 export const EditFileSingleResultSchema = z.object({
+  success: z.boolean().describe("该文件的编辑是否成功"),
   filePath: z.string().describe("操作的文件路径"),
   message: z.string().describe("该文件的操作结果消息"),
+  failureReason: z.string().optional().describe("可选：该文件失败的直接原因，便于下一轮聚焦处理"),
   linesWritten: z.number().optional().describe("该文件写入的行数"),
   diagnostics: EditFileDiagnosticsSchema.optional().describe("该文件的编辑后诊断结果"),
 });
@@ -107,6 +109,9 @@ export const EditFileSchema = z.object({
   result: z
     .object({
       success: z.boolean().describe("操作是否成功"),
+      status: z
+        .enum(["success", "partial_success", "failed"])
+        .describe("整体结果状态：全部成功、部分成功、全部失败"),
       filePath: z.string().optional().describe("单文件模式下的文件路径"),
       message: z.string().describe("操作结果消息"),
       linesWritten: z.number().optional().describe("单文件模式下写入的行数"),

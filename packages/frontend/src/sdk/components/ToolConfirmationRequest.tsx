@@ -109,7 +109,7 @@ const getFriendlyToolLabel = (toolName: string): string => {
   const labels: Record<string, string> = {
     bash: "运行命令",
     browserSearch: "联网搜索",
-    completeTask: "提交任务完成结果",
+    finishPhase: "提交任务完成结果",
     taskList: "处理任务清单",
     editFile: "修改文件",
     readFile: "读取文件",

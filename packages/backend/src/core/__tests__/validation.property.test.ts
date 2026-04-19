@@ -17,7 +17,7 @@ import type {
   ToolNames,
   ToolParamDefinition,
 } from "@amigo-llm/types";
-import { defineMessage } from "@amigo-llm/types/src/message";
+import { defineMessage } from "@amigo-llm/types";
 import * as fc from "fast-check";
 import { z } from "zod";
 import { ToolService } from "../tools";

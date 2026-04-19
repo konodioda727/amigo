@@ -1,5 +1,5 @@
 import type {
-  CompleteTaskWebsocketData,
+  FinishPhaseWebsocketData,
   SERVER_SEND_MESSAGE_NAME,
   ToolParams,
   ToolResult,
@@ -147,11 +147,11 @@ const extractWorkflowPhaseFromToolPayload = (
   toolName: string,
   websocketData: unknown,
 ): WorkflowPhase | undefined => {
-  if (toolName !== "completeTask" || !websocketData || typeof websocketData !== "object") {
+  if (toolName !== "finishPhase" || !websocketData || typeof websocketData !== "object") {
     return undefined;
   }
 
-  const data = websocketData as Partial<CompleteTaskWebsocketData>;
+  const data = websocketData as Partial<FinishPhaseWebsocketData>;
   return data.completedPhase || data.currentPhase;
 };
 

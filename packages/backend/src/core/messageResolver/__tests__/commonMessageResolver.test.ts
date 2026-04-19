@@ -1,4 +1,5 @@
-import { describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { conversationOrchestrator } from "@/core/conversation";
 
 const execute = mock();
 const getCurrentAbortController = mock();
@@ -8,22 +9,31 @@ const getExecutor = mock(() => ({
   getCurrentAbortController,
 }));
 
-mock.module("@/core/conversation", () => ({
-  conversationOrchestrator: {
-    setUserInput,
-    getExecutor,
-  },
-}));
-
 import { CommonMessageResolver } from "../commonMessageResolver/index";
 
+const originalSetUserInput = conversationOrchestrator.setUserInput.bind(conversationOrchestrator);
+const originalGetExecutor = conversationOrchestrator.getExecutor.bind(conversationOrchestrator);
+
 describe("CommonMessageResolver", () => {
-  it("restarts execution when a conversation is stuck in streaming without an active executor", async () => {
+  beforeEach(() => {
     execute.mockClear();
     getExecutor.mockClear();
     getCurrentAbortController.mockReset();
-    getCurrentAbortController.mockReturnValue(null);
     setUserInput.mockClear();
+    conversationOrchestrator.setUserInput =
+      setUserInput as typeof conversationOrchestrator.setUserInput;
+    conversationOrchestrator.getExecutor =
+      getExecutor as typeof conversationOrchestrator.getExecutor;
+  });
+
+  afterEach(() => {
+    conversationOrchestrator.setUserInput = originalSetUserInput;
+    conversationOrchestrator.getExecutor = originalGetExecutor;
+  });
+
+  it("restarts execution when a conversation is stuck in streaming without an active executor", async () => {
+    getCurrentAbortController.mockReset();
+    getCurrentAbortController.mockReturnValue(null);
 
     const conversation = {
       id: "task-stale-streaming",
@@ -36,17 +46,14 @@ describe("CommonMessageResolver", () => {
       taskId: "task-stale-streaming",
     } as any);
 
-    expect(setUserInput).toHaveBeenCalledWith(conversation, "继续", undefined, undefined);
+    expect(setUserInput).toHaveBeenCalledWith(conversation, "继续", undefined);
     expect(getExecutor).toHaveBeenCalledWith("task-stale-streaming");
     expect(execute).toHaveBeenCalledWith(conversation);
   });
 
   it("does not restart execution when streaming already has an active executor", async () => {
-    execute.mockClear();
-    getExecutor.mockClear();
     getCurrentAbortController.mockReset();
     getCurrentAbortController.mockReturnValue(new AbortController());
-    setUserInput.mockClear();
 
     const conversation = {
       id: "task-active-streaming",
@@ -59,7 +66,7 @@ describe("CommonMessageResolver", () => {
       taskId: "task-active-streaming",
     } as any);
 
-    expect(setUserInput).toHaveBeenCalledWith(conversation, "继续", undefined, undefined);
+    expect(setUserInput).toHaveBeenCalledWith(conversation, "继续", undefined);
     expect(getExecutor).toHaveBeenCalledWith("task-active-streaming");
     expect(execute).not.toHaveBeenCalled();
   });

@@ -5,7 +5,7 @@ export const ConversationOverSchema = z.object({
   data: z.object({
     taskId: z.string().optional(),
     reason: z
-      .enum(["askFollowupQuestion", "completeTask", "interrupt", "error", "message", "tool"])
+      .enum(["askFollowupQuestion", "finishPhase", "interrupt", "error", "message", "tool"])
       .optional(),
   }),
 });

@@ -54,6 +54,11 @@ const sanitizeModelConfigSnapshot = (
   };
 };
 
+const readModelConfigSnapshot = (
+  data: UserSendWebSocketMessage["data"],
+): ModelConfigSnapshot | undefined =>
+  "modelConfigSnapshot" in data ? data.modelConfigSnapshot : undefined;
+
 export class ServerWebSocketMessageHandler {
   constructor(private readonly messageRegistry?: MessageRegistry) {}
 
@@ -212,16 +217,17 @@ export class ServerWebSocketMessageHandler {
       config?.context ?? parsedMessage.data.context,
     );
     const initialUserId = readConversationUserId(initialContext) || ws.data?.userId;
+    const requestedSnapshot = readModelConfigSnapshot(parsedMessage.data);
     const initialLlm = getLlm(
-      parsedMessage.data.modelConfigSnapshot
+      requestedSnapshot
         ? {
-            modelConfigSnapshot: parsedMessage.data.modelConfigSnapshot,
+            modelConfigSnapshot: requestedSnapshot,
             userId: initialUserId,
           }
         : undefined,
     );
-    const sanitizedSnapshot = parsedMessage.data.modelConfigSnapshot
-      ? sanitizeModelConfigSnapshot(parsedMessage.data.modelConfigSnapshot, initialLlm)
+    const sanitizedSnapshot = requestedSnapshot
+      ? sanitizeModelConfigSnapshot(requestedSnapshot, initialLlm)
       : undefined;
     const conversation = conversationRepository.create({
       id: taskId,
@@ -339,14 +345,16 @@ export class ServerWebSocketMessageHandler {
     conversation: Awaited<ReturnType<ServerWebSocketMessageHandler["resolveConversation"]>>,
     parsedMessage: UserSendWebSocketMessage,
   ): void {
-    const snapshot = parsedMessage.data.modelConfigSnapshot;
+    const snapshot = readModelConfigSnapshot(parsedMessage.data);
     if (!snapshot) {
       return;
     }
 
     if (
       ["userSendMessage", "resume"].includes(parsedMessage.type) &&
-      !["idle", "completed", "aborted", "waiting_tool_confirmation"].includes(conversation.status)
+      !["idle", "completed", "aborted", "waiting_tool_confirmation", "error"].includes(
+        conversation.status,
+      )
     ) {
       return;
     }

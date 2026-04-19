@@ -67,7 +67,6 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
       onSend,
       createTaskContext,
       modelConfigSnapshot,
-      workflowMode,
       disabled = false,
       showMentions = true,
       bottomAccessory,
@@ -244,14 +243,13 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
       const currentTaskTargetId = taskId || mainTaskId;
 
       if (!currentTaskTargetId || currentTaskTargetId.trim() === "") {
-        sendCreateTask(content, attachments, createTaskContext, modelConfigSnapshot, workflowMode);
+        sendCreateTask(content, attachments, createTaskContext, modelConfigSnapshot);
       } else {
         sendMessage(
           content,
           effectiveSessionId || currentTaskTargetId,
           attachments,
           modelConfigSnapshot,
-          workflowMode,
         );
       }
 
@@ -270,7 +268,6 @@ export const MessageInputImpl = forwardRef<MessageInputRef, MessageInputProps>(
       sendMessage,
       targetSessionId,
       taskId,
-      workflowMode,
     ]);
 
     handleSendRef.current = handleSend;

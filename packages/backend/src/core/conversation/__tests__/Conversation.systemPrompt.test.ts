@@ -138,12 +138,15 @@ describe("Conversation system prompt overrides", () => {
     expect(workerPrompt).toContain("父任务继承下来的上下文");
     expect(workerPrompt).toContain("不要把它当成文件编辑器");
     expect(workerPrompt).toContain("只做分配给你的执行范围");
+    expect(workerPrompt).toContain("LSP/diagnostics 是否 clean");
+    expect(workerPrompt).toContain("真实链路上的集成测试");
+    expect(workerPrompt).toContain("不要把孤立模块测试、纯单元测试");
     expect(workerPrompt).not.toContain("task docs");
     expect(workerPrompt).not.toContain("sandbox's relevant directory structure");
     expect(workerPrompt.length).toBeLessThan(controllerPrompt.length);
   });
 
-  it("uses completeTask for main task turn endings", () => {
+  it("uses finishPhase for main task turn endings", () => {
     const toolService = new ToolService([], []);
 
     const conversation = Conversation.create({
@@ -152,13 +155,13 @@ describe("Conversation system prompt overrides", () => {
     });
 
     const systemPrompt = conversation.memory.initialSystemPrompt || "";
-    expect(systemPrompt).toContain("`completeTask`");
+    expect(systemPrompt).toContain("`finishPhase`");
     expect(systemPrompt).toContain("每一轮回复都必须以工具调用结束");
     expect(systemPrompt).toContain("必须先用 `bash` 实际运行必要检查");
     expect(systemPrompt).toContain("正式交付最终结果");
   });
 
-  it("keeps the main prompt tool-driven and completeTask-oriented without forcing tool preambles", () => {
+  it("keeps the main prompt tool-driven and finishPhase-oriented without forcing tool preambles", () => {
     const toolService = new ToolService([], []);
 
     const conversation = Conversation.create({
@@ -195,14 +198,14 @@ describe("Conversation system prompt overrides", () => {
     expect(systemPrompt).toContain("运行时给出的 mode、phase、workflow notice 优先级最高");
     expect(systemPrompt).toContain("用户到底要什么");
     expect(systemPrompt).toContain("只有用户本人才能提供的事实、偏好或取舍会阻塞推进时");
-    expect(systemPrompt).toContain("checkpoint/compaction 和各阶段 `completeTask`");
+    expect(systemPrompt).toContain("checkpoint/compaction 和各阶段 `finishPhase`");
     expect(systemPrompt).toContain("先服从它，再参考通用规则");
     expect(systemPrompt).toContain("向用户索取你可以自行查看的文件、日志、路径、代码或环境信息");
     expect(systemPrompt).toContain("先修正并重试同一个工具");
     expect(systemPrompt).toContain("先用 1-2 句高信息量正文说明你要做什么、为什么");
   });
 
-  it("includes the universal SOP and mode-specific explicitness rules", () => {
+  it("includes the universal SOP and phase-driven explicitness rules", () => {
     const toolService = new ToolService([], []);
 
     const conversation = Conversation.create({
@@ -213,19 +216,16 @@ describe("Conversation system prompt overrides", () => {
     const systemPrompt = conversation.memory.initialSystemPrompt || "";
     expect(systemPrompt).toContain("工作方式");
     expect(systemPrompt).toContain("用户真正要什么");
-    expect(systemPrompt).toContain("Fast Mode");
-    expect(systemPrompt).toContain("phased workflow");
     expect(systemPrompt).toContain("先看真实工作区");
     expect(systemPrompt).toContain("尽量用更少的轮次把用户请求做完");
     expect(systemPrompt).toContain("最高优先级指令");
-    expect(systemPrompt).toContain("简单、低风险、连续性强的任务优先走 fast mode");
-    expect(systemPrompt).toContain("controller 在 phased workflow 中固定按完整阶段集推进");
+    expect(systemPrompt).toContain("主任务固定从 `requirements` 开始");
+    expect(systemPrompt).toContain("controller 默认从 `requirements` 开始");
     expect(systemPrompt).toContain("`taskList`");
     expect(systemPrompt).toContain("taskList(action=execute)");
     expect(systemPrompt).toContain("design 阶段生成 `taskList`");
-    expect(systemPrompt).toContain("不强制拆成 requirements、design、execution、verification");
     expect(systemPrompt).toContain("必须先用 `bash` 实际运行必要检查");
-    expect(systemPrompt).toContain("调用 `completeTask` 结束主任务");
+    expect(systemPrompt).toContain("调用 `finishPhase` 结束主任务");
     expect(systemPrompt).not.toContain(
       "questions about how the current system/workflow behaves: ALWAYS investigate first",
     );
@@ -237,7 +237,7 @@ describe("Conversation system prompt overrides", () => {
     );
     expect(systemPrompt).not.toContain("In discovery, do not batch findings until the end");
     expect(systemPrompt).not.toContain(
-      "Both modes require investigation first, then `completeTask` to report, then wait for user approval before implementation.",
+      "Both modes require investigation first, then `finishPhase` to report, then wait for user approval before implementation.",
     );
   });
 

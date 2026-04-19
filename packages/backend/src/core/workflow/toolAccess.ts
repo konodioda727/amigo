@@ -3,14 +3,12 @@ import type {
   ToolWorkflowAccess,
   ToolWorkflowScope,
   WorkflowAgentRole,
-  WorkflowMode,
   WorkflowPhase,
 } from "@amigo-llm/types";
 
 type ToolExecutionScope = {
   currentPhase?: WorkflowPhase;
   agentRole?: WorkflowAgentRole;
-  workflowMode?: WorkflowMode;
 };
 
 const DEFAULT_WORKFLOW_ACCESS: Record<string, ToolWorkflowAccess> = {
@@ -19,22 +17,6 @@ const DEFAULT_WORKFLOW_ACCESS: Record<string, ToolWorkflowAccess> = {
       {
         roles: ["controller"],
         phases: ["requirements", "design"],
-      },
-    ],
-  },
-  overridePhase: {
-    scopes: [
-      {
-        roles: ["controller"],
-        phases: ["requirements", "design", "execution", "verification"],
-      },
-    ],
-  },
-  changePhase: {
-    scopes: [
-      {
-        roles: ["controller"],
-        phases: ["requirements", "design", "execution", "verification"],
       },
     ],
   },
@@ -114,7 +96,7 @@ const DEFAULT_WORKFLOW_ACCESS: Record<string, ToolWorkflowAccess> = {
       },
     ],
   },
-  completeTask: {
+  finishPhase: {
     scopes: [
       {
         roles: ["controller"],
@@ -191,10 +173,6 @@ export const isToolAllowedForWorkflow = (
   scope?: ToolExecutionScope,
 ): boolean => {
   if (!scope?.agentRole) {
-    return true;
-  }
-
-  if (scope.workflowMode === "fast" && scope.agentRole === "controller") {
     return true;
   }
 

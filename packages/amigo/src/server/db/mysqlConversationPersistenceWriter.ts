@@ -165,7 +165,6 @@ export const persistConversationContextSnapshot = async (
         messageCount: record.messageCount,
         toolNamesJson: record.toolNames,
         optionsJson: isPlainObject(record.options) ? record.options : {},
-        messagesJson: Array.isArray(record.messages) ? record.messages : [],
         createdAt: formatMysqlDateTime(new Date(record.createdAt)),
       })
       .onDuplicateKeyUpdate({
@@ -180,7 +179,6 @@ export const persistConversationContextSnapshot = async (
           messageCount: record.messageCount,
           toolNamesJson: record.toolNames,
           optionsJson: isPlainObject(record.options) ? record.options : {},
-          messagesJson: Array.isArray(record.messages) ? record.messages : [],
           createdAt: formatMysqlDateTime(new Date(record.createdAt)),
         },
       });

@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { WorkflowModeSchema } from "../../workflow";
 import { UserMessageAttachmentSchema } from "./message";
 import { ResolvedModelConfigSnapshotSchema } from "./modelConfigSnapshot";
 
@@ -10,6 +9,5 @@ export const CreateTaskSchema = z.object({
     attachments: z.array(UserMessageAttachmentSchema).optional(),
     context: z.any().optional(),
     modelConfigSnapshot: ResolvedModelConfigSnapshotSchema.optional(),
-    workflowMode: WorkflowModeSchema.optional(),
   }),
 });

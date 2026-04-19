@@ -110,7 +110,6 @@ CREATE TABLE IF NOT EXISTS conversation_context_snapshots (
   message_count INT UNSIGNED NOT NULL,
   tool_names_json JSON NOT NULL,
   options_json JSON NOT NULL,
-  messages_json JSON NOT NULL,
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
   UNIQUE KEY uq_conversation_context_snapshots_request_id (request_id),

@@ -9,8 +9,10 @@ type EditFileParamOperation = {
 };
 
 type EditFileResultOperation = {
+  success?: boolean;
   filePath?: string;
   message?: string;
+  failureReason?: string;
   linesWritten?: number;
   diagnostics?: {
     summary?: string;
@@ -158,6 +160,11 @@ const BatchEditResultBody: React.FC<ToolMessageRendererProps<"editFile">> = ({ m
             edit.diagnostics.summary.trim().length > 0
               ? edit.diagnostics.summary
               : "";
+          const failed = "success" in edit && edit.success === false;
+          const failureReason =
+            "failureReason" in edit && typeof edit.failureReason === "string"
+              ? edit.failureReason
+              : "";
           const itemKeyBase = [filePath, messageText, diagnosticsSummary].join("::");
           const duplicateCount = seenItemKeys.get(itemKeyBase) ?? 0;
           seenItemKeys.set(itemKeyBase, duplicateCount + 1);
@@ -166,8 +173,20 @@ const BatchEditResultBody: React.FC<ToolMessageRendererProps<"editFile">> = ({ m
 
           return (
             <div key={itemKey} className="border-b border-neutral-200 px-3 py-2 last:border-b-0">
-              <div className="font-mono text-xs text-neutral-800 break-all">{filePath}</div>
+              <div className="flex items-center gap-2">
+                <div className="font-mono text-xs text-neutral-800 break-all">{filePath}</div>
+                <div
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                    failed ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700"
+                  }`}
+                >
+                  {failed ? "失败" : "成功"}
+                </div>
+              </div>
               <div className="mt-1 text-sm text-neutral-600 break-words">{messageText}</div>
+              {failureReason && failed ? (
+                <div className="mt-1 text-xs text-rose-600 break-words">{failureReason}</div>
+              ) : null}
               {diagnosticsSummary ? (
                 <div className="mt-1 text-xs text-neutral-500 break-words">
                   {diagnosticsSummary}

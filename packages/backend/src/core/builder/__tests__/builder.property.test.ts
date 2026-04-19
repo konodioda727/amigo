@@ -21,6 +21,15 @@ const mockSandboxManager = {
   destroy: async () => {},
 };
 
+const mockConversationPersistenceProvider = {
+  exists: () => false,
+  load: () => null,
+  save: () => true,
+  delete: () => true,
+  listConversationRelations: () => [],
+  listSessionHistories: () => [],
+};
+
 // ============================================================================
 // 测试生成器 (Arbitraries)
 // ============================================================================
@@ -198,7 +207,10 @@ describe("构建器属性测试", () => {
     test("build() 应返回 AmigoServer 实例", () => {
       fc.assert(
         fc.property(validPortArb, validCachePathArb, (port, cachePath) => {
-          const builder = new AmigoServerBuilder().port(port).cachePath(cachePath);
+          const builder = new AmigoServerBuilder()
+            .port(port)
+            .cachePath(cachePath)
+            .conversationPersistenceProvider(mockConversationPersistenceProvider);
 
           const server = builder.build();
 
@@ -222,6 +234,7 @@ describe("构建器属性测试", () => {
               .port(port)
               .registerTool(tool)
               .registerMessage(message)
+              .conversationPersistenceProvider(mockConversationPersistenceProvider)
               .build();
 
             expect(server).toBeInstanceOf(AmigoServer);
@@ -234,7 +247,9 @@ describe("构建器属性测试", () => {
     });
 
     test("使用默认配置的 build() 也应返回有效的服务器实例", () => {
-      const builder = new AmigoServerBuilder();
+      const builder = new AmigoServerBuilder().conversationPersistenceProvider(
+        mockConversationPersistenceProvider,
+      );
       const server = builder.build();
 
       expect(server).toBeInstanceOf(AmigoServer);
@@ -261,6 +276,7 @@ describe("构建器属性测试", () => {
             .filter((names) => names.length > 0),
           (toolNames) => {
             const builder = new AmigoServerBuilder();
+            builder.conversationPersistenceProvider(mockConversationPersistenceProvider);
             const tools = toolNames.map(createMockTool);
 
             for (const tool of tools) {
@@ -293,6 +309,7 @@ describe("构建器属性测试", () => {
             .filter((types) => types.length > 0),
           (messageTypes) => {
             const builder = new AmigoServerBuilder();
+            builder.conversationPersistenceProvider(mockConversationPersistenceProvider);
             const messages = messageTypes.map(createMockMessage);
 
             for (const message of messages) {
@@ -332,6 +349,7 @@ describe("构建器属性测试", () => {
             .filter((types) => types.length > 0),
           (toolNames, messageTypes) => {
             const builder = new AmigoServerBuilder();
+            builder.conversationPersistenceProvider(mockConversationPersistenceProvider);
             const tools = toolNames.map(createMockTool);
             const messages = messageTypes.map(createMockMessage);
 
@@ -383,6 +401,7 @@ describe("构建器属性测试", () => {
             .filter((types) => types.length > 0),
           (toolNames, messageTypes) => {
             const builder = new AmigoServerBuilder();
+            builder.conversationPersistenceProvider(mockConversationPersistenceProvider);
             const tools = toolNames.map(createMockTool);
             const messages = messageTypes.map(createMockMessage);
 

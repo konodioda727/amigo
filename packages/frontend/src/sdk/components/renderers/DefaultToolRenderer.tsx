@@ -3,9 +3,9 @@ import type React from "react";
 import type { ToolMessageRendererProps } from "../../types/renderers";
 import { DefaultBashRenderer } from "./tools/DefaultBashRenderer";
 import { DefaultBrowserSearchRenderer } from "./tools/DefaultBrowserSearchRenderer";
-import { DefaultCompleteTaskRenderer } from "./tools/DefaultCompleteTaskRenderer";
 import { DefaultCreateDesignDocRenderer } from "./tools/DefaultCreateDesignDocRenderer";
 import { DefaultEditFileRenderer } from "./tools/DefaultEditFileRenderer";
+import { DefaultFinishPhaseRenderer } from "./tools/DefaultFinishPhaseRenderer";
 import { DefaultListDesignDocsRenderer } from "./tools/DefaultListDesignDocsRenderer";
 import { DefaultListFilesRenderer } from "./tools/DefaultListFilesRenderer";
 import { DefaultReadDesignDocRenderer } from "./tools/DefaultReadDesignDocRenderer";
@@ -27,7 +27,7 @@ const toolRendererMap: {
   listFiles: DefaultListFilesRenderer as React.FC<ToolMessageRendererProps<"listFiles">>,
   readFile: DefaultReadFileRenderer as React.FC<ToolMessageRendererProps<"readFile">>,
   readRules: DefaultReadRulesRenderer as React.FC<ToolMessageRendererProps<"readRules">>,
-  completeTask: DefaultCompleteTaskRenderer as React.FC<ToolMessageRendererProps<"completeTask">>,
+  finishPhase: DefaultFinishPhaseRenderer as React.FC<ToolMessageRendererProps<"finishPhase">>,
 };
 
 /**

@@ -21,7 +21,7 @@ export const buildTaskTimeline = ({
     message,
   }));
 
-export const COMPLETE_TASK_PHASE_TITLES: Record<WorkflowPhase, string> = {
+export const FINISH_PHASE_TITLES: Record<WorkflowPhase, string> = {
   requirements: "需求阶段",
   design: "设计阶段",
   execution: "执行阶段",

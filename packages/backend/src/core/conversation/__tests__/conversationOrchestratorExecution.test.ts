@@ -73,7 +73,7 @@ describe("runExecutionTaskWithOrchestrator", () => {
       type: "tool",
       partial: false,
       content: JSON.stringify({
-        toolName: "completeTask",
+        toolName: "finishPhase",
         params: {
           summary: "设计阶段已完成。",
           result: "普通的阶段总结。",
@@ -85,7 +85,7 @@ describe("runExecutionTaskWithOrchestrator", () => {
       type: "tool",
       partial: false,
       content: JSON.stringify({
-        toolName: "completeTask",
+        toolName: "finishPhase",
         result: { success: true },
       }),
     });

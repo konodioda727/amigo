@@ -66,7 +66,7 @@ const OSCILLATION_MIN_INTERACTIONS = 4;
 const NO_PROGRESS_WINDOW = 4;
 const EARLY_TASKDOC_REMINDER_THRESHOLD = 5;
 
-const MUTATING_TOOL_NAMES = new Set(["editFile", "updateDevServer", "completeTask"]);
+const MUTATING_TOOL_NAMES = new Set(["editFile", "updateDevServer", "finishPhase"]);
 
 const RESOURCE_READ_TOOL_NAMES = new Set([
   "listFiles",
@@ -212,7 +212,7 @@ const extractResourceKeys = (interaction: ToolInteraction): string[] => {
 
 const inferFallbackProgressKind = (toolName: string): ToolProgressKind | undefined => {
   if (MUTATING_TOOL_NAMES.has(toolName)) {
-    return toolName === "completeTask" ? "completion" : "write";
+    return toolName === "finishPhase" ? "completion" : "write";
   }
   if (RESOURCE_READ_TOOL_NAMES.has(toolName)) {
     return toolName === "browserSearch" ? "search" : "read";
@@ -582,24 +582,24 @@ const toLoopGuidance = (
         conversation?.workflowAgentRole === "execution_worker" &&
         ["readFile", "listFiles", "bash"].includes(detection.toolName)
       ) {
-        return `同一个工具 ${detection.toolName} 已使用相同参数连续执行 ${detection.count} 次，并得到等价结果。不要再次调用相同工具和参数。若目标文件和改动点已明确，下一步直接使用 editFile，先落当前这一处，而不是继续把其余文件都读完；若实现已完成，调用 bash 做必要验证或 completeTask。`;
+        return `同一个工具 ${detection.toolName} 已使用相同参数连续执行 ${detection.count} 次，并得到等价结果。不要再次调用相同工具和参数。若目标文件和改动点已明确，下一步直接使用 editFile，先落当前这一处，而不是继续把其余文件都读完；若实现已完成，调用 bash 做必要验证或 finishPhase。`;
       }
       return `同一个工具 ${detection.toolName} 已使用相同参数连续执行 ${detection.count} 次，并得到等价结果。不要再次调用相同工具和参数；请直接利用现有结果进入下一步，或直接结束当前轮。`;
     case "resource_read_loop":
       return conversation?.workflowAgentRole === "execution_worker"
-        ? `你已经连续 ${detection.count} 次读取同一资源 ${detection.resourceKey}。不要继续重复读取。下一步应直接使用 editFile、bash 或 completeTask；除非出现新的明确阻塞，否则不要再读同一文件。`
+        ? `你已经连续 ${detection.count} 次读取同一资源 ${detection.resourceKey}。不要继续重复读取。下一步应直接使用 editFile、bash 或 finishPhase；除非出现新的明确阻塞，否则不要再读同一文件。`
         : `你已经连续 ${detection.count} 次读取同一资源 ${detection.resourceKey}。不要继续重复读取；请基于现有内容做修改、验证，或明确结束当前任务。`;
     case "tool_oscillation":
       return `最近工具调用在 ${detection.cycle.join(" -> ")} 之间来回振荡，且没有形成推进。不要继续重复这个循环；请改用能推进状态的工具，或直接基于现有结果总结结论。`;
     case "no_progress":
       return conversation?.workflowAgentRole === "execution_worker"
-        ? `最近 ${detection.count} 次工具调用没有带来新的文件修改或新的事实结果，工具集合为 ${detection.toolNames.join("、")}。不要继续空转。若已有任何一处改动点明确，下一步先直接调用 editFile 落这一处，而不是继续把其余文件都读完；若实现已完成，调用 bash 做必要验证或 completeTask。`
+        ? `最近 ${detection.count} 次工具调用没有带来新的文件修改或新的事实结果，工具集合为 ${detection.toolNames.join("、")}。不要继续空转。若已有任何一处改动点明确，下一步先直接调用 editFile 落这一处，而不是继续把其余文件都读完；若实现已完成，调用 bash 做必要验证或 finishPhase。`
         : `最近 ${detection.count} 次工具调用没有带来新的文件修改或新的事实结果，工具集合为 ${detection.toolNames.join("、")}。不要继续同类空转；请切换到能推进任务状态的工具，或直接结束当前轮。`;
     case "read_without_progress": {
       if (conversation?.workflowAgentRole === "execution_worker") {
-        return `你已经连续 ${detection.count} 次使用读取/搜索类工具（${detection.toolNames.join("、")}）。不要继续只读空转。若目标文件和任何一处改动点已明确，下一步必须优先使用 editFile 先落这一处，不要为了批量修改把其他文件先读完；bash 只用于搜索、构建、测试和诊断，不要再用它代替编辑。`;
+        return `你已经连续 ${detection.count} 次使用读取/搜索类工具（${detection.toolNames.join("、")}）。不要继续只读空转。若目标文件和任何一处改动点已明确，下一步必须优先使用 editFile 先落这一处，不要为了批量修改把其他文件先读完；bash 只用于搜索、安装明确依赖、构建、测试和诊断，不要再用它代替编辑。`;
       }
-      return `你已经连续 ${detection.count} 次使用读取/搜索类工具（${detection.toolNames.join("、")}），但还没有推进任务状态。不要继续只读空转；如果执行方案已经清楚，下一步直接调用 taskList（action=execute，必要时连 tasks 一起传入），或进入 editFile / bash / completeTask。`;
+      return `你已经连续 ${detection.count} 次使用读取/搜索类工具（${detection.toolNames.join("、")}），但还没有推进任务状态。不要继续只读空转；如果执行方案已经清楚，下一步直接调用 taskList（action=execute，必要时连 tasks 一起传入），或进入 editFile / bash / finishPhase。`;
     }
   }
 };

@@ -7,10 +7,10 @@
 3. 运行时给出的 mode、phase、workflow notice 优先级最高，先服从它，再参考通用规则。
 4. 只收集支撑下一步所需的最小证据；不要为了“更稳妥”反复读取、反复搜索或重复执行同类检查。
 5. 只有用户本人才能提供的事实、偏好或取舍会阻塞推进时，才调用 `askFollowupQuestion`。
-6. 当前阶段或当前任务没有实质完成前，不要调用 `completeTask`。
-7. 在 phased workflow 中，持久记忆以会话历史、checkpoint/compaction 和各阶段 `completeTask` 为准；`taskList` 只是 execution 阶段可选的调度状态。
+6. 当前阶段或当前任务没有实质完成前，不要调用 `finishPhase`。
+7. 在 phased workflow 中，持久记忆以会话历史、checkpoint/compaction 和各阶段 `finishPhase` 为准；`taskList` 只是 execution 阶段可选的调度状态。
 8. 修改文件时只能使用 `editFile`；查看文件内容时只能使用 `readFile`。不要用 `bash`、其他写工具或旁路方式代替这两个工具。
 9. 如果工具调用失败只是因为参数、格式、调用方式或前置条件问题，先修正并重试同一个工具；不要把一次报错扩大成重新调查或改走别的工具路径。
-10. 多个彼此独立的只读查询可以同轮并行收集；一旦目标文件、改动点或验证方式已经清楚，就停止继续取证，转向 `editFile`、`bash` 或 `completeTask`。
+10. 多个彼此独立的只读查询可以同轮并行收集；一旦目标文件、改动点或验证方式已经清楚，就停止继续取证，转向 `editFile`、`bash` 或 `finishPhase`。
 
 ====

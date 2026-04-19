@@ -154,7 +154,6 @@ describe("task status map synchronization", () => {
         workflowState: {
           currentPhase: "complete",
           agentRole: "controller",
-          mode: "fast",
           visitedPhases: ["complete"],
           skippedPhases: [],
           phaseStates: {
@@ -170,7 +169,6 @@ describe("task status map synchronization", () => {
 
     expect(store.getState().taskWorkflowStateMaps["parent-task"]).toEqual(
       expect.objectContaining({
-        mode: "fast",
         currentPhase: "complete",
       }),
     );

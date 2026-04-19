@@ -150,7 +150,7 @@ export const startNewTask = ({
         const validation = validateCompletedExecutionTaskPayload(completionPayload);
 
         if (!validation.ok) {
-          latestValidationReason = validation.reason || "completeTask 结果不符合要求。";
+          latestValidationReason = validation.reason || "finishPhase 结果不符合要求。";
           parentConv.updateExecutionTaskStatus(cleanDescriptionForAgent, {
             status: "failed",
             error: latestValidationReason,

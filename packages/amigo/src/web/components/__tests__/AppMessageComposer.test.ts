@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { canSwitchTaskModel, getTaskModelKey, getTaskWorkflowMode } from "../AppMessageComposer";
+import {
+  canSwitchTaskModel,
+  getTaskModelKey,
+  resolveComposerModelKey,
+} from "../AppMessageComposer";
 
 describe("canSwitchTaskModel", () => {
   test("allows switching before a task exists", () => {
@@ -45,28 +49,45 @@ describe("model key stability", () => {
   });
 });
 
-describe("getTaskWorkflowMode", () => {
-  test("defaults to phased when workflow state is missing", () => {
-    expect(getTaskWorkflowMode(undefined)).toBe("phased");
-    expect(getTaskWorkflowMode(null)).toBe("phased");
+describe("resolveComposerModelKey", () => {
+  const availableModels = [
+    { configId: "openai", model: "gpt-5", provider: "openai-compatible" },
+    { configId: "anthropic", model: "claude-sonnet-4", provider: "openai-compatible" },
+  ];
+
+  test("keeps the user's new-conversation selection when it is still valid", () => {
+    expect(
+      resolveComposerModelKey({
+        effectiveTaskId: undefined,
+        availableModels,
+        defaultModelKey: "openai::gpt-5",
+        activeTaskModelKey: "",
+        currentSelectedModelKey: "anthropic::claude-sonnet-4",
+      }),
+    ).toBe("anthropic::claude-sonnet-4");
   });
 
-  test("reads fast mode from workflow state", () => {
+  test("keeps the saved selection while model options are still loading", () => {
     expect(
-      getTaskWorkflowMode({
-        currentPhase: "complete",
-        agentRole: "controller",
-        mode: "fast",
-        visitedPhases: ["complete"],
-        skippedPhases: [],
-        phaseStates: {
-          requirements: { status: "skipped" },
-          design: { status: "skipped" },
-          execution: { status: "skipped" },
-          verification: { status: "skipped" },
-          complete: { status: "completed" },
-        },
+      resolveComposerModelKey({
+        effectiveTaskId: undefined,
+        availableModels: [],
+        defaultModelKey: "openai::gpt-5",
+        activeTaskModelKey: "",
+        currentSelectedModelKey: "anthropic::claude-sonnet-4",
       }),
-    ).toBe("fast");
+    ).toBe("anthropic::claude-sonnet-4");
+  });
+
+  test("prefers the active task model for existing conversations", () => {
+    expect(
+      resolveComposerModelKey({
+        effectiveTaskId: "task-1",
+        availableModels,
+        defaultModelKey: "openai::gpt-5",
+        activeTaskModelKey: "anthropic::claude-sonnet-4",
+        currentSelectedModelKey: "openai::gpt-5",
+      }),
+    ).toBe("anthropic::claude-sonnet-4");
   });
 });

@@ -4,7 +4,6 @@ import {
   buildControllerNoToolRetryMessage,
   buildWorkflowStateSystemMessage,
   createExecutionWorkerWorkflowState,
-  createFastWorkflowState,
   createVerificationReviewerWorkflowState,
   createWorkflowState,
   isToolAllowedForWorkflow,
@@ -133,9 +132,9 @@ describe("workflow tool access", () => {
     ).toBe(false);
   });
 
-  it("allows execution worker to finish with completeTask after execution", () => {
+  it("allows execution worker to finish with finishPhase after execution", () => {
     expect(
-      isToolAllowedForWorkflow(createMockTool("completeTask"), {
+      isToolAllowedForWorkflow(createMockTool("finishPhase"), {
         currentPhase: "execution",
         agentRole: "execution_worker",
       }),
@@ -192,30 +191,30 @@ describe("workflow tool access", () => {
     ).toBe(false);
   });
 
-  it("allows controller to use overridePhase all the way through verification", () => {
+  it("allows controller to use finishPhase all the way through verification", () => {
     expect(
-      isToolAllowedForWorkflow(createMockTool("overridePhase"), {
+      isToolAllowedForWorkflow(createMockTool("finishPhase"), {
         currentPhase: "requirements",
         agentRole: "controller",
       }),
     ).toBe(true);
 
     expect(
-      isToolAllowedForWorkflow(createMockTool("overridePhase"), {
+      isToolAllowedForWorkflow(createMockTool("finishPhase"), {
         currentPhase: "execution",
         agentRole: "controller",
       }),
     ).toBe(true);
 
     expect(
-      isToolAllowedForWorkflow(createMockTool("overridePhase"), {
+      isToolAllowedForWorkflow(createMockTool("finishPhase"), {
         currentPhase: "verification",
         agentRole: "controller",
       }),
     ).toBe(true);
 
     expect(
-      isToolAllowedForWorkflow(createMockTool("overridePhase"), {
+      isToolAllowedForWorkflow(createMockTool("finishPhase"), {
         currentPhase: "verification",
         agentRole: "controller",
       }),
@@ -224,27 +223,9 @@ describe("workflow tool access", () => {
 
   it("allows controller to finish only from the complete phase", () => {
     expect(
-      isToolAllowedForWorkflow(createMockTool("completeTask"), {
+      isToolAllowedForWorkflow(createMockTool("finishPhase"), {
         currentPhase: "complete",
         agentRole: "controller",
-      }),
-    ).toBe(true);
-  });
-
-  it("allows controller to use every tool in fast mode", () => {
-    expect(
-      isToolAllowedForWorkflow(createMockTool("editFile"), {
-        currentPhase: "complete",
-        agentRole: "controller",
-        workflowMode: "fast",
-      }),
-    ).toBe(true);
-
-    expect(
-      isToolAllowedForWorkflow(createMockTool("taskList"), {
-        currentPhase: "complete",
-        agentRole: "controller",
-        workflowMode: "fast",
       }),
     ).toBe(true);
   });
@@ -294,7 +275,8 @@ describe("workflow tool access", () => {
     expect(message).toContain("预期产出：");
     expect(message).toContain("summary/result");
     expect(message).toContain("不要复现、不要查代码、不要看日志");
-    expect(message).toContain("直接把整理后的需求写进 completeTask");
+    expect(message).toContain("直接把整理后的需求写进 finishPhase");
+    expect(message).toContain("推荐三种主路径");
   });
 
   it("injects issue-investigation guidance into the design-phase workflow state message", () => {
@@ -309,6 +291,8 @@ describe("workflow tool access", () => {
     expect(message).toContain("实践大于阅读");
     expect(message).toContain("先尝试复现具体问题");
     expect(message).toContain("报错内容、触发步骤和期望结果");
+    expect(message).toContain("操作级施工说明");
+    expect(message).toContain("不是把“先定位/先调研/先确认/创建分支/推远端”");
   });
 
   it("keeps worker/reviewer workflow state messages focused on execution and review duties", () => {
@@ -322,6 +306,7 @@ describe("workflow tool access", () => {
     expect(executionWorkerMessage).toContain("当前角色：execution_worker");
     expect(verificationReviewerMessage).toContain("当前角色：verification_reviewer");
     expect(verificationReviewerMessage).toContain("submitTaskReview");
+    expect(verificationReviewerMessage).toContain("核对执行结果是否满足任务目标与验证标准");
   });
 
   it("injects optional task-splitting guidance into the execution-phase workflow state message", () => {
@@ -333,9 +318,10 @@ describe("workflow tool access", () => {
     );
 
     expect(message).toContain("简单任务、单模块任务、紧耦合改动优先由 controller 直接完成");
-    expect(message).toContain("调用 overridePhase 回到 design 重新收敛");
+    expect(message).toContain("调用 finishPhase(nextPhase=design)");
     expect(message).toContain("查看文件内容只用 readFile；修改文件只用 editFile");
-    expect(message).toContain("bash 只用于搜索、构建、测试和诊断");
+    expect(message).toContain("直接用 `bash` 安装依赖后重跑");
+    expect(message).toContain("bash 只用于搜索、安装明确依赖、构建、测试和诊断");
     expect(message).toContain("如果任一工具失败只是因为参数、格式、调用方式或前置条件问题");
     expect(message).toContain("若 handoff、诊断或现有上下文已经明确给出目标文件和动作");
     expect(message).toContain("不要回退去读 build 产物");
@@ -371,32 +357,10 @@ describe("workflow tool access", () => {
     expect(message).toContain("未决问题：已收敛");
   });
 
-  it("injects fast-mode guidance into the workflow state message", () => {
-    const message = buildWorkflowStateSystemMessage(createFastWorkflowState());
-
-    expect(message).toContain("当前模式：fast");
-    expect(message).toContain("不走 requirements/design/execution/verification 状态机");
-    expect(message).toContain("调用 overridePhase 回到 design");
-    expect(message).toContain("completeTask");
-    expect(message).toContain("完成后调用 completeTask");
-  });
-
-  it("tells fast mode to fall back into design when the task stops being simple", () => {
-    const message = buildControllerNoToolRetryMessage({
-      phase: "complete",
-      workflowMode: "fast",
-      allowedToolNames: ["readFile", "editFile", "overridePhase", "completeTask"],
-    });
-
-    expect(message).toContain("fast mode 不走 requirements/design/execution/verification 状态机");
-    expect(message).toContain("调用 overridePhase 回到 design");
-    expect(message).toContain("当前允许工具: readFile, editFile, overridePhase, completeTask");
-  });
-
   it("tells execution retries to fix and retry the same tool after tool-call failures", () => {
     const message = buildControllerNoToolRetryMessage({
       phase: "execution",
-      allowedToolNames: ["readFile", "editFile", "bash", "completeTask"],
+      allowedToolNames: ["readFile", "editFile", "bash", "finishPhase"],
     });
 
     expect(message).toContain("优先修正并重试同一个工具");
@@ -419,6 +383,13 @@ describe("workflow tool access", () => {
 
     expect(verificationMessage).toContain("模型的说法与真实举动、实际产物和当前现状是否一致");
     expect(verificationMessage).toContain("readRules、readFile、listFiles、bash");
+    expect(verificationMessage).toContain("优先使用 LSP/diagnostics 确认改动涉及文件是否仍有报错");
+    expect(verificationMessage).toContain("随后执行与改动链路对应的 build、lint 或其他工程级检查");
+    expect(verificationMessage).toContain("先直接用 `bash` 安装或补齐环境，再重跑同一检查");
+    expect(verificationMessage).toContain("能打通真实入口的集成测试");
+    expect(verificationMessage).toContain("不要把孤立模块测试、纯单元测试");
+    expect(verificationMessage).toContain("结论就只能是“不通过”或“阻塞”");
+    expect(verificationMessage).toContain("执行过的命令、真实结果、失败点与最终判定");
     expect(completeMessage).toContain("直接在 complete 阶段使用读/改/检查工具");
     expect(completeMessage).toContain(
       "readRules、readFile、listFiles、bash、editFile、updateDevServer",

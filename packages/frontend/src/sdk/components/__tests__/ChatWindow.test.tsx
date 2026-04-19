@@ -33,7 +33,7 @@ mock.module("react-virtuoso", () => ({
 }));
 
 describe("ChatWindow", () => {
-  it("renders process messages inline before completeTask", async () => {
+  it("renders process messages inline before finishPhase", async () => {
     const { WebSocketProvider } = await import("../../provider/WebSocketProvider");
     const { ChatWindow } = await import("../ChatWindow");
     const taskId = "task-1";
@@ -58,7 +58,7 @@ describe("ChatWindow", () => {
       },
       {
         type: "tool",
-        toolName: "completeTask",
+        toolName: "finishPhase",
         workflowPhase: "complete",
         params: {
           summary: "任务已完成",

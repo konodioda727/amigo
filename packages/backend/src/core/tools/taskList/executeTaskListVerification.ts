@@ -52,9 +52,9 @@ export const handleInternalVerification = async ({
     if (!completedPayload) {
       return {
         outcome: "failed",
-        summary: "子任务缺少可审阅的 completeTask 结果。",
+        summary: "子任务缺少可审阅的 finishPhase 结果。",
         taskSucceeded: false,
-        validationReason: "子任务缺少可审阅的 completeTask 结果。",
+        validationReason: "子任务缺少可审阅的 finishPhase 结果。",
       };
     }
 
@@ -102,7 +102,7 @@ export const handleInternalVerification = async ({
         : null;
       const validation = validateCompletedExecutionTaskPayload(payload);
       if (!validation.ok) {
-        const reason = validation.reason || "completeTask 结果不符合要求。";
+        const reason = validation.reason || "finishPhase 结果不符合要求。";
         return {
           outcome: "failed",
           summary: reason,

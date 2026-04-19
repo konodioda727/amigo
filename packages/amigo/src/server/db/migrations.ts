@@ -987,6 +987,64 @@ CREATE TABLE IF NOT EXISTS conversation_context_snapshots (
       `,
     ]),
   },
+  {
+    version: 12,
+    name: "drop_conversation_context_snapshot_messages",
+    statements: [
+      `
+SET @amigo_has_snapshot_messages_json = (
+  SELECT COUNT(*)
+  FROM information_schema.columns
+  WHERE table_schema = DATABASE()
+    AND table_name = 'conversation_context_snapshots'
+    AND column_name = 'messages_json'
+)
+      `,
+      `
+SET @amigo_drop_snapshot_messages_json_sql = IF(
+  @amigo_has_snapshot_messages_json = 1,
+  'ALTER TABLE conversation_context_snapshots DROP COLUMN messages_json',
+  'SELECT 1'
+)
+      `,
+      `
+PREPARE amigo_drop_snapshot_messages_json_stmt FROM @amigo_drop_snapshot_messages_json_sql
+      `,
+      `
+EXECUTE amigo_drop_snapshot_messages_json_stmt
+      `,
+      `
+DEALLOCATE PREPARE amigo_drop_snapshot_messages_json_stmt
+      `,
+    ],
+    checksum: migrationChecksum(12, "drop_conversation_context_snapshot_messages", [
+      `
+SET @amigo_has_snapshot_messages_json = (
+  SELECT COUNT(*)
+  FROM information_schema.columns
+  WHERE table_schema = DATABASE()
+    AND table_name = 'conversation_context_snapshots'
+    AND column_name = 'messages_json'
+)
+      `,
+      `
+SET @amigo_drop_snapshot_messages_json_sql = IF(
+  @amigo_has_snapshot_messages_json = 1,
+  'ALTER TABLE conversation_context_snapshots DROP COLUMN messages_json',
+  'SELECT 1'
+)
+      `,
+      `
+PREPARE amigo_drop_snapshot_messages_json_stmt FROM @amigo_drop_snapshot_messages_json_sql
+      `,
+      `
+EXECUTE amigo_drop_snapshot_messages_json_stmt
+      `,
+      `
+DEALLOCATE PREPARE amigo_drop_snapshot_messages_json_stmt
+      `,
+    ]),
+  },
 ];
 
 const ensureSchemaMigrationsTable = async (pool: Pool): Promise<void> => {

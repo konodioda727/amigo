@@ -26,24 +26,6 @@ describe("ToolService", () => {
     expect(controllerDefinition?.parameters.properties).toHaveProperty("filePaths");
   });
 
-  it("exposes phase-restricted tools in fast mode", () => {
-    const editFileTool = {
-      name: "editFile",
-      description: "edit file",
-      params: [],
-      invoke: async () => ({ message: "", toolResult: {} as any }),
-    } satisfies ToolInterface<"editFile">;
-    const service = new ToolService([editFileTool], []);
-
-    const definition = service.getToolDefinitions({
-      currentPhase: "complete",
-      agentRole: "controller",
-      workflowMode: "fast",
-    })[0];
-
-    expect(definition?.name).toBe("editFile");
-  });
-
   it("returns generic workflow guidance when a tool is blocked", async () => {
     const taskListTool = {
       name: "taskList",
@@ -60,7 +42,6 @@ describe("ToolService", () => {
         taskId: "task-1",
         currentPhase: "design",
         agentRole: "controller",
-        workflowMode: "phased",
         getSandbox: async () => ({}),
         getToolByName: () => undefined,
       },
@@ -69,7 +50,7 @@ describe("ToolService", () => {
     expect(result.error).toContain("工具 'taskList' 在当前 workflow 阶段/角色不可用");
     expect(result.error).toContain("currentPhase=design, agentRole=controller");
     expect(result.error).toContain("请先完成当前阶段要求的工作");
-    expect(result.error).toContain("调用 completeTask");
+    expect(result.error).toContain("调用 finishPhase");
     expect(result.error).toContain("进入 execution 后再继续");
   });
 
